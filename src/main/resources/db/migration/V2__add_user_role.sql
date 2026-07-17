@@ -1,0 +1,2 @@
+ALTER TABLE users
+ADD COLUMN role VARCHAR(10) CONSTRAINT chk_users_role CHECK (role in ('USER','ADMIN')) NOT NULL DEFAULT 'USER';

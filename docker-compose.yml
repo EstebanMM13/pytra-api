@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pytra-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pytra_db}
+      POSTGRES_USER: ${POSTGRES_USER:-pytra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD, define en .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pytra_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-pytra} -d $${POSTGRES_DB:-pytra_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+volumes:
+  pytra_pgdata:

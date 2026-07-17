@@ -1,0 +1,2 @@
+ALTER TABLE users
+ADD COLUMN username_display VARCHAR(100) NOT NULL;
