@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.auth.service;
 
+import com.estebanmm13.pytra_api.auth.dto.exchangeToken.ExchangeCodeTokenRequestDto;
 import com.estebanmm13.pytra_api.auth.dto.forgotPassword.ForgotPasswordRequestDto;
 import com.estebanmm13.pytra_api.auth.dto.forgotPassword.ForgotPasswordResponseDto;
 import com.estebanmm13.pytra_api.auth.dto.login.LoginRequestDto;
@@ -8,11 +9,9 @@ import com.estebanmm13.pytra_api.auth.dto.register.RegisterRequestDto;
 import com.estebanmm13.pytra_api.auth.dto.register.RegisterResponseDto;
 import com.estebanmm13.pytra_api.auth.dto.resetPassword.ResetPasswordRequestDto;
 import com.estebanmm13.pytra_api.auth.mapper.UserMapper;
-import com.estebanmm13.pytra_api.auth.model.EmailVerificationToken;
-import com.estebanmm13.pytra_api.auth.model.PasswordResetToken;
-import com.estebanmm13.pytra_api.auth.model.Role;
-import com.estebanmm13.pytra_api.auth.model.User;
+import com.estebanmm13.pytra_api.auth.model.*;
 import com.estebanmm13.pytra_api.auth.repository.EmailVerificationTokenRepository;
+import com.estebanmm13.pytra_api.auth.repository.ExchangeCodeTokenRepository;
 import com.estebanmm13.pytra_api.auth.repository.PasswordResetTokenRepository;
 import com.estebanmm13.pytra_api.auth.repository.UserRepository;
 import com.estebanmm13.pytra_api.auth.security.JwtService;
@@ -42,6 +41,7 @@ public class AuthServiceImpl implements AuthService {
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
     private final TokenGenerator tokenGenerator;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final ExchangeCodeTokenRepository  exchangeCodeTokenRepository;
 
     @Override
     @Transactional
@@ -185,6 +185,31 @@ public class AuthServiceImpl implements AuthService {
         User user = passwordResetToken.get().getUser();
         user.setPasswordHash(passwordEncoder.encode(resetPasswordRequestDto.getNewPassword()));
         userRepository.save(user);
+
+    }
+
+    @Override
+    public LoginResponseDto exchangeCodeToken(ExchangeCodeTokenRequestDto exchangeCodeTokenRequestDto) {
+
+        String codeHash = tokenGenerator.hashToken(exchangeCodeTokenRequestDto.getCode());
+        Optional<ExchangeCodeToken> exchangeCodeTokenRequest = exchangeCodeTokenRepository.findByTokenHash(codeHash);
+
+        if (exchangeCodeTokenRequest.isEmpty()) {
+            throw new InvalidTokenException("Invalid token");
+        }
+        if (exchangeCodeTokenRequest.get().getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new InvalidTokenException("Invalid token");
+        }
+        if (exchangeCodeTokenRequest.get().getConsumedAt() != null) {
+            throw new InvalidTokenException("Invalid token");
+        }
+
+        exchangeCodeTokenRequest.get().setConsumedAt(LocalDateTime.now());
+        exchangeCodeTokenRepository.save(exchangeCodeTokenRequest.get());
+
+        User user = exchangeCodeTokenRequest.get().getUser();
+        String token = jwtService.generateTokenWithRole(user.getUsername(), user.getRole().name(), user.getId());
+        return new LoginResponseDto(token);
 
     }
 

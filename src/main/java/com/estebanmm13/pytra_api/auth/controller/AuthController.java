@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.auth.controller;
 
+import com.estebanmm13.pytra_api.auth.dto.exchangeToken.ExchangeCodeTokenRequestDto;
 import com.estebanmm13.pytra_api.auth.dto.forgotPassword.ForgotPasswordRequestDto;
 import com.estebanmm13.pytra_api.auth.dto.forgotPassword.ForgotPasswordResponseDto;
 import com.estebanmm13.pytra_api.auth.dto.login.LoginRequestDto;
@@ -63,6 +64,14 @@ public class AuthController {
     ){
         authService.resetPassword(resetPasswordRequestDto);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
+    @PostMapping("/exchange-code")
+    public ResponseEntity<LoginResponseDto> exchangeCodeToken(
+            @Valid @RequestBody ExchangeCodeTokenRequestDto exchangeCodeTokenRequestDto
+    ){
+        LoginResponseDto response = authService.exchangeCodeToken(exchangeCodeTokenRequestDto);
+        return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
 }
