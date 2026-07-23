@@ -1,0 +1,7 @@
+CREATE TABLE sagas(
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL
+);
+
+CREATE UNIQUE INDEX ux_sagas_user_id_name_lower ON sagas (user_id, LOWER(name));

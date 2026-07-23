@@ -10,6 +10,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Service;
 
+import javax.crypto.SecretKey;
 import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
@@ -27,7 +28,8 @@ public class JwtService {
     private Long EXPIRATION_TIME;
 
     public String generateToken(Map<String, Object> extraClaims, String subject) {
-        return Jwts.builder().setClaims(extraClaims).setSubject(subject)
+        return Jwts.builder()
+                .setClaims(extraClaims).setSubject(subject)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
                 .signWith(getSignInKey(), SignatureAlgorithm.HS256).compact();
@@ -37,16 +39,20 @@ public class JwtService {
         return getClaim(token, Claims::getSubject);
     }
 
+    public Long getUserId(String token) {
+        return getClaim(token, claims -> ((Number) claims.get("userId")).longValue());
+    }
+
     public <T> T getClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = getAllClaims(token);
         return claimsResolver.apply(claims);
     }
 
     private Claims getAllClaims(String token) {
-        return Jwts.parserBuilder().setSigningKey(getSignInKey()).build().parseClaimsJws(token).getBody();
+        return Jwts.parser().verifyWith(getSignInKey()).build().parseSignedClaims(token).getPayload();
     }
 
-    private Key getSignInKey() {
+    private SecretKey getSignInKey() {
         byte[] keyBytes = Decoders.BASE64.decode(SECRET_KEY);
         return Keys.hmacShaKeyFor(keyBytes);
     }
@@ -69,5 +75,7 @@ public class JwtService {
         }
         return List.of(); // Lista vacía si no hay rol
     }
+
+
 
 }

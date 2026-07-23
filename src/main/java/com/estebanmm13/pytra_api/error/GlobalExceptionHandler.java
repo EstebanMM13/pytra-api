@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.error;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -49,4 +50,18 @@ public class GlobalExceptionHandler {
         ApiError apiError = new ApiError(HttpStatus.BAD_REQUEST.value(), "Validation failed", fieldErrors, LocalDateTime.now());
         return ResponseEntity.badRequest().body(apiError);
     }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiError> handleResourceNotFound(ResourceNotFoundException e) {
+        ApiError apiError = new ApiError(HttpStatus.NOT_FOUND.value(),e.getMessage(), Map.of() ,LocalDateTime.now());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(apiError);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataIntegrityViolation(DataIntegrityViolationException e) {
+        ApiError apiError = new ApiError(HttpStatus.CONFLICT.value(),e.getMessage(), Map.of() ,LocalDateTime.now());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(apiError);
+    }
+
+
 }
