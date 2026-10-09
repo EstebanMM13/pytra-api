@@ -1,0 +1,21 @@
+# Production profile (SPRING_PROFILES_ACTIVE=prod).
+# Same keys as application.yaml but WITHOUT defaults: if any of these env vars is
+# missing, placeholder resolution fails and the app refuses to start instead of
+# silently redirecting users to / allowing CORS from localhost.
+app:
+  frontend-url: ${FRONTEND_URL}
+  public-api-url: ${PUBLIC_API_URL}
+  mobile-redirect-uri: ${MOBILE_REDIRECT_URI}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+
+# The session only holds the pending OAuth2 authorization request during the
+# Google round trip. SameSite=Lax (not Strict): Google's redirect back to
+# /login/oauth2/code/google is a cross-site top-level GET that must carry it.
+server:
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: lax

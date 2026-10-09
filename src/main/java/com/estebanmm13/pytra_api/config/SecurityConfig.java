@@ -1,6 +1,8 @@
 package com.estebanmm13.pytra_api.config;
 
 import com.estebanmm13.pytra_api.auth.security.JwtFilter;
+import com.estebanmm13.pytra_api.auth.security.MobileAwareAuthorizationRequestResolver;
+import com.estebanmm13.pytra_api.auth.security.MobileFlagAuthorizationRequestRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -14,9 +16,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -35,6 +39,8 @@ public class SecurityConfig {
     private final JwtFilter jwtFilter;
     private final OAuth2UserService <OidcUserRequest, OidcUser> oAuth2UserService;
     private final AuthenticationSuccessHandler successHandler;
+    private final AuthenticationFailureHandler failureHandler;
+    private final ClientRegistrationRepository clientRegistrationRepository;
 
     @Value("${app.cors.allowed-origins}")
     private List<String> allowedOrigins;
@@ -44,11 +50,16 @@ public class SecurityConfig {
         http
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .oauth2Login(oauth2 -> oauth2.userInfoEndpoint(userInfo ->
-                        userInfo.oidcUserService(oAuth2UserService)))
                 .oauth2Login(oauth2 -> oauth2
+                        // ?client=android marks the flow as mobile; the flag travels inside the
+                        // stored authorization request and picks the final redirect target.
+                        .authorizationEndpoint(endpoint -> endpoint
+                                .authorizationRequestResolver(
+                                        new MobileAwareAuthorizationRequestResolver(clientRegistrationRepository))
+                                .authorizationRequestRepository(new MobileFlagAuthorizationRequestRepository()))
                         .userInfoEndpoint(userInfo -> userInfo.oidcUserService(oAuth2UserService))
                         .successHandler(successHandler)
+                        .failureHandler(failureHandler)
                 )
                 .csrf(csrf -> csrf.disable())  // ← Deshabilitar CSRF completamente para API REST
                 .authorizeHttpRequests(auth -> auth
@@ -80,7 +91,10 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         // Por defecto: http://localhost:4200 (ng serve) y https://localhost (origen de la WebView de Capacitor en Android).
-        configuration.setAllowedOrigins(allowedOrigins);
+        configuration.setAllowedOrigins(allowedOrigins.stream()
+                .map(UrlNormalizer::normalizeBaseUrl)
+                .filter(origin -> origin != null && !origin.isEmpty())
+                .toList());
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
 
