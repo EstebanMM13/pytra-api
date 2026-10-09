@@ -3,6 +3,8 @@ package com.estebanmm13.pytra_api.stats.dto;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+import java.math.BigDecimal;
+
 @Getter
 @AllArgsConstructor
 public class StatsSummaryDto {
@@ -13,7 +15,7 @@ public class StatsSummaryDto {
     private double totalOnlineHours;
     private long totalPlatinums;
     /** Mean rating of the rated experiences, 2 decimals; null when nothing is rated. */
-    private Double averageRating;
+    private BigDecimal averageRating;
     private long replayCount;
     private long completedCount;
     private long abandonedCount;

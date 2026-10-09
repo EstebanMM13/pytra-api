@@ -13,6 +13,7 @@ import com.estebanmm13.pytra_api.stats.service.YearHighlightsCalculator.YearHigh
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -100,7 +101,7 @@ class YearHighlightsCalculatorTest {
 
         assertThat(goty.getGameId()).isEqualTo(1L);
         assertThat(goty.getGameName()).isEqualTo("Great");
-        assertThat(goty.getAvgRating()).isEqualTo(9.0);
+        assertThat(goty.getAvgRating()).isEqualByComparingTo("9");
         assertThat(goty.getExperienceCount()).isEqualTo(3);
         assertThat(goty.getTotalHours()).isEqualTo(35.0);
     }
@@ -189,7 +190,38 @@ class YearHighlightsCalculatorTest {
 
         experiences.removeIf(e -> e.getGameId() == 3L);
         assertThat(compute().disappointments()).extracting(RatedGameBriefDto::getAvgRating)
-                .containsExactly(4.0, 6.0);
+                .containsExactly(new BigDecimal("4"), new BigDecimal("6"));
+    }
+
+    @Test
+    void decimalRatingsAreAveragedExactlyAndThresholdsStayInclusive() {
+        game(1, "Goty");
+        game(2, "Exactly 8.5");
+        game(3, "Rounds up to 8.5");
+        game(4, "Exactly 6");
+        game(5, "Just above 6");
+        decimalRun(1, COMPLETADO, "9.75", 1.0, IN_YEAR, null);
+        decimalRun(2, COMPLETADO, "8.50", 1.0, IN_YEAR, null);
+        decimalRun(3, COMPLETADO, "8.75", 1.0, IN_YEAR, null);
+        decimalRun(3, COMPLETADO, "8.24", 1.0, IN_YEAR, null); // (8.75 + 8.24) / 2 = 8.495 -> 8.50 half up
+        decimalRun(4, COMPLETADO, "5.50", 1.0, IN_YEAR, null);
+        decimalRun(4, COMPLETADO, "6.50", 1.0, IN_YEAR, null);
+        decimalRun(5, COMPLETADO, "6.01", 1.0, IN_YEAR, null);
+
+        YearHighlights highlights = compute();
+
+        assertThat(highlights.goty().getAvgRating()).isEqualByComparingTo("9.75");
+        assertThat(highlights.surprises()).extracting(RatedGameBriefDto::getGameName)
+                .containsExactly("Rounds up to 8.5", "Exactly 8.5");
+        assertThat(highlights.disappointments()).extracting(RatedGameBriefDto::getGameName)
+                .containsExactly("Exactly 6");
+        assertThat(highlights.disappointments().getFirst().getAvgRating().toPlainString()).isEqualTo("6");
+
+        // 8.49 average (rounded) misses the inclusive 8.5 cut.
+        experiences.removeIf(e -> e.getGameId() == 3L);
+        decimalRun(3, COMPLETADO, "8.49", 1.0, IN_YEAR, null);
+        assertThat(compute().surprises()).extracting(RatedGameBriefDto::getGameName)
+                .containsExactly("Exactly 8.5");
     }
 
     @Test
@@ -254,12 +286,16 @@ class YearHighlightsCalculatorTest {
     }
 
     private void run(long gameId, ExperienceStatus status, Integer rating, Double hours, LocalDate endDate, Integer year) {
+        decimalRun(gameId, status, rating != null ? rating.toString() : null, hours, endDate, year);
+    }
+
+    private void decimalRun(long gameId, ExperienceStatus status, String rating, Double hours, LocalDate endDate, Integer year) {
         experiences.add(Experience.builder()
                 .id(nextExperienceId++)
                 .gameId(gameId)
                 .runLabel("Run")
                 .status(status)
-                .rating(rating)
+                .rating(rating != null ? new BigDecimal(rating) : null)
                 .hours(hours)
                 .endDate(endDate)
                 .year(year)

@@ -4,6 +4,7 @@ import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperiencePeriod;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
+import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.games.model.Game;
@@ -47,7 +48,8 @@ public class StatsServiceImpl implements StatsService {
                 experienceRepository.sumHoursByUserId(userId),
                 onlinePlaytimeRepository.sumTotalHoursByUserId(userId),
                 experienceRepository.countByUserIdAndPlatinumTrue(userId),
-                StatsMath.round2(experienceRepository.averageRatingByUserId(userId)),
+                StatsMath.average(experienceRepository.sumRatingByUserId(userId),
+                        experienceRepository.countByUserIdAndRatingIsNotNull(userId)),
                 experienceRepository.countByUserIdAndReplayTrue(userId),
                 experienceRepository.countByUserIdAndStatus(userId, ExperienceStatus.COMPLETADO),
                 experienceRepository.countByUserIdAndStatus(userId, ExperienceStatus.ABANDONADO),
@@ -119,7 +121,7 @@ public class StatsServiceImpl implements StatsService {
                     experience.getRunLabel(),
                     experience.getStatus(),
                     hours,
-                    experience.getRating(),
+                    Ratings.normalize(experience.getRating()),
                     Boolean.TRUE.equals(experience.getPlatinum()),
                     experience.getPlatform(),
                     month,
@@ -300,7 +302,7 @@ public class StatsServiceImpl implements StatsService {
                     experience.getGameId(),
                     gameNames.getOrDefault(experience.getGameId(), "Unknown"),
                     experience.getRunLabel(),
-                    experience.getRating()
+                    Ratings.normalize(experience.getRating())
             ));
         }
         return result.stream().limit(clampLimit(limit)).toList();

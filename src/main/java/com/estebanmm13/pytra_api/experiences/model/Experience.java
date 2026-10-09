@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -35,7 +36,8 @@ public class Experience {
     @Column(nullable = false)
     private ExperienceStatus status;
 
-    private Integer rating;
+    @Column(precision = 4, scale = 2)
+    private BigDecimal rating;
 
     @Column(nullable = false)
     private Double hours;

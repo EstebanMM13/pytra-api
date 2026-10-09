@@ -5,6 +5,7 @@ import com.estebanmm13.pytra_api.experiences.model.Platform;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -16,7 +17,7 @@ public class ExperienceResponseDto {
     private String runLabel;
     private Integer year;
     private ExperienceStatus status;
-    private Integer rating;
+    private BigDecimal rating;
     private Double hours;
     private LocalDate startDate;
     private LocalDate endDate;

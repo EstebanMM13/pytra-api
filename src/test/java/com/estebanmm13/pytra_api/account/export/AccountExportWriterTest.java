@@ -13,6 +13,7 @@ import com.estebanmm13.pytra_api.games.model.Saga;
 import com.estebanmm13.pytra_api.stats.model.YearNote;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -34,7 +35,7 @@ class AccountExportWriterTest {
 
     private final Experience run = Experience.builder()
             .id(10L).gameId(1L).runLabel("First run").year(2024).status(ExperienceStatus.COMPLETADO)
-            .rating(9).hours(120.5).startDate(LocalDate.of(2024, 1, 2)).endDate(LocalDate.of(2024, 3, 4))
+            .rating(new BigDecimal("9.00")).hours(120.5).startDate(LocalDate.of(2024, 1, 2)).endDate(LocalDate.of(2024, 3, 4))
             .platform(Platform.PC).platinum(true).replay(false)
             .summary("Loved it, \"truly\"\nsecond line").pros("=open world").build();
 
@@ -112,6 +113,16 @@ class AccountExportWriterTest {
         assertThat(md).contains("_No runs logged._");
         assertThat(md).contains("# Year notes\n\n## 2024\n");
         assertThat(md).contains("**Highlights**\n\nElden Ring\n");
+    }
+
+    @Test
+    void ratingsAreExportedWithoutTrailingZeros() {
+        assertThat(AccountExportWriter.rating(new BigDecimal("9.00"))).isEqualTo("9");
+        assertThat(AccountExportWriter.rating(new BigDecimal("9.50"))).isEqualTo("9.5");
+        assertThat(AccountExportWriter.rating(new BigDecimal("9.25"))).isEqualTo("9.25");
+        assertThat(AccountExportWriter.rating(new BigDecimal("10.00"))).isEqualTo("10");
+        assertThat(AccountExportWriter.rating(new BigDecimal("0.00"))).isEqualTo("0");
+        assertThat(AccountExportWriter.rating(null)).isEmpty();
     }
 
     @Test
