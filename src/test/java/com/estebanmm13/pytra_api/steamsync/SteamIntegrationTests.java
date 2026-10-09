@@ -42,6 +42,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -477,7 +478,8 @@ class SteamIntegrationTests extends AbstractIntegrationTest {
     }
 
     private void library(SteamOwnedGame... games) {
-        when(steamWebApiClient.getOwnedGames(anyString())).thenReturn(new SteamOwnedGamesResult(false, List.of(games)));
+        // doReturn avoids invoking a previously stubbed throwing call while re-stubbing.
+        doReturn(new SteamOwnedGamesResult(false, List.of(games))).when(steamWebApiClient).getOwnedGames(anyString());
     }
 
     private ResultActions sync(String auth) throws Exception {
