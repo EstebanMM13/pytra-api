@@ -10,6 +10,7 @@ import com.estebanmm13.pytra_api.steamsync.openid.SteamOpenIdService;
 import com.estebanmm13.pytra_api.steamsync.service.SteamLinkService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,8 +35,11 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SteamOpenIdController {
 
-    private static final String API_BASE_URL = "http://localhost:8080";
-    private static final String FRONTEND_CALLBACK_URL = "http://localhost:4200/oauth-callback";
+    @Value("${app.public-api-url}")
+    private String publicApiUrl;
+
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
 
     private final CurrentUserResolver currentUserResolver;
     private final SteamOpenIdService steamOpenIdService;
@@ -67,8 +71,8 @@ public class SteamOpenIdController {
      */
     @GetMapping("/login")
     public ResponseEntity<Void> login(@RequestParam String state) {
-        String returnTo = API_BASE_URL + "/api/v1/integrations/steam/callback?state=" + state;
-        String redirectUrl = steamOpenIdService.buildLoginRedirectUrl(returnTo, API_BASE_URL);
+        String returnTo = publicApiUrl + "/api/v1/integrations/steam/callback?state=" + state;
+        String redirectUrl = steamOpenIdService.buildLoginRedirectUrl(returnTo, publicApiUrl);
 
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(redirectUrl)).build();
     }
@@ -94,7 +98,7 @@ public class SteamOpenIdController {
             String rawCode = exchangeCodeIssuer.issueFor(user);
 
             return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(FRONTEND_CALLBACK_URL + "?code=" + rawCode))
+                    .location(URI.create(frontendCallbackUrl() + "?code=" + rawCode))
                     .build();
 
         } catch (InvalidTokenException e) {
@@ -105,7 +109,11 @@ public class SteamOpenIdController {
 
     private ResponseEntity<Void> redirectToFrontendWithError() {
         return ResponseEntity.status(HttpStatus.FOUND)
-                .location(URI.create(FRONTEND_CALLBACK_URL + "?error=steam_link_failed"))
+                .location(URI.create(frontendCallbackUrl() + "?error=steam_link_failed"))
                 .build();
+    }
+
+    private String frontendCallbackUrl() {
+        return frontendUrl + "/oauth-callback";
     }
 }

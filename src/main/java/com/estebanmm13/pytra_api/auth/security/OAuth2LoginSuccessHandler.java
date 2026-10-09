@@ -5,6 +5,7 @@ import com.estebanmm13.pytra_api.auth.model.User;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
@@ -17,6 +18,9 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private final ExchangeCodeIssuer exchangeCodeIssuer;
 
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
+
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request,
                                         HttpServletResponse response,
@@ -27,6 +31,6 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
         String rawCode = exchangeCodeIssuer.issueFor(user);
 
-        response.sendRedirect("http://localhost:4200/oauth-callback?code=" + rawCode);
+        response.sendRedirect(frontendUrl + "/oauth-callback?code=" + rawCode);
     }
 }

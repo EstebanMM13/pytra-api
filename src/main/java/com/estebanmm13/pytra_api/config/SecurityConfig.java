@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.config;
 
 import com.estebanmm13.pytra_api.auth.security.JwtFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -34,6 +35,9 @@ public class SecurityConfig {
     private final JwtFilter jwtFilter;
     private final OAuth2UserService <OidcUserRequest, OidcUser> oAuth2UserService;
     private final AuthenticationSuccessHandler successHandler;
+
+    @Value("${app.cors.allowed-origins}")
+    private List<String> allowedOrigins;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -75,8 +79,8 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // https://localhost: origen por defecto de la WebView de Capacitor en Android.
-        configuration.setAllowedOrigins(List.of("http://localhost:4200", "https://localhost"));
+        // Por defecto: http://localhost:4200 (ng serve) y https://localhost (origen de la WebView de Capacitor en Android).
+        configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
 
