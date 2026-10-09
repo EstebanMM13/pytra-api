@@ -45,6 +45,7 @@ public class SteamOpenIdController {
     /** Fixed error values sent to the client callback (the client maps them to messages). */
     static final String LINK_FAILED_ERROR = "steam_link_failed";
     static final String ALREADY_LINKED_ERROR = "steam_account_already_linked";
+    static final String SYNC_IN_PROGRESS_ERROR = "steam_sync_in_progress";
 
     private String publicApiUrl;
 
@@ -139,9 +140,12 @@ public class SteamOpenIdController {
             return redirectToFrontendWithError(mobile, LINK_FAILED_ERROR);
         } catch (SteamIntegrationException e) {
             log.warn("Steam link callback rejected: {}", e.getCode());
-            return redirectToFrontendWithError(mobile,
-                    SteamIntegrationException.ACCOUNT_ALREADY_LINKED.equals(e.getCode())
-                            ? ALREADY_LINKED_ERROR : LINK_FAILED_ERROR);
+            return redirectToFrontendWithError(mobile, switch (e.getCode()) {
+                case SteamIntegrationException.ACCOUNT_ALREADY_LINKED -> ALREADY_LINKED_ERROR;
+                // Switching to another Steam account while a sync of the current one is running.
+                case SteamIntegrationException.SYNC_IN_PROGRESS -> SYNC_IN_PROGRESS_ERROR;
+                default -> LINK_FAILED_ERROR;
+            });
         } catch (DataIntegrityViolationException e) {
             // Lost a race on uq_steam_links_steam_id against another user linking the same account.
             log.warn("Steam link callback rejected: Steam account already linked (concurrent)");

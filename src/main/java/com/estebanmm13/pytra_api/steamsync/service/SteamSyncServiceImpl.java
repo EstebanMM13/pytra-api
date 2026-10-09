@@ -27,7 +27,9 @@ import com.estebanmm13.pytra_api.steamsync.repository.SteamLinkRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -50,6 +52,7 @@ public class SteamSyncServiceImpl implements SteamSyncService {
     private final SagaRepository sagaRepository;
     private final GenreRepository genreRepository;
     private final GameMapper gameMapper;
+    private final PlatformTransactionManager transactionManager;
 
     /**
      * Deliberately NOT transactional: the Steam HTTP call runs first, with no DB transaction
@@ -63,15 +66,11 @@ public class SteamSyncServiceImpl implements SteamSyncService {
             throw SteamIntegrationException.notConfigured();
         }
 
-        if (!steamSyncGuard.tryAcquire(userId)) {
-            throw SteamIntegrationException.syncInProgress();
-        }
-        try {
-            SteamOwnedGamesResult library = steamWebApiClient.getOwnedGames(steamLink.getSteamId());
-            return steamLibraryImporter.importLibrary(userId, steamLink.getSteamId(), library);
-        } finally {
-            steamSyncGuard.release(userId);
-        }
+        String steamId = steamLink.getSteamId();
+        return steamSyncGuard.runExclusive(userId, () -> {
+            SteamOwnedGamesResult library = steamWebApiClient.getOwnedGames(steamId);
+            return steamLibraryImporter.importLibrary(userId, steamId, library);
+        });
     }
 
     @Override
@@ -81,9 +80,14 @@ public class SteamSyncServiceImpl implements SteamSyncService {
                 .toList();
     }
 
+    /** Guarded: a sync running at the same time would race on the same link baseline. */
     @Override
-    @Transactional
     public GameResponseDto confirmPending(Long gameId, GameRequestDto gameRequestDto, Long userId) {
+        return steamSyncGuard.runExclusive(userId, () -> transactionTemplate().execute(
+                status -> doConfirmPending(gameId, gameRequestDto, userId)));
+    }
+
+    private GameResponseDto doConfirmPending(Long gameId, GameRequestDto gameRequestDto, Long userId) {
         Game game = gameRepository.findByIdAndUserId(gameId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Game not found"));
 
@@ -116,10 +120,17 @@ public class SteamSyncServiceImpl implements SteamSyncService {
      * Records the appid as ignored and deletes the pending placeholder (and its link), so it
      * disappears from both the pending list and the games list and the sync never recreates it.
      * Only Steam placeholders still pending review can be ignored; anything else is a 404.
+     * Guarded: deleting a link a running sync is updating would fail that sync.
      */
     @Override
-    @Transactional
     public void ignorePending(Long gameId, Long userId) {
+        steamSyncGuard.runExclusive(userId, () -> transactionTemplate().execute(status -> {
+            doIgnorePending(gameId, userId);
+            return null;
+        }));
+    }
+
+    private void doIgnorePending(Long gameId, Long userId) {
         Game game = gameRepository.findByIdAndUserId(gameId, userId)
                 .filter(g -> g.getReviewStatus() == ReviewStatus.PENDING_REVIEW)
                 .orElseThrow(() -> new ResourceNotFoundException("Pending game not found"));
@@ -153,6 +164,11 @@ public class SteamSyncServiceImpl implements SteamSyncService {
         SteamIgnoredApp ignored = steamIgnoredAppRepository.findByUserIdAndAppId(userId, appId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ignored app not found"));
         steamIgnoredAppRepository.delete(ignored);
+    }
+
+    /** Guarded work must commit before the guard is released, hence a template, not @Transactional. */
+    private TransactionTemplate transactionTemplate() {
+        return new TransactionTemplate(transactionManager);
     }
 
     private Saga resolveSaga(Long sagaId, Long userId) {

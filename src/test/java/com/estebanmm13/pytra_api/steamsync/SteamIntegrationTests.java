@@ -23,6 +23,8 @@ import com.estebanmm13.pytra_api.steamsync.service.SteamSyncGuard;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -30,7 +32,11 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,6 +78,8 @@ class SteamIntegrationTests extends AbstractIntegrationTest {
     private SteamLinkService steamLinkService;
     @Autowired
     private SteamSyncGuard steamSyncGuard;
+    @Autowired
+    private DataSource dataSource;
 
     private User alice;
     private String aliceAuth;
@@ -217,6 +225,100 @@ class SteamIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.linked").value(true))
                 .andExpect(jsonPath("$.configured").value(false));
+    }
+
+    @Test
+    void relinkDuringSteamCallIsDetectedAndNotReverted() throws Exception {
+        link(alice);
+        String newSteamId = uniqueSteamId(alice) + "7";
+        // Simulates a relink committed by someone else while Steam is answering: written straight
+        // to the DB, so the SteamLink this request loaded (open-in-view) is now stale.
+        when(steamWebApiClient.getOwnedGames(anyString())).thenAnswer(invocation -> {
+            try (Connection connection = dataSource.getConnection();
+                 PreparedStatement update = connection.prepareStatement(
+                         "UPDATE steam_links SET steam_id = ?, persona_name = 'new-persona' WHERE user_id = ?")) {
+                update.setString(1, newSteamId);
+                update.setLong(2, alice.getId());
+                update.executeUpdate();
+            }
+            return new SteamOwnedGamesResult(false, List.of(new SteamOwnedGame(620, "Portal 2", 600)));
+        });
+
+        perform(post("/api/v1/integrations/steam/sync"), aliceAuth)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(SteamIntegrationException.LINK_CHANGED));
+
+        assertThat(steamLinkRepository.findByUserId(alice.getId())).hasValueSatisfying(l -> {
+            assertThat(l.getSteamId()).isEqualTo(newSteamId);
+            assertThat(l.getPersonaName()).isEqualTo("new-persona");
+        });
+        assertThat(pendingIds()).isEmpty();
+    }
+
+    @Test
+    void switchingSteamAccountWhileSyncRunsIsRefused() throws Exception {
+        String steamId = link(alice);
+        List<Throwable> relinkFailures = new ArrayList<>();
+        when(steamWebApiClient.getOwnedGames(anyString())).thenAnswer(invocation -> {
+            try {
+                steamLinkService.upsertLink(alice.getId(), steamId + "7", "other");
+            } catch (RuntimeException e) {
+                relinkFailures.add(e);
+            }
+            return new SteamOwnedGamesResult(false, List.of(new SteamOwnedGame(620, "Portal 2", 600)));
+        });
+
+        sync(aliceAuth).andExpect(jsonPath("$.newGamesPending").value(1));
+
+        assertThat(relinkFailures).singleElement().isInstanceOfSatisfying(SteamIntegrationException.class,
+                e -> assertThat(e.getCode()).isEqualTo(SteamIntegrationException.SYNC_IN_PROGRESS));
+        assertThat(steamLinkRepository.findByUserId(alice.getId()))
+                .hasValueSatisfying(l -> assertThat(l.getSteamId()).isEqualTo(steamId));
+    }
+
+    @ParameterizedTest(name = "{0} releases the guard")
+    @ValueSource(strings = {"apiKeyRejected", "rateLimited", "unavailable"})
+    void failedSteamCallReleasesTheGuard(String failure) throws Exception {
+        link(alice);
+        SteamIntegrationException error = switch (failure) {
+            case "apiKeyRejected" -> SteamIntegrationException.apiKeyRejected();
+            case "rateLimited" -> SteamIntegrationException.rateLimited();
+            default -> SteamIntegrationException.unavailable();
+        };
+        when(steamWebApiClient.getOwnedGames(anyString())).thenThrow(error);
+
+        perform(post("/api/v1/integrations/steam/sync"), aliceAuth)
+                .andExpect(status().is(error.getStatus().value()))
+                .andExpect(jsonPath("$.message").value(error.getCode()));
+
+        library(new SteamOwnedGame(620, "Portal 2", 600));
+        sync(aliceAuth).andExpect(jsonPath("$.newGamesPending").value(1));
+    }
+
+    @Test
+    void unlinkConfirmAndIgnoreWaitForRunningSync() throws Exception {
+        link(alice);
+        library(new SteamOwnedGame(620, "Portal 2", 600));
+        sync(aliceAuth);
+        Long pendingId = pendingIds().getFirst();
+
+        assertThat(steamSyncGuard.tryAcquire(alice.getId())).isTrue();
+        try {
+            perform(delete("/api/v1/integrations/steam/link"), aliceAuth)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.message").value(SteamIntegrationException.SYNC_IN_PROGRESS));
+            perform(put("/api/v1/integrations/steam/pending/{id}/confirm", pendingId), aliceAuth,
+                    GAME_JSON.formatted("Portal 2", "SINGLEPLAYER"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.message").value(SteamIntegrationException.SYNC_IN_PROGRESS));
+            perform(put("/api/v1/integrations/steam/pending/{id}/ignore", pendingId), aliceAuth)
+                    .andExpect(status().isConflict());
+        } finally {
+            steamSyncGuard.release(alice.getId());
+        }
+
+        assertThat(steamLinkRepository.findByUserId(alice.getId())).isPresent();
+        assertThat(pendingIds()).containsExactly(pendingId);
     }
 
     // ---- Ignore list ---------------------------------------------------------------------

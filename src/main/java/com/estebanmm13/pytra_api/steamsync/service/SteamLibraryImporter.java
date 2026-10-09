@@ -10,7 +10,6 @@ import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGame;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGamesResult;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamSyncResultDto;
-import com.estebanmm13.pytra_api.steamsync.model.SteamLink;
 import com.estebanmm13.pytra_api.steamsync.repository.SteamIgnoredAppRepository;
 import com.estebanmm13.pytra_api.steamsync.repository.SteamLinkRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -85,10 +84,17 @@ public class SteamLibraryImporter {
 
         for (SteamOwnedGame app : linkedPhase.unlinkedApps()) {
             try {
-                Attachment attachment = transactionTemplate.execute(status -> attachOrCreate(userId, app, linkedPhase.index()));
+                Attachment attachment = transactionTemplate.execute(status -> {
+                    // Re-checked per app: if the account was unlinked/switched mid-import, stop
+                    // instead of attaching the old library to the new link.
+                    requireStillLinked(userId, steamId);
+                    return attachOrCreate(userId, app, linkedPhase.index());
+                });
                 // Index updated only after the commit, so a rolled-back app leaves no trace in it.
                 linkedPhase.index().remember(attachment);
                 counters.record(attachment.outcome());
+            } catch (SteamIntegrationException e) {
+                throw e;
             } catch (RuntimeException e) {
                 counters.errored++;
                 // Class name only: driver messages can echo the offending values.
@@ -104,11 +110,11 @@ public class SteamLibraryImporter {
 
     private LinkedPhaseResult updateLinkedApps(Long userId, String steamId, List<SteamOwnedGame> apps, Counters counters) {
         // The link may have been removed or switched to another account while we were calling Steam.
-        SteamLink steamLink = steamLinkRepository.findByUserId(userId)
-                .filter(link -> link.getSteamId().equals(steamId))
-                .orElseThrow(SteamIntegrationException::linkChanged);
+        // Conditional bulk UPDATE, not entity write: see SteamLinkRepository#markSynced.
         LocalDateTime now = LocalDateTime.now();
-        steamLink.setLastSyncAt(now);
+        if (steamLinkRepository.markSynced(userId, steamId, now) == 0) {
+            throw SteamIntegrationException.linkChanged();
+        }
 
         Map<String, GamePlatformLink> linksByAppId = gamePlatformLinkRepository
                 .findAllByUserIdAndPlatformWithGame(userId, ExternalPlatform.STEAM).stream()
@@ -161,8 +167,13 @@ public class SteamLibraryImporter {
         if (game.getReviewStatus() != ReviewStatus.CONFIRMED) {
             return false;
         }
-        steamPlaytimeWriter.addDelta(link, game, (currentMinutes - baselineMinutes) / 60.0, now);
-        return true;
+        return steamPlaytimeWriter.addDelta(link, game, (currentMinutes - baselineMinutes) / 60.0, now);
+    }
+
+    private void requireStillLinked(Long userId, String steamId) {
+        if (!steamLinkRepository.isLinkedTo(userId, steamId)) {
+            throw SteamIntegrationException.linkChanged();
+        }
     }
 
     private NameIndex buildNameIndex(Long userId, Iterable<GamePlatformLink> steamLinks) {

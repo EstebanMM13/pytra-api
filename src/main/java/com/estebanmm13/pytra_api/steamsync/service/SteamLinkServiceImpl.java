@@ -18,7 +18,9 @@ import com.estebanmm13.pytra_api.steamsync.repository.SteamLinkRepository;
 import com.estebanmm13.pytra_api.steamsync.repository.SteamLinkStateRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -35,6 +37,7 @@ public class SteamLinkServiceImpl implements SteamLinkService {
     private final SteamWebApiClient steamWebApiClient;
     private final SteamSyncGuard steamSyncGuard;
     private final TokenGenerator tokenGenerator;
+    private final PlatformTransactionManager transactionManager;
 
     @Override
     @Transactional
@@ -81,11 +84,25 @@ public class SteamLinkServiceImpl implements SteamLinkService {
     /**
      * Links (or re-links) the user's Steam account.
      *
-     * @throws SteamIntegrationException ACCOUNT_ALREADY_LINKED if another Pytra user owns that Steam account
+     * <p>Switching to a DIFFERENT Steam account resets every Steam baseline, so it takes the sync
+     * guard (held until the transaction commits): it must never interleave with a running sync.
+     *
+     * @throws SteamIntegrationException ACCOUNT_ALREADY_LINKED if another Pytra user owns that Steam
+     *                                   account, SYNC_IN_PROGRESS if switching while a sync runs
      */
     @Override
-    @Transactional
     public SteamLink upsertLink(Long userId, String steamId64, String personaName) {
+        boolean switchingAccount = steamLinkRepository.findByUserId(userId)
+                .map(link -> !link.getSteamId().equals(steamId64))
+                .orElse(false);
+        if (!switchingAccount) {
+            return transactionTemplate().execute(status -> doUpsertLink(userId, steamId64, personaName));
+        }
+        return steamSyncGuard.runExclusive(userId,
+                () -> transactionTemplate().execute(status -> doUpsertLink(userId, steamId64, personaName)));
+    }
+
+    private SteamLink doUpsertLink(Long userId, String steamId64, String personaName) {
         steamLinkRepository.findBySteamId(steamId64)
                 .filter(link -> !link.getUserId().equals(userId))
                 .ifPresent(link -> {
@@ -124,20 +141,19 @@ public class SteamLinkServiceImpl implements SteamLinkService {
      * still pending review and the ignore list are deleted: they only made sense for that account.
      */
     @Override
-    @Transactional
     public void unlink(Long userId) {
-        SteamLink steamLink = steamLinkRepository.findByUserId(userId)
-                .orElseThrow(SteamIntegrationException::notLinked);
-
-        if (!steamSyncGuard.tryAcquire(userId)) {
-            throw SteamIntegrationException.syncInProgress();
-        }
-        try {
+        // Guard held until the transaction has committed (a @Transactional method would release first).
+        steamSyncGuard.runExclusive(userId, () -> transactionTemplate().execute(status -> {
+            SteamLink steamLink = steamLinkRepository.findByUserId(userId)
+                    .orElseThrow(SteamIntegrationException::notLinked);
             resetSteamData(userId);
             steamLinkRepository.delete(steamLink);
-        } finally {
-            steamSyncGuard.release(userId);
-        }
+            return null;
+        }));
+    }
+
+    private TransactionTemplate transactionTemplate() {
+        return new TransactionTemplate(transactionManager);
     }
 
     private void resetSteamData(Long userId) {

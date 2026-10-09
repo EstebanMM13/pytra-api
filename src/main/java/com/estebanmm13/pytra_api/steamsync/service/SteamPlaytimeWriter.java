@@ -62,12 +62,16 @@ public class SteamPlaytimeWriter {
         onlinePlaytimeRepository.save(onlinePlaytime);
     }
 
-    /** Adds hours played since the previous sync to a confirmed game. */
-    public void addDelta(GamePlatformLink link, Game game, double hoursToAdd, LocalDateTime sessionAt) {
+    /**
+     * Adds hours played since the previous sync to a confirmed game.
+     *
+     * @return false when nothing was written (game without category yet)
+     */
+    public boolean addDelta(GamePlatformLink link, Game game, double hoursToAdd, LocalDateTime sessionAt) {
         GameCategory category = game.getCategory();
         if (category == null) {
             log.debug("GamePlatformLink {} has no category yet; delta not applied", link.getId());
-            return;
+            return false;
         }
 
         if (category == GameCategory.SINGLEPLAYER) {
@@ -81,13 +85,14 @@ public class SteamPlaytimeWriter {
                 // deleted: start a new canonical run holding only the hours tracked from now on.
                 createCanonicalExperience(link, game.getId(), hoursToAdd);
             }
-            return;
+            return true;
         }
 
         OnlinePlaytime onlinePlaytime = findOrNewOnlinePlaytime(link.getUserId(), game.getId());
         onlinePlaytime.setTotalHours(onlinePlaytime.getTotalHours() + hoursToAdd);
         onlinePlaytime.setLastSessionAt(sessionAt);
         onlinePlaytimeRepository.save(onlinePlaytime);
+        return true;
     }
 
     private Optional<Experience> findCanonicalExperience(GamePlatformLink link) {

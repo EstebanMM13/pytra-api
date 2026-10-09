@@ -18,6 +18,9 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class SteamSyncScheduler {
 
+    /** During a Steam outage, stop hammering it after this many failures in a row. */
+    static final int MAX_CONSECUTIVE_UNAVAILABLE = 3;
+
     private final SteamLinkRepository steamLinkRepository;
     private final SteamSyncService steamSyncService;
     private final SteamWebApiClient steamWebApiClient;
@@ -38,10 +41,23 @@ public class SteamSyncScheduler {
         if (!steamWebApiClient.isConfigured()) {
             return;
         }
+        int consecutiveUnavailable = 0;
         for (SteamLink steamLink : steamLinkRepository.findAll()) {
             try {
                 steamSyncService.sync(steamLink.getUserId());
+                consecutiveUnavailable = 0;
             } catch (SteamIntegrationException e) {
+                if (SteamIntegrationException.UNAVAILABLE.equals(e.getCode())) {
+                    consecutiveUnavailable++;
+                    if (consecutiveUnavailable >= MAX_CONSECUTIVE_UNAVAILABLE) {
+                        log.warn("Steam unavailable for {} accounts in a row; aborting this scheduled run",
+                                consecutiveUnavailable);
+                        return;
+                    }
+                    log.debug("Scheduled Steam sync failed for userId {}: {}", steamLink.getUserId(), e.getCode());
+                    continue;
+                }
+                consecutiveUnavailable = 0;
                 if (SteamIntegrationException.SYNC_IN_PROGRESS.equals(e.getCode())) {
                     log.debug("Scheduled Steam sync skipped for userId {}: manual sync running", steamLink.getUserId());
                     continue;
