@@ -4,11 +4,17 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.util.UriComponents;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.web.client.RestClient;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.net.URLDecoder;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,7 +44,49 @@ public class SteamOpenIdService {
         return STEAM_OPENID_ENDPOINT + "?" + params;
     }
 
-    public boolean verify(Map<String, String> openIdParams) {
+    /**
+     * Validates a Steam OpenID callback. Besides relaying to check_authentication
+     * (signature check), it binds the assertion to THIS callback: the endpoint must
+     * be Steam's, return_to must point at our callback URL, both fields must be
+     * covered by the signature, and the state/client params we received must be the
+     * ones embedded in the signed return_to.
+     *
+     * @param expectedCallbackUrl absolute callback URL without query string
+     */
+    public boolean verify(Map<String, String> openIdParams, String expectedCallbackUrl) {
+        if (!STEAM_OPENID_ENDPOINT.equals(openIdParams.get("openid.op_endpoint"))) {
+            return false;
+        }
+
+        String returnTo = openIdParams.get("openid.return_to");
+        if (returnTo == null
+                || !(returnTo.equals(expectedCallbackUrl) || returnTo.startsWith(expectedCallbackUrl + "?"))) {
+            return false;
+        }
+
+        String signed = openIdParams.get("openid.signed");
+        List<String> signedFields = signed == null ? List.of() : Arrays.asList(signed.split(","));
+        if (!signedFields.contains("return_to") || !signedFields.contains("op_endpoint")) {
+            return false;
+        }
+
+        if (!Objects.equals(returnToParam(returnTo, "state"), openIdParams.get("state"))
+                || !Objects.equals(returnToParam(returnTo, "client"), openIdParams.get("client"))) {
+            return false;
+        }
+
+        return checkAuthentication(openIdParams);
+    }
+
+    /** Reads (decoded) a query param from a return_to URL. Only trust it after {@link #verify}. */
+    public String returnToParam(String returnTo, String name) {
+        if (returnTo == null) return null;
+        UriComponents components = UriComponentsBuilder.fromUriString(returnTo).build();
+        String value = components.getQueryParams().getFirst(name);
+        return value == null ? null : URLDecoder.decode(value, StandardCharsets.UTF_8);
+    }
+
+    private boolean checkAuthentication(Map<String, String> openIdParams) {
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         openIdParams.forEach(body::add);
         body.set("openid.mode", "check_authentication");
