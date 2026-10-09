@@ -7,6 +7,8 @@ import com.estebanmm13.pytra_api.auth.dto.login.LoginRequestDto;
 import com.estebanmm13.pytra_api.auth.dto.login.LoginResponseDto;
 import com.estebanmm13.pytra_api.auth.dto.register.RegisterRequestDto;
 import com.estebanmm13.pytra_api.auth.dto.register.RegisterResponseDto;
+import com.estebanmm13.pytra_api.auth.dto.resendVerification.ResendVerificationRequestDto;
+import com.estebanmm13.pytra_api.auth.dto.resendVerification.ResendVerificationResponseDto;
 import com.estebanmm13.pytra_api.auth.dto.resetPassword.ResetPasswordRequestDto;
 import com.estebanmm13.pytra_api.auth.service.AuthService;
 import jakarta.validation.Valid;
@@ -48,6 +50,14 @@ public class AuthController {
     ) {
         authService.verifyEmail(token);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/resend-verification")
+    public ResponseEntity<ResendVerificationResponseDto> resendVerification(
+            @Valid @RequestBody ResendVerificationRequestDto resendVerificationRequestDto
+    ){
+        ResendVerificationResponseDto response = authService.resendVerification(resendVerificationRequestDto);
+        return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
     @PostMapping("/forgot-password")

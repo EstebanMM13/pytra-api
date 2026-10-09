@@ -4,6 +4,7 @@ import com.estebanmm13.pytra_api.auth.model.PytraOidcUser;
 import com.estebanmm13.pytra_api.auth.model.Role;
 import com.estebanmm13.pytra_api.auth.model.User;
 import com.estebanmm13.pytra_api.auth.repository.UserRepository;
+import com.estebanmm13.pytra_api.auth.validation.UsernamePolicy;
 import com.estebanmm13.pytra_api.error.EmailNotVerifiedException;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
@@ -31,8 +32,8 @@ public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest,
 
         OidcUser oidcUser = oidcUserService.loadUser(oidcUserRequest);
         String googleId = oidcUser.getSubject();
-        String email = oidcUser.getEmail().toLowerCase();
-        boolean emailVerified = oidcUser.getEmailVerified();
+        String email = UsernamePolicy.normalizeEmail(oidcUser.getEmail());
+        boolean emailVerified = Boolean.TRUE.equals(oidcUser.getEmailVerified());
 
         Optional<User> user = userRepository.findByGoogleId(googleId);
 
@@ -41,16 +42,23 @@ public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest,
         }
         user = userRepository.findByEmail(email);
         if (user.isPresent() && emailVerified) {
-            user.get().setGoogleId(googleId);
-            if (!user.get().getEmailVerified()){
-                user.get().setEmailVerified(true);
+            User existing = user.get();
+            existing.setGoogleId(googleId);
+            if (!existing.getEmailVerified()) {
+                // The local account never proved ownership of this email; Google just did.
+                // Drop the password so whoever registered with this email first (possibly an
+                // attacker pre-registering it) can no longer sign in with it.
+                existing.setEmailVerified(true);
+                existing.setPasswordHash(null);
             }
-            userRepository.save(user.get());
+            userRepository.save(existing);
             return new PytraOidcUser(oidcUser,user.get());
-        }if (user.isPresent() && !emailVerified) {
-            throw new EmailNotVerifiedException("User" + user.get().getEmail() + " is not verified");
         }
-        else {
+        if (!emailVerified) {
+            // Never create or link an account from an email Google has not verified:
+            // it would let someone claim an address they do not own.
+            throw new EmailNotVerifiedException("Google account email is not verified");
+        } else {
             String usernameValido = devolverUsernameValido(email);
             User newUser = User.builder()
                     .username(usernameValido)
@@ -68,13 +76,6 @@ public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest,
     }
 
     private String devolverUsernameValido(String email){
-        String base = email.split("@")[0];
-        String username = base;
-        int contador = 1;
-        while (userRepository.existsByUsername(username)) {
-            username = base + contador;
-            contador++;
-        }
-        return username;
+        return UsernamePolicy.generateFromEmail(email, userRepository::existsByUsername);
     }
 }

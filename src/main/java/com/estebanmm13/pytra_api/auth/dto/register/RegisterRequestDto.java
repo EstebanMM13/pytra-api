@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.auth.dto.register;
 
+import com.estebanmm13.pytra_api.auth.validation.ValidUsername;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
@@ -10,7 +11,7 @@ import org.hibernate.validator.constraints.Length;
 @Setter
 public class RegisterRequestDto {
 
-    @NotBlank
+    @ValidUsername
     private String username;
 
     @NotBlank
@@ -20,4 +21,8 @@ public class RegisterRequestDto {
     @NotBlank
     @Length(min = 8)
     private String password;
+
+    public void setUsername(String username) {
+        this.username = username == null ? null : username.trim();
+    }
 }

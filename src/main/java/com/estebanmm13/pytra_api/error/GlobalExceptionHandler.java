@@ -40,6 +40,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(apiError);
     }
 
+    @ExceptionHandler(ExpiredTokenException.class)
+    public ResponseEntity<ApiError> handleExpiredToken(ExpiredTokenException e) {
+        ApiError apiError = new ApiError(HttpStatus.GONE.value(),e.getMessage(), Map.of() ,LocalDateTime.now());
+        return ResponseEntity.status(HttpStatus.GONE).body(apiError);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException e) {
        List<FieldError> errors = e.getBindingResult().getFieldErrors();
@@ -59,7 +65,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrityViolation(DataIntegrityViolationException e) {
-        ApiError apiError = new ApiError(HttpStatus.CONFLICT.value(),e.getMessage(), Map.of() ,LocalDateTime.now());
+        // The raw message contains SQL and constraint details; never echo it to clients.
+        ApiError apiError = new ApiError(HttpStatus.CONFLICT.value(), "Conflict with existing data", Map.of(), LocalDateTime.now());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(apiError);
     }
 

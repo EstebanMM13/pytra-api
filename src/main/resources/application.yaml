@@ -33,3 +33,8 @@ app:
   mobile-redirect-uri: ${MOBILE_REDIRECT_URI:com.estebanmm13.pytra://oauth-callback}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200,https://localhost}
+  # Transactional email via Brevo's HTTP API. With no API key, emails are only logged (local dev).
+  mail:
+    brevo-api-key: ${BREVO_API_KEY:}
+    from-email: ${MAIL_FROM_EMAIL:}
+    from-name: ${MAIL_FROM_NAME:Pytra}

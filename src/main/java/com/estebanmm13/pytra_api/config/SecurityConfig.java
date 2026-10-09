@@ -95,7 +95,7 @@ public class SecurityConfig {
                 .map(UrlNormalizer::normalizeBaseUrl)
                 .filter(origin -> origin != null && !origin.isEmpty())
                 .toList());
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
