@@ -13,4 +13,5 @@ public interface SagaRepository extends JpaRepository<Saga, Long>{
     Optional<Saga> findByIdAndUserId(Long id, Long userId);
     boolean existsByUserIdAndNameIgnoreCase(Long userId, String name);
     boolean existsByUserIdAndNameIgnoreCaseAndIdNot(Long userId, String name, Long id);
+    long countByUserId(Long userId);
 }

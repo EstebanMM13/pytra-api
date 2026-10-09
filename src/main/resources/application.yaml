@@ -1,10 +1,13 @@
+server:
+  port: ${PORT:8080}
+
 spring:
   application:
     name: pytra-api
   config:
     import: optional:file:.env[.properties]
   datasource:
-    url: jdbc:postgresql://192.168.1.55:5432/${POSTGRES_DB:pytra_db}
+    url: jdbc:postgresql://${PGHOST:192.168.1.55}:${PGPORT:5432}/${POSTGRES_DB:pytra_db}
     username: ${POSTGRES_USER:pytra}
     password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -18,3 +21,5 @@ spring:
           google:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
+steam:
+  api-key: ${STEAM_API_KEY:}

@@ -11,7 +11,8 @@ public class SagaMapper {
         if(saga == null) return null;
         return new SagaResponseDto(
                 saga.getId(),
-                saga.getName()
+                saga.getName(),
+                saga.getUpdatedAt()
         );
     }
 }

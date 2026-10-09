@@ -1,8 +1,7 @@
-package com.estebanmm13.pytra_api.games.model;
+package com.estebanmm13.pytra_api.steamsync.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -12,20 +11,21 @@ import java.time.LocalDateTime;
 @Setter
 @Entity
 @Builder
-@Table(name = "sagas")
-public class Saga {
+@Table(name = "steam_links")
+public class SteamLink {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private Long userId;
 
     @Column(nullable = false)
-    private String name;
+    private String steamId;
 
-    @UpdateTimestamp
+    private String personaName;
+
     @Column(nullable = false)
-    private LocalDateTime updatedAt;
+    private LocalDateTime linkedAt;
 }

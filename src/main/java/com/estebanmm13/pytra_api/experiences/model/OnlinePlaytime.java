@@ -1,4 +1,4 @@
-package com.estebanmm13.pytra_api.games.model;
+package com.estebanmm13.pytra_api.experiences.model;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -12,8 +12,8 @@ import java.time.LocalDateTime;
 @Setter
 @Entity
 @Builder
-@Table(name = "sagas")
-public class Saga {
+@Table(name = "online_playtimes", uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "game_id"}))
+public class OnlinePlaytime {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,7 +23,17 @@ public class Saga {
     private Long userId;
 
     @Column(nullable = false)
-    private String name;
+    private Long gameId;
+
+    @Column(nullable = false)
+    private Double totalHours;
+
+    private LocalDateTime lastSessionAt;
+
+    private Integer generalRating;
+
+    @Column(columnDefinition = "TEXT")
+    private String notes;
 
     @UpdateTimestamp
     @Column(nullable = false)

@@ -1,0 +1,20 @@
+CREATE TABLE experiences(
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id BIGINT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    run_label VARCHAR(255) NOT NULL,
+    year INTEGER,
+    status VARCHAR(20) NOT NULL,
+    rating INTEGER,
+    hours DOUBLE PRECISION NOT NULL DEFAULT 0,
+    start_date DATE,
+    end_date DATE,
+    platform VARCHAR(20) NOT NULL,
+    platinum BOOLEAN NOT NULL DEFAULT FALSE,
+    replay BOOLEAN NOT NULL DEFAULT FALSE,
+    summary TEXT,
+    pros TEXT,
+    cons TEXT,
+    notes TEXT,
+    CONSTRAINT chk_experiences_rating CHECK (rating IS NULL OR rating BETWEEN 0 AND 10)
+);
