@@ -129,7 +129,12 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.POST, "/api/v1/integrations/steam/connect-token"),
                 Arguments.of(HttpMethod.POST, "/api/v1/integrations/steam/sync"),
                 Arguments.of(HttpMethod.GET, "/api/v1/integrations/steam/pending"),
-                Arguments.of(HttpMethod.PUT, "/api/v1/integrations/steam/pending/1/confirm")
+                Arguments.of(HttpMethod.PUT, "/api/v1/integrations/steam/pending/1/confirm"),
+                Arguments.of(HttpMethod.PUT, "/api/v1/integrations/steam/pending/1/ignore"),
+                Arguments.of(HttpMethod.GET, "/api/v1/integrations/steam/status"),
+                Arguments.of(HttpMethod.DELETE, "/api/v1/integrations/steam/link"),
+                Arguments.of(HttpMethod.GET, "/api/v1/integrations/steam/ignored"),
+                Arguments.of(HttpMethod.DELETE, "/api/v1/integrations/steam/ignored/620")
         );
     }
 
@@ -436,7 +441,8 @@ class TenantIsolationTests extends AbstractIntegrationTest {
             // Mirrors what SteamSyncServiceImpl.sync persists, without calling the real Steam API.
             steamLinkRepository.save(SteamLink.builder()
                     .userId(alice.getId())
-                    .steamId("76561197960287930")
+                    // steam_id is unique (V13): each test's fresh Alice needs her own Steam account.
+                    .steamId("7656119" + (10_000_000_000L + alice.getId()))
                     .personaName("alice-steam")
                     .linkedAt(LocalDateTime.now())
                     .build());

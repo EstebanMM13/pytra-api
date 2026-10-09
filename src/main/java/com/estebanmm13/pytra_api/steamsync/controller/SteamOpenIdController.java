@@ -7,12 +7,14 @@ import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
 import com.estebanmm13.pytra_api.auth.security.ExchangeCodeIssuer;
 import com.estebanmm13.pytra_api.config.UrlNormalizer;
 import com.estebanmm13.pytra_api.error.InvalidTokenException;
+import com.estebanmm13.pytra_api.error.SteamIntegrationException;
 import com.estebanmm13.pytra_api.steamsync.client.SteamWebApiClient;
 import com.estebanmm13.pytra_api.steamsync.openid.SteamOpenIdService;
 import com.estebanmm13.pytra_api.steamsync.service.SteamLinkService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,6 +41,10 @@ import java.util.Map;
 public class SteamOpenIdController {
 
     private static final String CALLBACK_PATH = "/api/v1/integrations/steam/callback";
+
+    /** Fixed error values sent to the client callback (the client maps them to messages). */
+    static final String LINK_FAILED_ERROR = "steam_link_failed";
+    static final String ALREADY_LINKED_ERROR = "steam_account_already_linked";
 
     private String publicApiUrl;
 
@@ -94,6 +100,11 @@ public class SteamOpenIdController {
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(redirectUrl)).build();
     }
 
+    /**
+     * Always ends in a redirect to the client callback, never in a raw error page on the API
+     * domain: any failure (bad state, failed verification, Steam down, account taken) maps to a
+     * fixed {@code error} value. {@code next=steam} makes the client land back on /steam.
+     */
     @GetMapping("/callback")
     public ResponseEntity<Void> callback(@RequestParam Map<String, String> allParams) {
         // Unverified hint, used only for error redirects before verification succeeds.
@@ -103,7 +114,7 @@ public class SteamOpenIdController {
             Long userId = steamLinkService.consumeLinkState(allParams.get("state"));
 
             if (!steamOpenIdService.verify(allParams, callbackUrl())) {
-                return redirectToFrontendWithError(mobile);
+                return redirectToFrontendWithError(mobile, LINK_FAILED_ERROR);
             }
             // From here on, trust only the client embedded in the signed return_to.
             mobile = ClientRedirects.isMobileClient(
@@ -111,22 +122,44 @@ public class SteamOpenIdController {
 
             String steamId64 = steamOpenIdService.extractSteamId64(allParams.get("openid.claimed_id"));
             if (steamId64 == null) {
-                return redirectToFrontendWithError(mobile);
+                return redirectToFrontendWithError(mobile, LINK_FAILED_ERROR);
             }
 
-            String personaName = steamWebApiClient.getPersonaName(steamId64);
-            steamLinkService.upsertLink(userId, steamId64, personaName);
+            steamLinkService.upsertLink(userId, steamId64, fetchPersonaName(steamId64));
 
             User user = userRepository.findById(userId).orElseThrow();
             String rawCode = exchangeCodeIssuer.issueFor(user);
 
             return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(clientRedirects.callbackWithCode(mobile, rawCode)))
+                    .location(URI.create(clientRedirects.callbackWithCode(mobile, rawCode, ClientRedirects.NEXT_STEAM)))
                     .build();
 
         } catch (InvalidTokenException e) {
             log.warn("Steam link callback rejected: {}", e.getMessage());
-            return redirectToFrontendWithError(mobile);
+            return redirectToFrontendWithError(mobile, LINK_FAILED_ERROR);
+        } catch (SteamIntegrationException e) {
+            log.warn("Steam link callback rejected: {}", e.getCode());
+            return redirectToFrontendWithError(mobile,
+                    SteamIntegrationException.ACCOUNT_ALREADY_LINKED.equals(e.getCode())
+                            ? ALREADY_LINKED_ERROR : LINK_FAILED_ERROR);
+        } catch (DataIntegrityViolationException e) {
+            // Lost a race on uq_steam_links_steam_id against another user linking the same account.
+            log.warn("Steam link callback rejected: Steam account already linked (concurrent)");
+            return redirectToFrontendWithError(mobile, ALREADY_LINKED_ERROR);
+        } catch (Exception e) {
+            // Class name only: HTTP-layer messages may include Steam URLs.
+            log.warn("Steam link callback failed: {}", e.getClass().getSimpleName());
+            return redirectToFrontendWithError(mobile, LINK_FAILED_ERROR);
+        }
+    }
+
+    /** Persona name is cosmetic: never let a missing/invalid API key or a Steam outage break linking. */
+    private String fetchPersonaName(String steamId64) {
+        try {
+            return steamWebApiClient.getPersonaName(steamId64);
+        } catch (Exception e) {
+            log.info("Steam persona name unavailable: {}", e.getClass().getSimpleName());
+            return null;
         }
     }
 
@@ -134,9 +167,9 @@ public class SteamOpenIdController {
         return publicApiUrl + CALLBACK_PATH;
     }
 
-    private ResponseEntity<Void> redirectToFrontendWithError(boolean mobile) {
+    private ResponseEntity<Void> redirectToFrontendWithError(boolean mobile, String error) {
         return ResponseEntity.status(HttpStatus.FOUND)
-                .location(URI.create(clientRedirects.callbackWithError(mobile, "steam_link_failed")))
+                .location(URI.create(clientRedirects.callbackWithError(mobile, error, ClientRedirects.NEXT_STEAM)))
                 .build();
     }
 }

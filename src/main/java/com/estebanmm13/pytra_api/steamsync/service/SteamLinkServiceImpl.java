@@ -2,12 +2,23 @@ package com.estebanmm13.pytra_api.steamsync.service;
 
 import com.estebanmm13.pytra_api.auth.security.TokenGenerator;
 import com.estebanmm13.pytra_api.error.InvalidTokenException;
+import com.estebanmm13.pytra_api.error.SteamIntegrationException;
+import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
+import com.estebanmm13.pytra_api.games.model.Game;
+import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
+import com.estebanmm13.pytra_api.games.model.ReviewStatus;
+import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
+import com.estebanmm13.pytra_api.games.repository.GameRepository;
+import com.estebanmm13.pytra_api.steamsync.client.SteamWebApiClient;
+import com.estebanmm13.pytra_api.steamsync.dto.SteamStatusDto;
 import com.estebanmm13.pytra_api.steamsync.model.SteamLink;
 import com.estebanmm13.pytra_api.steamsync.model.SteamLinkState;
+import com.estebanmm13.pytra_api.steamsync.repository.SteamIgnoredAppRepository;
 import com.estebanmm13.pytra_api.steamsync.repository.SteamLinkRepository;
 import com.estebanmm13.pytra_api.steamsync.repository.SteamLinkStateRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -18,10 +29,19 @@ public class SteamLinkServiceImpl implements SteamLinkService {
 
     private final SteamLinkStateRepository steamLinkStateRepository;
     private final SteamLinkRepository steamLinkRepository;
+    private final SteamIgnoredAppRepository steamIgnoredAppRepository;
+    private final GamePlatformLinkRepository gamePlatformLinkRepository;
+    private final GameRepository gameRepository;
+    private final SteamWebApiClient steamWebApiClient;
+    private final SteamSyncGuard steamSyncGuard;
     private final TokenGenerator tokenGenerator;
 
     @Override
+    @Transactional
     public String createLinkState(Long userId) {
+        // Housekeeping piggybacked on the (rare) connect flow: states only live 10 minutes.
+        steamLinkStateRepository.deleteExpired(LocalDateTime.now());
+
         String rawToken = tokenGenerator.generateTokenRaw();
         String tokenHash = tokenGenerator.hashToken(rawToken);
 
@@ -58,15 +78,76 @@ public class SteamLinkServiceImpl implements SteamLinkService {
         return state.getUserId();
     }
 
+    /**
+     * Links (or re-links) the user's Steam account.
+     *
+     * @throws SteamIntegrationException ACCOUNT_ALREADY_LINKED if another Pytra user owns that Steam account
+     */
     @Override
+    @Transactional
     public SteamLink upsertLink(Long userId, String steamId64, String personaName) {
-        Optional<SteamLink> existing = steamLinkRepository.findByUserId(userId);
+        steamLinkRepository.findBySteamId(steamId64)
+                .filter(link -> !link.getUserId().equals(userId))
+                .ifPresent(link -> {
+                    throw SteamIntegrationException.accountAlreadyLinked();
+                });
 
+        Optional<SteamLink> existing = steamLinkRepository.findByUserId(userId);
         SteamLink steamLink = existing.orElseGet(() -> SteamLink.builder().userId(userId).build());
+
+        if (existing.isPresent() && !existing.get().getSteamId().equals(steamId64)) {
+            // Different Steam account: the old baselines belong to another library.
+            resetSteamData(userId);
+            steamLink.setLastSyncAt(null);
+        }
+
         steamLink.setSteamId(steamId64);
         steamLink.setPersonaName(personaName);
         steamLink.setLinkedAt(LocalDateTime.now());
 
-        return steamLinkRepository.save(steamLink);
+        // Flush now so a concurrent link of the same Steam account fails here (unique steam_id).
+        return steamLinkRepository.saveAndFlush(steamLink);
+    }
+
+    @Override
+    public SteamStatusDto getStatus(Long userId) {
+        boolean configured = steamWebApiClient.isConfigured();
+        return steamLinkRepository.findByUserId(userId)
+                .map(link -> new SteamStatusDto(true, link.getSteamId(), link.getPersonaName(), link.getLastSyncAt(), configured))
+                .orElseGet(() -> new SteamStatusDto(false, null, null, null, configured));
+    }
+
+    /**
+     * Removes the Steam link. Confirmed games keep everything (their hours, experiences and
+     * online playtime are the user's data now); only their STEAM links go away, so a later
+     * re-link starts from fresh baselines and never re-imports hours. Steam-only placeholders
+     * still pending review and the ignore list are deleted: they only made sense for that account.
+     */
+    @Override
+    @Transactional
+    public void unlink(Long userId) {
+        SteamLink steamLink = steamLinkRepository.findByUserId(userId)
+                .orElseThrow(SteamIntegrationException::notLinked);
+
+        if (!steamSyncGuard.tryAcquire(userId)) {
+            throw SteamIntegrationException.syncInProgress();
+        }
+        try {
+            resetSteamData(userId);
+            steamLinkRepository.delete(steamLink);
+        } finally {
+            steamSyncGuard.release(userId);
+        }
+    }
+
+    private void resetSteamData(Long userId) {
+        for (GamePlatformLink link : gamePlatformLinkRepository.findAllByUserIdAndPlatformWithGame(userId, ExternalPlatform.STEAM)) {
+            Game game = link.getGame();
+            gamePlatformLinkRepository.delete(link);
+            if (game.getReviewStatus() == ReviewStatus.PENDING_REVIEW) {
+                gameRepository.delete(game);
+            }
+        }
+        steamIgnoredAppRepository.deleteAllByUserId(userId);
     }
 }

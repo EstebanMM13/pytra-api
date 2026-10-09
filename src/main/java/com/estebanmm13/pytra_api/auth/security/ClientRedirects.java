@@ -17,6 +17,9 @@ public class ClientRedirects {
     /** Value of the {@code client} query param that marks a flow started from the Android app. */
     public static final String MOBILE_CLIENT = "android";
 
+    /** {@code next} value for flows that should land on the Steam page (the Steam account link). */
+    public static final String NEXT_STEAM = "steam";
+
     private final String webCallbackUrl;
     private final String mobileCallbackUrl;
 
@@ -31,17 +34,33 @@ public class ClientRedirects {
     }
 
     public String callbackWithCode(boolean mobile, String code) {
-        return build(mobile, "code", code);
+        return build(mobile, "code", code, null);
     }
 
     public String callbackWithError(boolean mobile, String error) {
-        return build(mobile, "error", error);
+        return build(mobile, "error", error, null);
     }
 
-    private String build(boolean mobile, String param, String value) {
-        return UriComponentsBuilder.fromUriString(mobile ? mobileCallbackUrl : webCallbackUrl)
-                .queryParam(param, value)
-                .build()
+    /**
+     * Same as {@link #callbackWithCode(boolean, String)} plus a {@code next} hint telling the client
+     * where to land afterwards. Callers pass a fixed server-side constant (e.g. {@link #NEXT_STEAM}),
+     * and the client only honours whitelisted values, so this is not an open redirect either.
+     */
+    public String callbackWithCode(boolean mobile, String code, String next) {
+        return build(mobile, "code", code, next);
+    }
+
+    public String callbackWithError(boolean mobile, String error, String next) {
+        return build(mobile, "error", error, next);
+    }
+
+    private String build(boolean mobile, String param, String value, String next) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(mobile ? mobileCallbackUrl : webCallbackUrl)
+                .queryParam(param, value);
+        if (next != null) {
+            builder.queryParam("next", next);
+        }
+        return builder.build()
                 .encode()
                 .toUriString();
     }

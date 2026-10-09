@@ -9,4 +9,5 @@ import java.util.Optional;
 @Repository
 public interface SteamLinkRepository extends JpaRepository<SteamLink, Long> {
     Optional<SteamLink> findByUserId(Long userId);
+    Optional<SteamLink> findBySteamId(String steamId);
 }
