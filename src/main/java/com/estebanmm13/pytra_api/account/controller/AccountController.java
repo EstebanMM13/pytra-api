@@ -3,6 +3,7 @@ package com.estebanmm13.pytra_api.account.controller;
 import com.estebanmm13.pytra_api.account.dto.DeleteAccountRequestDto;
 import com.estebanmm13.pytra_api.account.export.ExportFile;
 import com.estebanmm13.pytra_api.account.service.AccountService;
+import com.estebanmm13.pytra_api.auth.security.AuthenticatedUser;
 import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +35,9 @@ public class AccountController {
 
     @DeleteMapping
     public ResponseEntity<Void> deleteAccount(@Valid @RequestBody DeleteAccountRequestDto requestDto) {
-        accountService.deleteAccount(currentUserResolver.getCurrentUserId(), requestDto.getConfirm());
+        AuthenticatedUser currentUser = currentUserResolver.getCurrentUser();
+        accountService.deleteAccount(currentUser.getUserId(), currentUser.getIssuedAt(),
+                requestDto.getConfirm(), requestDto.getPassword());
         return ResponseEntity.noContent().build();
     }
 }

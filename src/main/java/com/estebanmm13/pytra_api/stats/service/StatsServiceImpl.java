@@ -16,6 +16,7 @@ import com.estebanmm13.pytra_api.stats.dto.*;
 import com.estebanmm13.pytra_api.stats.model.YearNote;
 import com.estebanmm13.pytra_api.stats.repository.YearNoteRepository;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,7 @@ public class StatsServiceImpl implements StatsService {
 
     private static final int MAX_LIMIT = 50;
     static final int MIN_YEAR = 1970;
+    private static final String YEAR_NOTE_UNIQUE_CONSTRAINT = "uq_year_notes_user_year";
 
     private final GameRepository gameRepository;
     private final SagaRepository sagaRepository;
@@ -172,8 +174,28 @@ public class StatsServiceImpl implements StatsService {
             // Flush now so two concurrent first saves surface as 409 instead of a 500 at commit.
             return toNoteDto(yearNoteRepository.saveAndFlush(note));
         } catch (DataIntegrityViolationException e) {
-            throw new DuplicateResourceException("Year note was saved concurrently, retry");
+            // Only the (user_id, year) race is a conflict; any other integrity error is a real bug.
+            if (violates(e, YEAR_NOTE_UNIQUE_CONSTRAINT)) {
+                throw new DuplicateResourceException("Year note was saved concurrently, retry");
+            }
+            throw e;
         }
+    }
+
+    private static boolean violates(DataIntegrityViolationException e, String constraintName) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation
+                    && constraintName.equalsIgnoreCase(violation.getConstraintName())) {
+                return true;
+            }
+            if (cause.getMessage() != null && cause.getMessage().contains(constraintName)) {
+                return true;
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+        }
+        return false;
     }
 
     /** Years accepted by the year endpoints: 1970 to next year. */

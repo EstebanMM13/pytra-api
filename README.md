@@ -128,7 +128,7 @@ Each module uses the same internal layout: `model/`, `dto/`, `mapper/`, `reposit
 
 ## API overview
 
-All endpoints except auth, the Google OAuth2 endpoints, Steam `login`/`callback` and the OpenAPI/Swagger paths require `Authorization: Bearer <jwt>`.
+All endpoints except auth, the Google OAuth2 endpoints, Steam `login`/`callback` and the OpenAPI/Swagger paths require `Authorization: Bearer <jwt>`. A validly signed token whose user no longer exists (deleted account) is treated as anonymous (`401`).
 
 Outside the `prod` profile, the OpenAPI spec is served at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`. Both are disabled in `prod` (`springdoc.api-docs.enabled=false`, `springdoc.swagger-ui.enabled=false` in `application-prod.yaml`).
 
@@ -150,8 +150,8 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 |---|---|---|
 | GET | `/me` | Profile: username, display name, email, whether a password is set, whether Google is linked, `createdAt` |
 | PATCH | `/me` | Change username |
-| GET | `/me/export?format=csv\|markdown` | Download all the user's data. CSV: one row per experience with the game columns repeated (games without runs get one row), UTF-8 with BOM, formula-like text prefixed with `'`. Markdown (Obsidian-friendly): front matter, one `##` section per game with its `###` runs, then the yearly notes. Unknown format: `400 INVALID_EXPORT_FORMAT` |
-| DELETE | `/me` | Body `{"confirm": "<username>"}` (case-insensitive, else `400 CONFIRMATION_MISMATCH`). Deletes the user and everything they own in one transaction (all user tables cascade from `users`); `204`. Blocked with `409 SYNC_IN_PROGRESS` while a Steam sync runs |
+| GET | `/me/export?format=csv\|markdown` | Download all the user's data. CSV: one row per experience with the game columns repeated (games without runs get one row), UTF-8 with BOM, formula-like text (first non-blank character `= + - @`, or a leading control character) prefixed with `'`. Markdown (Obsidian-friendly): front matter (quoted YAML values), one `##` section per game with its `###` runs, then the yearly notes. Unknown format: `400 INVALID_EXPORT_FORMAT`. Max 5 exports per user per minute (in-memory): `429 EXPORT_RATE_LIMITED` |
+| DELETE | `/me` | Body `{"confirm": "<username>", "password": "..."}`. `confirm` must match the username (case-insensitive, else `400 CONFIRMATION_MISMATCH`). Accounts with a password must send it (`400 INVALID_PASSWORD` if missing or wrong; never 401 so clients don't log out); Google-only accounts need a token issued in the last 10 minutes, else `403 REAUTH_REQUIRED` (log in with Google again). Deletes the user and everything they own in one transaction (all user tables cascade from `users`); `204`. Blocked with `409 SYNC_IN_PROGRESS` while a Steam sync runs |
 
 ### Genres (`/api/v1/genres`, global catalog)
 | Method | Endpoint | Description |
@@ -245,7 +245,7 @@ Sync rules:
 | Command | Needs Docker | What runs |
 |---|---|---|
 | `./mvnw test` | Yes | Everything, including the integration tests below |
-| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest,SteamWebApiClientTest,SteamSyncSchedulerTest,ExperiencePeriodTest,StatsMathTest,YearHighlightsCalculatorTest,AccountExportWriterTest"` | No | Unit tests only |
+| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest,SteamWebApiClientTest,SteamSyncSchedulerTest,ExperiencePeriodTest,StatsMathTest,YearHighlightsCalculatorTest,AccountExportWriterTest,ExportRateLimiterTest"` | No | Unit tests only |
 
 Integration tests extend `AbstractIntegrationTest`: full Spring context, MockMvc, the `test` profile (`src/test/resources/application-test.yaml`, which supplies dummy JWT/Google/mail settings so no environment variable is needed) and one shared PostgreSQL Testcontainer via `@ServiceConnection`.
 

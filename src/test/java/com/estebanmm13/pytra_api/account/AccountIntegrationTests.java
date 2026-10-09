@@ -2,15 +2,23 @@ package com.estebanmm13.pytra_api.account;
 
 import com.estebanmm13.pytra_api.AbstractIntegrationTest;
 import com.estebanmm13.pytra_api.auth.model.User;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
@@ -36,6 +44,12 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Value("${JWT_SECRET}")
+    private String jwtSecret;
 
     private User alice;
     private User bob;
@@ -157,6 +171,85 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalGames").value(1))
                 .andExpect(jsonPath("$.totalExperiences").value(1));
+    }
+
+    @Test
+    void passwordAccountMustSendTheRightPassword() throws Exception {
+        alice.setPasswordHash(passwordEncoder.encode("correct-horse"));
+        userRepository.save(alice);
+        String confirm = "\"confirm\": \"" + alice.getUsername() + "\"";
+
+        performAs(aliceAuth, delete("/api/v1/users/me"), "{" + confirm + "}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("INVALID_PASSWORD"));
+        performAs(aliceAuth, delete("/api/v1/users/me"), "{" + confirm + ", \"password\": \"wrong\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("INVALID_PASSWORD"));
+        assertThat(userRepository.findById(alice.getId())).isPresent();
+
+        performAs(aliceAuth, delete("/api/v1/users/me"), "{" + confirm + ", \"password\": \"correct-horse\"}")
+                .andExpect(status().isNoContent());
+        assertThat(userRepository.findById(alice.getId())).isEmpty();
+    }
+
+    @Test
+    void passwordAccountIsNotDeletableWithAFreshTokenAlone() throws Exception {
+        alice.setPasswordHash(passwordEncoder.encode("correct-horse"));
+        userRepository.save(alice);
+
+        performAs(aliceAuth, delete("/api/v1/users/me"), "{\"confirm\": \"" + alice.getUsername() + "\"}")
+                .andExpect(status().isBadRequest());
+        assertThat(userRepository.findById(alice.getId())).isPresent();
+    }
+
+    @Test
+    void googleOnlyAccountNeedsARecentLogin() throws Exception {
+        String staleAuth = bearerIssuedAt(alice, Instant.now().minus(Duration.ofMinutes(11)));
+        String body = "{\"confirm\": \"" + alice.getUsername() + "\"}";
+
+        performAs(staleAuth, delete("/api/v1/users/me"), body)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("REAUTH_REQUIRED"));
+        assertThat(userRepository.findById(alice.getId())).isPresent();
+
+        String recentAuth = bearerIssuedAt(alice, Instant.now().minus(Duration.ofMinutes(9)));
+        performAs(recentAuth, delete("/api/v1/users/me"), body)
+                .andExpect(status().isNoContent());
+        assertThat(userRepository.findById(alice.getId())).isEmpty();
+    }
+
+    @Test
+    void tokenOfADeletedAccountIsRejected() throws Exception {
+        performAs(aliceAuth, delete("/api/v1/users/me"), "{\"confirm\": \"" + alice.getUsername() + "\"}")
+                .andExpect(status().isNoContent());
+
+        performAs(aliceAuth, get("/api/v1/users/me")).andExpect(status().isUnauthorized());
+        performAs(aliceAuth, get("/api/v1/games")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void exportIsThrottledPerUser() throws Exception {
+        for (int i = 0; i < 5; i++) {
+            performAs(aliceAuth, get("/api/v1/users/me/export")).andExpect(status().isOk());
+        }
+        performAs(aliceAuth, get("/api/v1/users/me/export").param("format", "markdown"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists(HttpHeaders.RETRY_AFTER))
+                .andExpect(jsonPath("$.message").value("EXPORT_RATE_LIMITED"));
+
+        performAs(bobAuth, get("/api/v1/users/me/export")).andExpect(status().isOk());
+    }
+
+    /** Same claims as the login flow, signed with the test key, but with a chosen {@code iat}. */
+    private String bearerIssuedAt(User user, Instant issuedAt) {
+        return "Bearer " + Jwts.builder()
+                .subject(user.getUsername())
+                .claim("userId", user.getId())
+                .claim("role", user.getRole().name())
+                .issuedAt(Date.from(issuedAt))
+                .expiration(Date.from(Instant.now().plus(Duration.ofHours(1))))
+                .signWith(Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret)))
+                .compact();
     }
 
     /** One row in every user-owned table, through the API where one exists. Returns the game id. */

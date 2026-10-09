@@ -11,4 +11,7 @@ public class DeleteAccountRequestDto {
     /** Must repeat the caller's username (case-insensitive) to confirm the deletion. */
     @NotBlank
     private String confirm;
+
+    /** Current password; required when the account has one (ignored for Google-only accounts). */
+    private String password;
 }

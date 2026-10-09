@@ -25,6 +25,7 @@ public final class AccountExportWriter {
     /** Lets Excel detect UTF-8 (accents in game names). */
     private static final String UTF8_BOM = "﻿";
     private static final String CRLF = "\r\n";
+    private static final String FORMULA_TRIGGERS = "=+-@";
 
     private AccountExportWriter() {
     }
@@ -86,7 +87,7 @@ public final class AccountExportWriter {
         StringBuilder out = new StringBuilder();
         out.append("---\n")
                 .append("source: pytra\n")
-                .append("user: ").append(data.username()).append('\n')
+                .append("user: ").append(yamlString(data.username())).append('\n')
                 .append("exported_at: ").append(data.exportedAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)).append('\n')
                 .append("games: ").append(data.games().size()).append('\n')
                 .append("---\n\n")
@@ -98,7 +99,7 @@ public final class AccountExportWriter {
             field(out, "Publisher", game.getPublisher());
             field(out, "Release date", value(game.getReleaseDate()));
             field(out, "Category", value(game.getCategory()));
-            field(out, "Saga", game.getSaga() != null ? "[[" + game.getSaga().getName() + "]]" : null);
+            field(out, "Saga", game.getSaga() != null ? "[[" + singleLine(game.getSaga().getName()) + "]]" : null);
             field(out, "Genres", genreNames(game));
             Double online = onlineHours(data, game);
             field(out, "Online hours", online != null ? number(online) : null);
@@ -151,15 +152,26 @@ public final class AccountExportWriter {
     }
 
     /**
-     * Free text typed by the user. A leading {@code = + - @} (or tab/CR) is prefixed with a quote so a
-     * spreadsheet never evaluates it as a formula (CSV injection).
+     * Free text typed by the user, neutralized against CSV/formula injection: prefixed with a quote when it
+     * starts with a control character (tab, CR, LF, NUL...) or when its first character that is not
+     * whitespace/control is one of {@code = + - @}, because spreadsheets skip that leading noise.
      */
     static String text(String value) {
         if (value == null) {
             return "";
         }
-        if (!value.isEmpty() && "=+-@\t\r".indexOf(value.charAt(0)) >= 0) {
+        if (value.isEmpty()) {
+            return value;
+        }
+        if (Character.isISOControl(value.charAt(0))) {
             return "'" + value;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isWhitespace(c) || Character.isSpaceChar(c) || Character.isISOControl(c)) {
+                continue;
+            }
+            return FORMULA_TRIGGERS.indexOf(c) >= 0 ? "'" + value : value;
         }
         return value;
     }
@@ -188,8 +200,18 @@ public final class AccountExportWriter {
                 .collect(Collectors.joining(", "));
     }
 
-    private static String heading(String value) {
+    /** Double-quoted YAML scalar on one line: backslash and double quote escaped, CR/LF removed. */
+    static String yamlString(String value) {
+        String clean = singleLine(value);
+        return "\"" + clean.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    private static String singleLine(String value) {
         return value == null ? "" : value.replaceAll("[\\r\\n]+", " ").trim();
+    }
+
+    private static String heading(String value) {
+        return singleLine(value);
     }
 
     private static void field(StringBuilder out, String label, String value) {

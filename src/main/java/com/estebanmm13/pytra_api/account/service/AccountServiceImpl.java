@@ -8,6 +8,7 @@ import com.estebanmm13.pytra_api.auth.model.User;
 import com.estebanmm13.pytra_api.auth.repository.UserRepository;
 import com.estebanmm13.pytra_api.auth.validation.UsernamePolicy;
 import com.estebanmm13.pytra_api.error.InvalidRequestException;
+import com.estebanmm13.pytra_api.error.ReauthenticationRequiredException;
 import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperiencePeriod;
@@ -19,11 +20,14 @@ import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.stats.repository.YearNoteRepository;
 import com.estebanmm13.pytra_api.steamsync.service.SteamSyncGuard;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -36,12 +40,17 @@ import java.util.Map;
 @Service
 public class AccountServiceImpl implements AccountService {
 
+    /** How recent the login of a Google-only account must be to delete it. */
+    static final Duration REAUTH_WINDOW = Duration.ofMinutes(10);
+
     private final UserRepository userRepository;
     private final GameRepository gameRepository;
     private final ExperienceRepository experienceRepository;
     private final OnlinePlaytimeRepository onlinePlaytimeRepository;
     private final YearNoteRepository yearNoteRepository;
     private final SteamSyncGuard steamSyncGuard;
+    private final PasswordEncoder passwordEncoder;
+    private final ExportRateLimiter exportRateLimiter;
     private final TransactionTemplate transactionTemplate;
 
     public AccountServiceImpl(UserRepository userRepository,
@@ -50,6 +59,8 @@ public class AccountServiceImpl implements AccountService {
                               OnlinePlaytimeRepository onlinePlaytimeRepository,
                               YearNoteRepository yearNoteRepository,
                               SteamSyncGuard steamSyncGuard,
+                              PasswordEncoder passwordEncoder,
+                              ExportRateLimiter exportRateLimiter,
                               PlatformTransactionManager transactionManager) {
         this.userRepository = userRepository;
         this.gameRepository = gameRepository;
@@ -57,6 +68,8 @@ public class AccountServiceImpl implements AccountService {
         this.onlinePlaytimeRepository = onlinePlaytimeRepository;
         this.yearNoteRepository = yearNoteRepository;
         this.steamSyncGuard = steamSyncGuard;
+        this.passwordEncoder = passwordEncoder;
+        this.exportRateLimiter = exportRateLimiter;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -64,6 +77,7 @@ public class AccountServiceImpl implements AccountService {
     @Transactional(readOnly = true)
     public ExportFile export(Long userId, String format) {
         ExportFormat exportFormat = ExportFormat.fromParam(format);
+        exportRateLimiter.acquire(userId);
         User user = requireUser(userId);
 
         List<Game> games = new ArrayList<>(gameRepository.findAllByUserIdWithSagaAndGenres(userId));
@@ -100,11 +114,12 @@ public class AccountServiceImpl implements AccountService {
      * The global genre catalog is not user-owned and stays.
      */
     @Override
-    public void deleteAccount(Long userId, String confirm) {
+    public void deleteAccount(Long userId, Instant tokenIssuedAt, String confirm, String password) {
         User user = requireUser(userId);
         if (confirm == null || !UsernamePolicy.normalize(confirm).equals(user.getUsername())) {
             throw new InvalidRequestException(InvalidRequestException.CONFIRMATION_MISMATCH);
         }
+        requireReauthentication(user, tokenIssuedAt, password);
         // Same per-user slot as Steam sync/unlink, held until commit, so a running sync cannot
         // write rows for a user that is being deleted (answers 409 SYNC_IN_PROGRESS instead).
         steamSyncGuard.runExclusive(userId, () -> transactionTemplate.execute(status -> {
@@ -112,6 +127,22 @@ public class AccountServiceImpl implements AccountService {
             return null;
         }));
         log.info("Account {} deleted", userId);
+    }
+
+    /**
+     * A stolen token alone must not be enough to wipe an account. Wrong/missing password is a 400 (not
+     * 401, which clients treat as an expired session); a Google-only account proves a recent login instead.
+     */
+    private void requireReauthentication(User user, Instant tokenIssuedAt, String password) {
+        if (user.getPasswordHash() != null) {
+            if (password == null || password.isEmpty() || !passwordEncoder.matches(password, user.getPasswordHash())) {
+                throw new InvalidRequestException(InvalidRequestException.INVALID_PASSWORD);
+            }
+            return;
+        }
+        if (tokenIssuedAt == null || tokenIssuedAt.isBefore(Instant.now().minus(REAUTH_WINDOW))) {
+            throw new ReauthenticationRequiredException();
+        }
     }
 
     private User requireUser(Long userId) {

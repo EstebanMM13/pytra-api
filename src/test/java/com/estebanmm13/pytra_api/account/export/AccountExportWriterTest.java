@@ -62,13 +62,44 @@ class AccountExportWriterTest {
         assertThat(AccountExportWriter.csv(data)).contains(",'=open world,");
         assertThat(AccountExportWriter.text("@SUM(A1)")).isEqualTo("'@SUM(A1)");
         assertThat(AccountExportWriter.text("Plain")).isEqualTo("Plain");
+        assertThat(AccountExportWriter.text("")).isEmpty();
+        assertThat(AccountExportWriter.text("   ")).isEqualTo("   ");
+        assertThat(AccountExportWriter.text("Half-Life 2")).isEqualTo("Half-Life 2");
+    }
+
+    @Test
+    void csvNeutralizesFormulasHiddenBehindWhitespaceOrControlCharacters() {
+        assertThat(AccountExportWriter.text(" =1+1")).isEqualTo("' =1+1");
+        assertThat(AccountExportWriter.text("\n=1+1")).isEqualTo("'\n=1+1");
+        assertThat(AccountExportWriter.text("\t@x")).isEqualTo("'\t@x");
+        assertThat(AccountExportWriter.text("\u0000plain")).isEqualTo("'\u0000plain");
+        assertThat(AccountExportWriter.text("\rtext")).isEqualTo("'\rtext");
+        assertThat(AccountExportWriter.text(" \u0001 -2")).isEqualTo("' \u0001 -2");
+        assertThat(AccountExportWriter.text(" +cmd")).isEqualTo("' +cmd");
+        assertThat(AccountExportWriter.text("  spaced text")).isEqualTo("  spaced text");
+    }
+
+    @Test
+    void markdownFrontMatterAndSagaLinksStaySingleLineAndEscaped() {
+        Game game = Game.builder().id(3L).name("G").genres(Set.of())
+                .saga(Saga.builder().id(9L).name("Evil\r\nsaga").build())
+                .reviewStatus(ReviewStatus.CONFIRMED).build();
+        ExportData tricky = new ExportData("bad\"name\\\ninjected: true", LocalDateTime.of(2026, 1, 1, 0, 0),
+                List.of(game), Map.of(), Map.of(), List.of());
+
+        String md = AccountExportWriter.markdown(tricky);
+
+        assertThat(md).contains("user: \"bad\\\"name\\\\ injected: true\"\n");
+        assertThat(md).doesNotContain("\ninjected: true");
+        assertThat(md).contains("- **Saga:** [[Evil saga]]\n");
+        assertThat(AccountExportWriter.yamlString(null)).isEqualTo("\"\"");
     }
 
     @Test
     void markdownHasASectionPerGameWithRunsAndYearNotes() {
         String md = AccountExportWriter.markdown(data);
 
-        assertThat(md).startsWith("---\nsource: pytra\nuser: Esteban\n");
+        assertThat(md).startsWith("---\nsource: pytra\nuser: \"Esteban\"\n");
         assertThat(md).contains("## Elden Ring\n");
         assertThat(md).contains("- **Saga:** [[Souls]]\n");
         assertThat(md).contains("- **Online hours:** 3\n");

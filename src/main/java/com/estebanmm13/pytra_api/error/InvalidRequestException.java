@@ -6,6 +6,7 @@ public class InvalidRequestException extends RuntimeException {
     public static final String INVALID_YEAR = "INVALID_YEAR";
     public static final String INVALID_EXPORT_FORMAT = "INVALID_EXPORT_FORMAT";
     public static final String CONFIRMATION_MISMATCH = "CONFIRMATION_MISMATCH";
+    public static final String INVALID_PASSWORD = "INVALID_PASSWORD";
 
     public InvalidRequestException(String code) {
         super(code);
