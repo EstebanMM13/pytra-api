@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.security.Key;
+import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -41,6 +42,12 @@ public class JwtService {
 
     public Long getUserId(String token) {
         return getClaim(token, claims -> ((Number) claims.get("userId")).longValue());
+    }
+
+    /** {@code iat} claim, or null when the token has none. */
+    public Instant getIssuedAt(String token) {
+        Date issuedAt = getClaim(token, Claims::getIssuedAt);
+        return issuedAt != null ? issuedAt.toInstant() : null;
     }
 
     public <T> T getClaim(String token, Function<Claims, T> claimsResolver) {

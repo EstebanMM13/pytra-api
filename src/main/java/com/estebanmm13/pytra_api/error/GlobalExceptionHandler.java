@@ -63,6 +63,26 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(apiError);
     }
 
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<ApiError> handleInvalidRequest(InvalidRequestException e) {
+        ApiError apiError = new ApiError(HttpStatus.BAD_REQUEST.value(), e.getMessage(), Map.of(), LocalDateTime.now());
+        return ResponseEntity.badRequest().body(apiError);
+    }
+
+    @ExceptionHandler(ReauthenticationRequiredException.class)
+    public ResponseEntity<ApiError> handleReauthenticationRequired(ReauthenticationRequiredException e) {
+        ApiError apiError = new ApiError(HttpStatus.FORBIDDEN.value(), e.getMessage(), Map.of(), LocalDateTime.now());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(apiError);
+    }
+
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<ApiError> handleTooManyRequests(TooManyRequestsException e) {
+        ApiError apiError = new ApiError(HttpStatus.TOO_MANY_REQUESTS.value(), e.getMessage(), Map.of(), LocalDateTime.now());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(e.getRetryAfterSeconds()))
+                .body(apiError);
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiError> handleResourceNotFound(ResourceNotFoundException e) {
         ApiError apiError = new ApiError(HttpStatus.NOT_FOUND.value(),e.getMessage(), Map.of() ,LocalDateTime.now());

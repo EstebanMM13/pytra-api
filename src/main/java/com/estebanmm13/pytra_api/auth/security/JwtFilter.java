@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.auth.security;
 
+import com.estebanmm13.pytra_api.auth.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 
 @Component
@@ -23,6 +25,7 @@ import java.util.List;
 public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(
@@ -31,28 +34,32 @@ public class JwtFilter extends OncePerRequestFilter {
             @NotNull FilterChain filterChain) throws ServletException, IOException {
 
         final String authHeader = request.getHeader("Authorization");
-        final String jwt;
-        final String username;
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
-        jwt = authHeader.substring(7);
+        final String jwt = authHeader.substring(7);
 
+        final String username;
+        final Long userId;
+        final Instant issuedAt;
+        final List<GrantedAuthority> authorities;
         try {
             username = jwtService.getUserName(jwt);
+            userId = jwtService.getUserId(jwt);
+            issuedAt = jwtService.getIssuedAt(jwt);
+            // Use the explicit authorities carried in the JWT
+            authorities = jwtService.getAuthorities(jwt);
         } catch (Exception e) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            // Use the explicit authorities carried in the JWT
-            List<GrantedAuthority> authorities = jwtService.getAuthorities(jwt);
-
-            Long userId = jwtService.getUserId(jwt);
-            AuthenticatedUser authenticatedUser = new AuthenticatedUser(username, userId);
+        // A validly signed token of a deleted account must not authenticate anything (stays anonymous -> 401).
+        if (username != null && userId != null && SecurityContextHolder.getContext().getAuthentication() == null
+                && userRepository.existsById(userId)) {
+            AuthenticatedUser authenticatedUser = new AuthenticatedUser(username, userId, issuedAt);
 
             UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
                     authenticatedUser, null, authorities

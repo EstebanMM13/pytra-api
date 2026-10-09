@@ -7,6 +7,10 @@ import java.util.List;
 public interface StatsService {
     StatsSummaryDto getSummary(Long userId);
     List<YearStatDto> getByYear(Long userId);
+    List<Integer> getYears(Long userId);
+    YearSummaryDto getYearSummary(Long userId, int year);
+    YearNoteDto upsertYearNote(Long userId, int year, YearNoteRequestDto request);
+    List<InProgressExperienceDto> getInProgress(Long userId);
     List<SagaStatDto> getBySaga(Long userId);
     List<GenreStatDto> getByGenre(Long userId);
     List<TopRatedExperienceDto> getTopRated(Long userId, int limit);

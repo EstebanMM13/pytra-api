@@ -7,8 +7,10 @@ import org.springframework.stereotype.Component;
 public class CurrentUserResolver {
 
     public Long getCurrentUserId() {
-        AuthenticatedUser authenticatedUser =
-                (AuthenticatedUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        return authenticatedUser.getUserId();
+        return getCurrentUser().getUserId();
+    }
+
+    public AuthenticatedUser getCurrentUser() {
+        return (AuthenticatedUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
 }

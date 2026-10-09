@@ -124,8 +124,14 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/top-rated"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/most-played/singleplayer"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/most-played/online"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/years"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/years/2024"),
+                Arguments.of(HttpMethod.PUT, "/api/v1/stats/years/2024/note"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/in-progress"),
                 Arguments.of(HttpMethod.GET, "/api/v1/users/me"),
                 Arguments.of(HttpMethod.PATCH, "/api/v1/users/me"),
+                Arguments.of(HttpMethod.GET, "/api/v1/users/me/export"),
+                Arguments.of(HttpMethod.DELETE, "/api/v1/users/me"),
                 Arguments.of(HttpMethod.POST, "/api/v1/integrations/steam/connect-token"),
                 Arguments.of(HttpMethod.POST, "/api/v1/integrations/steam/sync"),
                 Arguments.of(HttpMethod.GET, "/api/v1/integrations/steam/pending"),
@@ -376,7 +382,9 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                     "/api/v1/stats/by-genre",
                     "/api/v1/stats/top-rated",
                     "/api/v1/stats/most-played/singleplayer",
-                    "/api/v1/stats/most-played/online"}) {
+                    "/api/v1/stats/most-played/online",
+                    "/api/v1/stats/years",
+                    "/api/v1/stats/in-progress"}) {
                 perform(get(path), bobAuth)
                         .andExpect(status().isOk())
                         .andExpect(jsonPath("$.length()").value(0));
@@ -404,6 +412,50 @@ class TenantIsolationTests extends AbstractIntegrationTest {
             MvcResult bySaga = perform(get("/api/v1/stats/by-saga"), bobAuth).andExpect(status().isOk()).andReturn();
             assertThat(readIds(bySaga, "$[*].sagaId")).doesNotContain(aliceSagaId);
         }
+
+        @Test
+        void yearSummaryOnlyUsesOwnData() throws Exception {
+            // Alice's experience is a COMPLETADO run of 2024 rated 9.
+            perform(get("/api/v1/stats/years/2024"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.experienceCount").value(0))
+                    .andExpect(jsonPath("$.totalHours").value(0.0))
+                    .andExpect(jsonPath("$.experiences.length()").value(0))
+                    .andExpect(jsonPath("$.mostPlayed.length()").value(0));
+
+            perform(get("/api/v1/stats/years/2024"), aliceAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.experienceCount").value(1))
+                    .andExpect(jsonPath("$.experiences[0].experienceId").value(aliceExperienceId));
+        }
+
+        @Test
+        void inProgressNeverListsOtherUsersRuns() throws Exception {
+            perform(post("/api/v1/games/{gameId}/experiences", aliceGameId), aliceAuth,
+                    "{\"runLabel\": \"Alice live\", \"status\": \"EN_CURSO\", \"platform\": \"PC\"}")
+                    .andExpect(status().isCreated());
+
+            perform(get("/api/v1/stats/in-progress"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(0));
+            perform(get("/api/v1/stats/in-progress"), aliceAuth)
+                    .andExpect(jsonPath("$.length()").value(1));
+        }
+
+        @Test
+        void yearNotesArePerUser() throws Exception {
+            perform(put("/api/v1/stats/years/2024/note"), aliceAuth, "{\"summary\": \"Alice note\"}")
+                    .andExpect(status().isOk());
+
+            perform(get("/api/v1/stats/years/2024"), bobAuth)
+                    .andExpect(jsonPath("$.note.summary").doesNotExist());
+
+            perform(put("/api/v1/stats/years/2024/note"), bobAuth, "{\"summary\": \"Bob note\"}")
+                    .andExpect(status().isOk());
+
+            perform(get("/api/v1/stats/years/2024"), aliceAuth)
+                    .andExpect(jsonPath("$.note.summary").value("Alice note"));
+        }
     }
 
     @Nested
@@ -428,6 +480,40 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.username").value(alice.getUsername()))
                     .andExpect(jsonPath("$.email").value(alice.getEmail()));
+        }
+    }
+
+    @Nested
+    class Account {
+
+        @Test
+        void exportNeverIncludesOtherUsersData() throws Exception {
+            for (String format : new String[]{"csv", "markdown"}) {
+                MvcResult result = perform(get("/api/v1/users/me/export").param("format", format), bobAuth)
+                        .andExpect(status().isOk()).andReturn();
+                String body = new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
+                assertThat(body).as(format).doesNotContain("Alice Game", "Alice run", "Alice Saga");
+            }
+        }
+
+        @Test
+        void deletingAnAccountLeavesOtherUsersUntouched() throws Exception {
+            perform(delete("/api/v1/users/me"), bobAuth, "{\"confirm\": \"" + bob.getUsername() + "\"}")
+                    .andExpect(status().isNoContent());
+
+            perform(get("/api/v1/games/{id}", aliceGameId), aliceAuth).andExpect(status().isOk());
+            perform(get("/api/v1/experiences/{id}", aliceExperienceId), aliceAuth).andExpect(status().isOk());
+            perform(get("/api/v1/sagas/{id}", aliceSagaId), aliceAuth).andExpect(status().isOk());
+            perform(get("/api/v1/users/me"), aliceAuth).andExpect(status().isOk());
+        }
+
+        @Test
+        void confirmingWithAnotherUsersNameDeletesNothing() throws Exception {
+            perform(delete("/api/v1/users/me"), bobAuth, "{\"confirm\": \"" + alice.getUsername() + "\"}")
+                    .andExpect(status().isBadRequest());
+
+            assertThat(userRepository.findById(alice.getId())).isPresent();
+            assertThat(userRepository.findById(bob.getId())).isPresent();
         }
     }
 
