@@ -23,6 +23,10 @@ public class MobileAwareAuthorizationRequestResolver implements OAuth2Authorizat
         this.delegate = new DefaultOAuth2AuthorizationRequestResolver(
                 clientRegistrationRepository,
                 "/oauth2/authorization");
+        // Always show Google's account chooser instead of silently reusing the
+        // account the browser is already signed in with.
+        this.delegate.setAuthorizationRequestCustomizer(builder ->
+                builder.additionalParameters(params -> params.put("prompt", "select_account")));
     }
 
     @Override
