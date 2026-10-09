@@ -60,7 +60,7 @@ Only variable names are listed here. Never commit real values.
 | `JWT_SECRET` | Yes | none | Base64-encoded HMAC-SHA256 signing key |
 | `JWT_EXPIRATION` | Yes | none | Token lifetime in **milliseconds** (`2592000000` = 30 days) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Yes | none | Google OAuth2 client |
-| `STEAM_API_KEY` | No | empty | Steam Web API key; Steam calls fail without it |
+| `STEAM_API_KEY` | No | empty | Steam Web API key; without it linking still works but sync answers `503 STEAM_NOT_CONFIGURED` |
 | `FRONTEND_URL` | Prod | `http://localhost:4200` | Web app origin; used for email links and the web OAuth callback |
 | `PUBLIC_API_URL` | Prod | `http://localhost:8080` | Public API origin; used to build the Steam OpenID `return_to` |
 | `CORS_ALLOWED_ORIGINS` | Prod | `http://localhost:4200,https://localhost` | Comma-separated allowed origins (`https://localhost` is the Capacitor Android WebView) |
@@ -206,23 +206,36 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 |---|---|---|---|
 | POST | `/connect-token` | Required | Issues a one-time state token (valid 10 min) for the current user |
 | GET | `/login?state=` | Public | Full-page redirect to Steam OpenID; identity travels in `state` |
-| GET | `/callback` | Public | Verifies Steam's response, upserts `SteamLink`, redirects to the client with a one-time code |
-| POST | `/sync` | Required | Pulls the Steam library: new titles become pending games, confirmed ones get playtime deltas |
+| GET | `/callback` | Public | Verifies Steam's response, upserts `SteamLink`, ALWAYS redirects to the client callback: `?code=…&next=steam` or `?error=steam_link_failed\|steam_account_already_linked&next=steam` |
+| GET | `/status` | Required | `{linked, steamId, personaName, lastSyncAt, configured}` |
+| DELETE | `/link` | Required | Unlinks (`204`). Confirmed games keep their hours; pending Steam placeholders and the ignore list are deleted |
+| POST | `/sync` | Required | Pulls the Steam library → `{gamesScanned, newGamesPending, linkedExisting, gamesUpdated, ignored, skipped, errored, profilePrivate}` |
 | GET | `/pending` | Required | Games discovered by sync awaiting review |
-| PUT | `/pending/{gameId}/confirm` | Required | Confirms category/saga/genres and materializes accumulated Steam hours |
+| PUT | `/pending/{gameId}/confirm` | Required | Confirms category/saga/genres and imports the Steam total |
+| PUT | `/pending/{gameId}/ignore` | Required | Deletes the placeholder and never re-imports that app (`204`) |
+| GET | `/ignored` | Required | Ignored apps `{appId, name, ignoredAt}` |
+| DELETE | `/ignored/{appId}` | Required | Un-ignores; the app comes back as pending on the next sync (`204`) |
 
-`SteamSyncScheduler` also re-syncs every linked account every 6 hours.
+Errors carry a stable code in `message`: `503 STEAM_NOT_CONFIGURED` (blank `STEAM_API_KEY`), `404 STEAM_NOT_LINKED`, `409 SYNC_IN_PROGRESS`, `409 STEAM_LINK_CHANGED`, `429 STEAM_RATE_LIMITED`, `502 STEAM_API_KEY_REJECTED`, `503 STEAM_UNAVAILABLE`.
+
+Sync rules:
+- The Steam HTTP call (5 s connect / 15 s read timeout) runs outside any DB transaction; already-linked apps are then updated in one transaction and each new app is attached/created in its own, so one failing app is counted as `errored` without aborting the rest.
+- An app with no link whose name matches an existing game (case-insensitive) is attached to it with the current Steam playtime as baseline: those hours were already logged by hand, only later deltas are added.
+- Confirming an `ONLINE`/`HYBRID` game sets `OnlinePlaytime` to `max(existing, steamTotal)`; later syncs add deltas. A negative delta (refund, reset) only lowers the baseline.
+- One Steam account per Pytra user (`steam_links.steam_id` is unique). Re-linking a different account resets all Steam baselines.
+- `SteamSyncScheduler` re-syncs every linked account every 6 hours (first run 10 min after startup) and is skipped when `STEAM_API_KEY` is blank (linking still works). A run aborts after 3 consecutive `STEAM_UNAVAILABLE`. A per-user in-memory guard (single-instance deployment), held until commit, serializes sync, unlink, account switch, confirm and ignore (`409 SYNC_IN_PROGRESS`; a blocked account switch redirects with `error=steam_sync_in_progress`). `last_sync_at` is written with a conditional UPDATE on the expected `steam_id`, so a relink during the Steam call yields `STEAM_LINK_CHANGED` instead of being reverted.
 
 ## Tests
 
 | Command | Needs Docker | What runs |
 |---|---|---|
 | `./mvnw test` | Yes | Everything, including the integration tests below |
-| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest"` | No | Unit tests only |
+| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest,SteamWebApiClientTest,SteamSyncSchedulerTest"` | No | Unit tests only |
 
 Integration tests extend `AbstractIntegrationTest`: full Spring context, MockMvc, the `test` profile (`src/test/resources/application-test.yaml`, which supplies dummy JWT/Google/mail settings so no environment variable is needed) and one shared PostgreSQL Testcontainer via `@ServiceConnection`.
 
 - `TenantIsolationTests` proves that one user can never read, modify or delete another user's games, sagas, experiences, online playtime, stats, profile or Steam pending queue (cross-user access is always `404`), and that every protected endpoint answers `401` without a valid token.
+- `SteamIntegrationTests` covers the Steam sync with the HTTP client mocked: pending creation, same-name linking, per-app failure isolation, private profiles, negative deltas, ignore/unignore, status, unlink/relink and cross-user isolation.
 - `ApiDocsTests` checks that `/v3/api-docs` is served outside `prod`.
 - `PytraApiApplicationTests` is the context-load smoke test.
 

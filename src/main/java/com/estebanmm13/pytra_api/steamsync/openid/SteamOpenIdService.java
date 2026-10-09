@@ -1,6 +1,7 @@
 package com.estebanmm13.pytra_api.steamsync.openid;
 
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -11,6 +12,7 @@ import org.springframework.web.client.RestClient;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.net.URLDecoder;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +34,17 @@ public class SteamOpenIdService {
     private static final String STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login";
     private static final Pattern CLAIMED_ID_PATTERN = Pattern.compile("^https://steamcommunity\\.com/openid/id/(\\d+)$");
 
-    private final RestClient restClient = RestClient.create();
+    private final RestClient restClient = RestClient.builder()
+            .requestFactory(timeoutRequestFactory())
+            .build();
+
+    /** 5s connect / 15s read so a slow Steam can never hang the callback request. */
+    private static SimpleClientHttpRequestFactory timeoutRequestFactory() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(5));
+        requestFactory.setReadTimeout(Duration.ofSeconds(15));
+        return requestFactory;
+    }
 
     public String buildLoginRedirectUrl(String returnTo, String realm) {
         String params = "openid.ns=" + encode("http://specs.openid.net/auth/2.0")
