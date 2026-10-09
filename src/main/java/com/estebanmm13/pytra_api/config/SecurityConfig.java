@@ -75,9 +75,8 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // http://localhost: origen de la WebView de Capacitor en Android (configurado
-        // con androidScheme: 'http' para evitar contenido mixto contra el backend local sin TLS).
-        configuration.setAllowedOrigins(List.of("http://localhost:4200", "http://localhost"));
+        // https://localhost: origen por defecto de la WebView de Capacitor en Android.
+        configuration.setAllowedOrigins(List.of("http://localhost:4200", "https://localhost"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
 
