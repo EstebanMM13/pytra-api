@@ -7,6 +7,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,6 +34,32 @@ public class StatsController {
     @GetMapping("/by-year")
     public ResponseEntity<List<YearStatDto>> getByYear() {
         return ResponseEntity.ok(statsService.getByYear(currentUserResolver.getCurrentUserId()));
+    }
+
+    /** Years that have at least one experience, newest first (drives the year tabs). */
+    @GetMapping("/years")
+    public ResponseEntity<List<Integer>> getYears() {
+        return ResponseEntity.ok(statsService.getYears(currentUserResolver.getCurrentUserId()));
+    }
+
+    /** Year in review; a year without data answers 200 with zeros and empty lists. */
+    @GetMapping("/years/{year}")
+    public ResponseEntity<YearSummaryDto> getYearSummary(@PathVariable int year) {
+        return ResponseEntity.ok(statsService.getYearSummary(currentUserResolver.getCurrentUserId(), year));
+    }
+
+    /** Creates or replaces the year's free-text note; blank texts are stored as null. */
+    @PutMapping("/years/{year}/note")
+    public ResponseEntity<YearNoteDto> upsertYearNote(
+            @PathVariable int year,
+            @Valid @RequestBody YearNoteRequestDto yearNoteRequestDto) {
+        return ResponseEntity.ok(statsService.upsertYearNote(currentUserResolver.getCurrentUserId(), year, yearNoteRequestDto));
+    }
+
+    /** EN_CURSO experiences across all games. */
+    @GetMapping("/in-progress")
+    public ResponseEntity<List<InProgressExperienceDto>> getInProgress() {
+        return ResponseEntity.ok(statsService.getInProgress(currentUserResolver.getCurrentUserId()));
     }
 
     @GetMapping("/by-saga")

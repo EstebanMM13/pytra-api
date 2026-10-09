@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.games.mapper;
 
+import com.estebanmm13.pytra_api.experiences.service.gameStats.GameExperienceStats;
 import com.estebanmm13.pytra_api.games.dto.game.GameResponseDto;
 import com.estebanmm13.pytra_api.games.model.Game;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +12,12 @@ public class GameMapper {
 
     private final GenreMapper genreMapper;
 
+    /** Without library aggregates (they stay null). */
     public GameResponseDto toResponseDto(Game game) {
+        return toResponseDto(game, null);
+    }
+
+    public GameResponseDto toResponseDto(Game game, GameExperienceStats stats) {
         if (game == null) return null;
 
         return new GameResponseDto(
@@ -28,7 +34,13 @@ public class GameMapper {
                 game.getGenres().stream()
                         .map(genreMapper::toResponseDto)
                         .toList(),
-                game.getUpdatedAt()
+                game.getUpdatedAt(),
+                stats != null ? stats.experienceCount() : null,
+                stats != null ? stats.totalHours() : null,
+                stats != null ? stats.bestRating() : null,
+                stats != null ? stats.lastExperienceStatus() : null,
+                stats != null ? stats.lastPlayedYear() : null,
+                stats != null ? stats.hasPlatinum() : null
         );
     }
 }

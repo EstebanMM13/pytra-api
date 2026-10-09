@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.games.dto.game;
 
+import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.games.dto.genre.GenreResponseDto;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
@@ -25,4 +26,13 @@ public class GameResponseDto {
     private ReviewStatus reviewStatus;
     private List<GenreResponseDto> genres;
     private LocalDateTime updatedAt;
+
+    // Library aggregates over the game's experiences. Filled by the /games endpoints;
+    // null on responses that don't compute them (Steam pending/confirm).
+    private Long experienceCount;
+    private Double totalHours;
+    private Integer bestRating;
+    private ExperienceStatus lastExperienceStatus;
+    private Integer lastPlayedYear;
+    private Boolean hasPlatinum;
 }

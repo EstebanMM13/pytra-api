@@ -12,4 +12,10 @@ public class StatsSummaryDto {
     private double totalSingleplayerHours;
     private double totalOnlineHours;
     private long totalPlatinums;
+    /** Mean rating of the rated experiences, 2 decimals; null when nothing is rated. */
+    private Double averageRating;
+    private long replayCount;
+    private long completedCount;
+    private long abandonedCount;
+    private long inProgressCount;
 }

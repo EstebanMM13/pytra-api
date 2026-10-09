@@ -2,6 +2,8 @@ package com.estebanmm13.pytra_api.games.service.gameService;
 
 import com.estebanmm13.pytra_api.error.DuplicateResourceException;
 import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
+import com.estebanmm13.pytra_api.experiences.service.gameStats.GameExperienceStats;
+import com.estebanmm13.pytra_api.experiences.service.gameStats.GameExperienceStatsCalculator;
 import com.estebanmm13.pytra_api.games.dto.game.GameRequestDto;
 import com.estebanmm13.pytra_api.games.dto.game.GameResponseDto;
 import com.estebanmm13.pytra_api.games.mapper.GameMapper;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -29,13 +32,17 @@ public class GameServiceImpl implements GameService {
     private final SagaRepository sagaRepository;
     private final GenreRepository genreRepository;
     private final GameMapper gameMapper;
+    private final GameExperienceStatsCalculator gameExperienceStatsCalculator;
 
     @Override
     public List<GameResponseDto> findAllByUser(Long userId) {
-        List<Game> games = gameRepository.findAllByUserId(userId);
+        // Saga and genres fetched in the same query, aggregates in one more: no per-game queries.
+        List<Game> games = gameRepository.findAllByUserIdWithSagaAndGenres(userId);
+        Map<Long, GameExperienceStats> statsByGame = gameExperienceStatsCalculator.byGame(userId);
         List<GameResponseDto> gameResponseDtos = new ArrayList<>();
         for (Game game : games) {
-            gameResponseDtos.add(gameMapper.toResponseDto(game));
+            gameResponseDtos.add(gameMapper.toResponseDto(
+                    game, statsByGame.getOrDefault(game.getId(), GameExperienceStats.EMPTY)));
         }
         return gameResponseDtos;
     }
@@ -44,7 +51,7 @@ public class GameServiceImpl implements GameService {
     public GameResponseDto findById(Long id, Long userId) {
         Optional<Game> game = gameRepository.findByIdAndUserId(id, userId);
         if (game.isPresent()) {
-            return gameMapper.toResponseDto(game.get());
+            return gameMapper.toResponseDto(game.get(), gameExperienceStatsCalculator.forGame(id, userId));
         } else {
             throw new ResourceNotFoundException("Game not found");
         }
@@ -73,7 +80,7 @@ public class GameServiceImpl implements GameService {
                 .build();
 
         gameRepository.save(game);
-        return gameMapper.toResponseDto(game);
+        return gameMapper.toResponseDto(game, GameExperienceStats.EMPTY);
     }
 
     @Override
@@ -102,7 +109,7 @@ public class GameServiceImpl implements GameService {
         game.setGenres(genres);
 
         gameRepository.save(game);
-        return gameMapper.toResponseDto(game);
+        return gameMapper.toResponseDto(game, gameExperienceStatsCalculator.forGame(id, userId));
     }
 
     @Override

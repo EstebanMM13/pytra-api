@@ -148,8 +148,10 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 ### Current user (`/api/v1/users`)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/me` | Profile: username, display name, email, whether a password is set, whether Google is linked |
+| GET | `/me` | Profile: username, display name, email, whether a password is set, whether Google is linked, `createdAt` |
 | PATCH | `/me` | Change username |
+| GET | `/me/export?format=csv\|markdown` | Download all the user's data. CSV: one row per experience with the game columns repeated (games without runs get one row), UTF-8 with BOM, formula-like text prefixed with `'`. Markdown (Obsidian-friendly): front matter, one `##` section per game with its `###` runs, then the yearly notes. Unknown format: `400 INVALID_EXPORT_FORMAT` |
+| DELETE | `/me` | Body `{"confirm": "<username>"}` (case-insensitive, else `400 CONFIRMATION_MISMATCH`). Deletes the user and everything they own in one transaction (all user tables cascade from `users`); `204`. Blocked with `409 SYNC_IN_PROGRESS` while a Steam sync runs |
 
 ### Genres (`/api/v1/genres`, global catalog)
 | Method | Endpoint | Description |
@@ -169,8 +171,8 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 ### Games (`/api/v1/games`)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/` | List the current user's games |
-| GET | `/{id}` | Get a game |
+| GET | `/` | List the current user's games, with library aggregates: `experienceCount`, `totalHours`, `bestRating`, `lastExperienceStatus`, `lastPlayedYear`, `hasPlatinum` (two queries in total, no N+1) |
+| GET | `/{id}` | Get a game (same aggregates) |
 | POST | `/` | Create a game (optionally linked to a saga and/or genres) |
 | PUT | `/{id}` | Update a game |
 | DELETE | `/{id}` | Delete a game |
@@ -193,13 +195,26 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 ### Stats (`/api/v1/stats`)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/summary` | Totals: games, sagas, experiences, hours (singleplayer/online separate), platinums |
-| GET | `/by-year` | Hours and experience count per year |
+| GET | `/summary` | Totals: games, sagas, experiences, hours (singleplayer/online separate), platinums, `averageRating`, `replayCount`, `completedCount`, `abandonedCount`, `inProgressCount` |
+| GET | `/by-year` | Hours, experience count and `averageRating` per year |
+| GET | `/years` | Years with data, newest first (`[2025, 2024]`) |
+| GET | `/years/{year}` | Year in review: totals, `months` (always 12), `hoursWithoutMonth`, the year's runs by rating, automatic highlights (`goty`, `topRated`, `mostPlayed`, `topSagas`, `topGenres`, `surprises`, `disappointments`) and `note` |
+| PUT | `/years/{year}/note` | Upsert the yearly free-text note `{summary, highlights}` (max 10 000 chars each, blank = null) |
+| GET | `/in-progress` | `EN_CURSO` runs across all games, most recently started first |
 | GET | `/by-saga` | Hours and game count per saga (includes a "no saga" bucket) |
 | GET | `/by-genre` | Hours and game count per genre |
 | GET | `/top-rated?limit=` | Highest-rated experiences |
 | GET | `/most-played/singleplayer?limit=` | Games ranked by `Experience` hours |
 | GET | `/most-played/online?limit=` | Games ranked by `OnlinePlaytime` hours (never merged with singleplayer) |
+
+Averages are over rated experiences only, rounded to 2 decimals, `null` when nothing is rated. Year endpoints accept 1970 to next year (`400 INVALID_YEAR` otherwise).
+
+Year attribution (`ExperiencePeriod`, used by `/by-year`, `/years`, year totals, months and library aggregates): the explicit `year` field, else the year of `endDate`, else of `startDate`; runs with none are left out. Month: `endDate` if it falls in that year, else `startDate` if it does, else no month (counted in `hoursWithoutMonth`).
+
+Highlights (`YearHighlightsCalculator`) use two different attributions:
+- **Completed in year**: `COMPLETADO` with `endDate` in the year. Feeds `goty` (best average per game), `topRated` (top 5), `topSagas` / `topGenres` (top 5 by run count; games without a saga are skipped, a run counts once per genre of its game), `surprises` (average >= 8.5, max 3, excluding the goty) and `disappointments` (average <= 6, worst first, max 3).
+- **Played in year**: `year` field equals the year, any status. Feeds `mostPlayed` (top 5 by hours).
+- Ties: more hours first, then game name.
 
 ### Steam (`/api/v1/integrations/steam`)
 | Method | Endpoint | Auth | Description |
@@ -230,12 +245,13 @@ Sync rules:
 | Command | Needs Docker | What runs |
 |---|---|---|
 | `./mvnw test` | Yes | Everything, including the integration tests below |
-| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest,SteamWebApiClientTest,SteamSyncSchedulerTest"` | No | Unit tests only |
+| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest,SteamWebApiClientTest,SteamSyncSchedulerTest,ExperiencePeriodTest,StatsMathTest,YearHighlightsCalculatorTest,AccountExportWriterTest"` | No | Unit tests only |
 
 Integration tests extend `AbstractIntegrationTest`: full Spring context, MockMvc, the `test` profile (`src/test/resources/application-test.yaml`, which supplies dummy JWT/Google/mail settings so no environment variable is needed) and one shared PostgreSQL Testcontainer via `@ServiceConnection`.
 
 - `TenantIsolationTests` proves that one user can never read, modify or delete another user's games, sagas, experiences, online playtime, stats, profile or Steam pending queue (cross-user access is always `404`), and that every protected endpoint answers `401` without a valid token.
 - `SteamIntegrationTests` covers the Steam sync with the HTTP client mocked: pending creation, same-name linking, per-app failure isolation, private profiles, negative deltas, ignore/unignore, status, unlink/relink and cross-user isolation.
+- `StatsIntegrationTests`, `GameLibraryAggregatesTests` and `AccountIntegrationTests` cover averages and status counts, year/month attribution, highlights, yearly notes, in-progress runs, library aggregates, both export formats and account deletion (every user-owned table emptied, other users untouched).
 - `ApiDocsTests` checks that `/v3/api-docs` is served outside `prod`.
 - `PytraApiApplicationTests` is the context-load smoke test.
 

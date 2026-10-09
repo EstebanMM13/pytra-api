@@ -19,6 +19,6 @@ public interface GameRepository extends JpaRepository<Game, Long> {
     long countByUserId(Long userId);
     List<Game> findAllByUserIdAndReviewStatus(Long userId, ReviewStatus reviewStatus);
 
-    @Query("SELECT DISTINCT g FROM Game g LEFT JOIN FETCH g.saga LEFT JOIN FETCH g.genres WHERE g.userId = :userId")
+    @Query("SELECT DISTINCT g FROM Game g LEFT JOIN FETCH g.saga LEFT JOIN FETCH g.genres WHERE g.userId = :userId ORDER BY g.id")
     List<Game> findAllByUserIdWithSagaAndGenres(@Param("userId") Long userId);
 }

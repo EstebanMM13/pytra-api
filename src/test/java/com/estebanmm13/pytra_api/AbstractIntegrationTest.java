@@ -12,12 +12,18 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.http.MediaType;
 
 import java.io.UnsupportedEncodingException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Shared setup for full-context integration tests: one Spring context and one Postgres
@@ -61,6 +67,33 @@ public abstract class AbstractIntegrationTest {
         return "Bearer " + jwtService.generateTokenWithRole(user.getUsername(), user.getRole().name(), user.getId());
     }
 
+    /** Performs the request with the given Authorization header value. */
+    protected ResultActions performAs(String authorization, MockHttpServletRequestBuilder builder) throws Exception {
+        return mockMvc.perform(builder.header("Authorization", authorization));
+    }
+
+    /** Performs the request with the given Authorization header value and a JSON body. */
+    protected ResultActions performAs(String authorization, MockHttpServletRequestBuilder builder,
+                                      String jsonBody) throws Exception {
+        return mockMvc.perform(builder
+                .header("Authorization", authorization)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(jsonBody));
+    }
+
+    /** Creates a SINGLEPLAYER game through the API; {@code extraJson} is appended to the body (e.g. {@code , "sagaId": 1}). */
+    protected Long createGameVia(String authorization, String name, String extraJson) throws Exception {
+        String body = "{\"name\": \"" + name + "\", \"category\": \"SINGLEPLAYER\"" + extraJson + "}";
+        return readId(performAs(authorization, post("/api/v1/games"), body)
+                .andExpect(status().isCreated()).andReturn());
+    }
+
+    /** Logs an experience through the API; {@code json} is the full request body. */
+    protected Long createExperienceVia(String authorization, Long gameId, String json) throws Exception {
+        return readId(performAs(authorization, post("/api/v1/games/{gameId}/experiences", gameId), json)
+                .andExpect(status().isCreated()).andReturn());
+    }
+
     protected static Long readId(MvcResult result) throws UnsupportedEncodingException {
         Number id = JsonPath.read(result.getResponse().getContentAsString(), "$.id");
         return id.longValue();
@@ -73,5 +106,18 @@ public abstract class AbstractIntegrationTest {
     protected static List<Long> readIds(MvcResult result, String path) throws UnsupportedEncodingException {
         List<Number> ids = JsonPath.read(result.getResponse().getContentAsString(), path);
         return ids.stream().filter(Objects::nonNull).map(Number::longValue).toList();
+    }
+
+    /** Experience request body; null values are omitted. */
+    protected static String run(String label, String status, Integer rating, Double hours, Integer year,
+                                 String startDate, String endDate, String extraJson) {
+        StringBuilder json = new StringBuilder("{\"runLabel\": \"" + label + "\", \"status\": \"" + status
+                + "\", \"platform\": \"PC\"");
+        if (rating != null) json.append(", \"rating\": ").append(rating);
+        if (hours != null) json.append(", \"hours\": ").append(hours);
+        if (year != null) json.append(", \"year\": ").append(year);
+        if (startDate != null) json.append(", \"startDate\": \"").append(startDate).append('"');
+        if (endDate != null) json.append(", \"endDate\": \"").append(endDate).append('"');
+        return json.append(extraJson).append('}').toString();
     }
 }
