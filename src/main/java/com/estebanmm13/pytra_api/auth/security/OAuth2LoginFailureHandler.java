@@ -21,6 +21,8 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
 
+    static final String GENERIC_ERROR = "google_login_failed";
+
     private final ClientRedirects clientRedirects;
 
     @Override
@@ -33,6 +35,13 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
                 : exception.getClass().getSimpleName();
         log.warn("Google login failed: {}", reason);
         boolean mobile = MobileFlagAuthorizationRequestRepository.isMobileFlow(request);
-        response.sendRedirect(clientRedirects.callbackWithError(mobile, "google_login_failed"));
+        response.sendRedirect(clientRedirects.callbackWithError(mobile, clientErrorFor(reason)));
+    }
+
+    /** Maps the failure to a fixed client error value; exception text is never forwarded. */
+    static String clientErrorFor(String reason) {
+        return GoogleOidcUserService.REGISTRATION_CLOSED_ERROR_CODE.equals(reason)
+                ? GoogleOidcUserService.REGISTRATION_CLOSED_ERROR_CODE
+                : GENERIC_ERROR;
     }
 }

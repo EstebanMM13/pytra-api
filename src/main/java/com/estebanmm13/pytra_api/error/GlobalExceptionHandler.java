@@ -34,6 +34,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(apiError);
     }
 
+    @ExceptionHandler(RegistrationClosedException.class)
+    public ResponseEntity<ApiError> handleRegistrationClosed(RegistrationClosedException e) {
+        ApiError apiError = new ApiError(HttpStatus.FORBIDDEN.value(), RegistrationClosedException.CODE, Map.of(), LocalDateTime.now());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(apiError);
+    }
+
     @ExceptionHandler(InvalidTokenException.class)
     public ResponseEntity<ApiError> handleInvalidToken(InvalidTokenException e) {
         ApiError apiError = new ApiError(HttpStatus.BAD_REQUEST.value(),e.getMessage(), Map.of() ,LocalDateTime.now());

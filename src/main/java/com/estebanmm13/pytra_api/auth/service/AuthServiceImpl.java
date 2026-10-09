@@ -18,7 +18,9 @@ import com.estebanmm13.pytra_api.auth.repository.PasswordResetTokenRepository;
 import com.estebanmm13.pytra_api.auth.repository.UserRepository;
 import com.estebanmm13.pytra_api.auth.security.JwtService;
 import com.estebanmm13.pytra_api.auth.security.TokenGenerator;
+import com.estebanmm13.pytra_api.auth.validation.RegistrationPolicy;
 import com.estebanmm13.pytra_api.auth.validation.UsernamePolicy;
+import com.estebanmm13.pytra_api.error.RegistrationClosedException;
 import jakarta.annotation.PostConstruct;
 import com.estebanmm13.pytra_api.error.DuplicateResourceException;
 import com.estebanmm13.pytra_api.error.EmailNotVerifiedException;
@@ -55,6 +57,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final ExchangeCodeTokenRepository  exchangeCodeTokenRepository;
     private final AuthEmailService authEmailService;
+    private final RegistrationPolicy registrationPolicy;
 
     // Hash compared against when the account does not exist (or has no password), so a failed login costs
     // the same bcrypt work either way and response time does not reveal which identifiers are registered.
@@ -71,6 +74,12 @@ public class AuthServiceImpl implements AuthService {
 
         String normalizedUsername = UsernamePolicy.normalize(registerRequestDto.getUsername());
         String normalizedEmail = UsernamePolicy.normalizeEmail(registerRequestDto.getEmail());
+
+        // Checked first: nothing is created or sent, and uninvited callers learn nothing about existing accounts.
+        if (!registrationPolicy.isAllowed(normalizedEmail)) {
+            log.warn("Registration rejected: email not on the invite allowlist");
+            throw new RegistrationClosedException();
+        }
 
         if (userRepository.existsByUsername(normalizedUsername)) {
             log.warn("Registration attempt with existing username: {}", registerRequestDto.getUsername());

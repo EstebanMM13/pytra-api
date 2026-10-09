@@ -33,6 +33,10 @@ app:
   mobile-redirect-uri: ${MOBILE_REDIRECT_URI:com.estebanmm13.pytra://oauth-callback}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200,https://localhost}
+  # Invite-only registration: comma-separated emails allowed to create an account (password or Google).
+  # Empty = registration open to everyone. Existing users can always sign in.
+  registration:
+    allowed-emails: ${ALLOWED_EMAILS:}
   # Transactional email via Brevo's HTTP API. With no API key, emails are only logged (local dev).
   mail:
     brevo-api-key: ${BREVO_API_KEY:}

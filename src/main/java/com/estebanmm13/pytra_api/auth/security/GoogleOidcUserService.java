@@ -4,13 +4,14 @@ import com.estebanmm13.pytra_api.auth.model.PytraOidcUser;
 import com.estebanmm13.pytra_api.auth.model.Role;
 import com.estebanmm13.pytra_api.auth.model.User;
 import com.estebanmm13.pytra_api.auth.repository.UserRepository;
+import com.estebanmm13.pytra_api.auth.validation.RegistrationPolicy;
 import com.estebanmm13.pytra_api.auth.validation.UsernamePolicy;
-import com.estebanmm13.pytra_api.error.EmailNotVerifiedException;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.stereotype.Service;
 
@@ -20,11 +21,16 @@ import java.util.Optional;
 @Service
 public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest, OidcUser> {
 
+    /** OAuth2 error code for a sign-up blocked by the invite allowlist; also the client callback error value. */
+    public static final String REGISTRATION_CLOSED_ERROR_CODE = "registration_closed";
+
     private final UserRepository userRepository;
+    private final RegistrationPolicy registrationPolicy;
     private final OidcUserService oidcUserService = new OidcUserService();
 
-    public GoogleOidcUserService(UserRepository userRepository) {
+    public GoogleOidcUserService(UserRepository userRepository, RegistrationPolicy registrationPolicy) {
         this.userRepository = userRepository;
+        this.registrationPolicy = registrationPolicy;
     }
 
     @Override
@@ -57,8 +63,12 @@ public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest,
         if (!emailVerified) {
             // Never create or link an account from an email Google has not verified:
             // it would let someone claim an address they do not own.
-            throw new EmailNotVerifiedException("Google account email is not verified");
+            throw new OAuth2AuthenticationException(new OAuth2Error("email_not_verified"));
         } else {
+            if (!registrationPolicy.isAllowed(email)) {
+                // Only brand-new accounts are gated; existing users matched above always sign in.
+                throw new OAuth2AuthenticationException(new OAuth2Error(REGISTRATION_CLOSED_ERROR_CODE));
+            }
             String usernameValido = devolverUsernameValido(email);
             User newUser = User.builder()
                     .username(usernameValido)
