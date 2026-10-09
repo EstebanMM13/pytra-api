@@ -10,6 +10,7 @@ import com.estebanmm13.pytra_api.stats.dto.RatedGameDto;
 import com.estebanmm13.pytra_api.stats.dto.YearGenreStatDto;
 import com.estebanmm13.pytra_api.stats.dto.YearSagaStatDto;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -40,8 +41,8 @@ public final class YearHighlightsCalculator {
     public static final int TOP_LIMIT = 5;
     public static final int SURPRISE_LIMIT = 3;
     public static final int DISAPPOINTMENT_LIMIT = 3;
-    public static final double SURPRISE_MIN_RATING = 8.5;
-    public static final double DISAPPOINTMENT_MAX_RATING = 6.0;
+    public static final BigDecimal SURPRISE_MIN_RATING = new BigDecimal("8.5");
+    public static final BigDecimal DISAPPOINTMENT_MAX_RATING = new BigDecimal("6");
 
     private static final Comparator<String> BY_NAME =
             Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER);
@@ -102,14 +103,14 @@ public final class YearHighlightsCalculator {
         RatedGameDto goty = ranked.isEmpty() ? null : ranked.getFirst();
 
         List<RatedGameBriefDto> surprises = ranked.stream()
-                .filter(game -> game.getAvgRating() >= SURPRISE_MIN_RATING)
+                .filter(game -> game.getAvgRating().compareTo(SURPRISE_MIN_RATING) >= 0)
                 .filter(game -> goty == null || !game.getGameId().equals(goty.getGameId()))
                 .limit(SURPRISE_LIMIT)
                 .map(YearHighlightsCalculator::brief)
                 .toList();
 
         List<RatedGameBriefDto> disappointments = ranked.stream()
-                .filter(game -> game.getAvgRating() <= DISAPPOINTMENT_MAX_RATING)
+                .filter(game -> game.getAvgRating().compareTo(DISAPPOINTMENT_MAX_RATING) <= 0)
                 .sorted(WORST_FIRST)
                 .limit(DISAPPOINTMENT_LIMIT)
                 .map(YearHighlightsCalculator::brief)
@@ -130,7 +131,7 @@ public final class YearHighlightsCalculator {
         Map<Long, List<Experience>> byGame = groupBy(completed, Experience::getGameId);
         List<RatedGameDto> ranked = new ArrayList<>();
         byGame.forEach((gameId, runs) -> {
-            Double avg = StatsMath.averageRating(runs.stream().map(Experience::getRating).toList());
+            BigDecimal avg = StatsMath.averageRating(runs.stream().map(Experience::getRating).toList());
             if (avg != null) {
                 ranked.add(new RatedGameDto(gameId, gamesById.get(gameId).getName(), avg, runs.size(), sumHours(runs)));
             }

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,6 +29,9 @@ public interface ExperienceRepository extends JpaRepository<Experience, Long> {
     @Query("SELECT e.gameId, COALESCE(SUM(e.hours), 0.0) FROM Experience e WHERE e.userId = :userId GROUP BY e.gameId")
     List<Object[]> sumHoursGroupedByGameId(@Param("userId") Long userId);
 
-    @Query("SELECT AVG(e.rating) FROM Experience e WHERE e.userId = :userId AND e.rating IS NOT NULL")
-    Double averageRatingByUserId(@Param("userId") Long userId);
+    long countByUserIdAndRatingIsNotNull(Long userId);
+
+    /** Exact sum (NUMERIC) so the average is computed without floating point; null when nothing is rated. */
+    @Query("SELECT SUM(e.rating) FROM Experience e WHERE e.userId = :userId AND e.rating IS NOT NULL")
+    BigDecimal sumRatingByUserId(@Param("userId") Long userId);
 }

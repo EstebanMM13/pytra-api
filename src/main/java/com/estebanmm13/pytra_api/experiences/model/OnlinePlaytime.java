@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @NoArgsConstructor
@@ -30,7 +31,8 @@ public class OnlinePlaytime {
 
     private LocalDateTime lastSessionAt;
 
-    private Integer generalRating;
+    @Column(precision = 4, scale = 2)
+    private BigDecimal generalRating;
 
     @Column(columnDefinition = "TEXT")
     private String notes;

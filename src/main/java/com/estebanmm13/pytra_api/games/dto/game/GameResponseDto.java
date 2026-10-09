@@ -7,6 +7,7 @@ import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,7 +32,7 @@ public class GameResponseDto {
     // null on responses that don't compute them (Steam pending/confirm).
     private Long experienceCount;
     private Double totalHours;
-    private Integer bestRating;
+    private BigDecimal bestRating;
     private ExperienceStatus lastExperienceStatus;
     private Integer lastPlayedYear;
     private Boolean hasPlatinum;

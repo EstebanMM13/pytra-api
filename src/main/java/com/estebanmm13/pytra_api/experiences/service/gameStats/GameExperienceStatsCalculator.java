@@ -2,10 +2,12 @@ package com.estebanmm13.pytra_api.experiences.service.gameStats;
 
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperiencePeriod;
+import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -41,14 +43,14 @@ public class GameExperienceStatsCalculator {
             return GameExperienceStats.EMPTY;
         }
         double totalHours = 0;
-        Integer bestRating = null;
+        BigDecimal bestRating = null;
         Integer lastPlayedYear = null;
         boolean hasPlatinum = false;
         Experience latest = null;
 
         for (Experience experience : experiences) {
             totalHours += experience.getHours() != null ? experience.getHours() : 0.0;
-            if (experience.getRating() != null && (bestRating == null || experience.getRating() > bestRating)) {
+            if (experience.getRating() != null && (bestRating == null || experience.getRating().compareTo(bestRating) > 0)) {
                 bestRating = experience.getRating();
             }
             Integer year = ExperiencePeriod.yearOf(experience);
@@ -61,6 +63,6 @@ public class GameExperienceStatsCalculator {
             }
         }
         return new GameExperienceStats(
-                experiences.size(), totalHours, bestRating, latest.getStatus(), lastPlayedYear, hasPlatinum);
+                experiences.size(), totalHours, Ratings.normalize(bestRating), latest.getStatus(), lastPlayedYear, hasPlatinum);
     }
 }

@@ -5,6 +5,7 @@ import com.estebanmm13.pytra_api.experiences.model.Platform;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Getter
@@ -17,7 +18,7 @@ public class YearExperienceDto {
     private String runLabel;
     private ExperienceStatus status;
     private Double hours;
-    private Integer rating;
+    private BigDecimal rating;
     private Boolean platinum;
     private Platform platform;
     /** Month (1-12) the run counts toward, or null when no date falls in the year. */

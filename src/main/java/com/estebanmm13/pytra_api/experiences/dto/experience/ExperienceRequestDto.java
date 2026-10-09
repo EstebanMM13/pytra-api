@@ -6,6 +6,7 @@ import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Getter
@@ -20,9 +21,11 @@ public class ExperienceRequestDto {
     @NotNull
     private ExperienceStatus status;
 
-    @Min(0)
-    @Max(10)
-    private Integer rating;
+    /** 0..10 with up to 2 decimals; more decimals are rejected (400), never rounded. */
+    @DecimalMin("0")
+    @DecimalMax("10")
+    @Digits(integer = 2, fraction = 2)
+    private BigDecimal rating;
 
     @PositiveOrZero
     private Double hours;

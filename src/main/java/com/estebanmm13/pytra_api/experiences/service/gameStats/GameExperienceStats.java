@@ -2,6 +2,8 @@ package com.estebanmm13.pytra_api.experiences.service.gameStats;
 
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 
+import java.math.BigDecimal;
+
 /**
  * Per-game aggregates over the game's experiences, used by the library listing.
  *
@@ -11,7 +13,7 @@ import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 public record GameExperienceStats(
         long experienceCount,
         double totalHours,
-        Integer bestRating,
+        BigDecimal bestRating,
         ExperienceStatus lastExperienceStatus,
         Integer lastPlayedYear,
         boolean hasPlatinum) {

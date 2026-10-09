@@ -186,6 +186,8 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 | PUT | `/api/v1/experiences/{id}` | Update a playthrough |
 | DELETE | `/api/v1/experiences/{id}` | Delete a playthrough |
 
+Ratings (`rating` here, `generalRating` in online playtime) are `0`–`10` with up to 2 decimals (e.g. `9.25`), stored as `NUMERIC(4,2)`. Values out of range or with more decimals (`9.255`) are rejected with `400` (never rounded). Responses return them as JSON numbers without trailing zeros (`9`, `9.5`, `9.25`). Jackson's float-to-int coercion is disabled globally (`accept-float-as-int: false`), so a decimal sent to an integer field (e.g. `"year": 2024.5`) fails with `400` instead of being silently truncated.
+
 ### Online playtime (`/api/v1/games/{gameId}/online-playtime`)
 | Method | Endpoint | Description |
 |---|---|---|
@@ -207,7 +209,7 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 | GET | `/most-played/singleplayer?limit=` | Games ranked by `Experience` hours |
 | GET | `/most-played/online?limit=` | Games ranked by `OnlinePlaytime` hours (never merged with singleplayer) |
 
-Averages are over rated experiences only, rounded to 2 decimals, `null` when nothing is rated. Year endpoints accept 1970 to next year (`400 INVALID_YEAR` otherwise).
+Averages are over rated experiences only, computed exactly (`BigDecimal`) and rounded to 2 decimals half up (`[9.25, 8.5]` → `8.88`), `null` when nothing is rated. Highlight thresholds are inclusive and applied to the rounded average (surprise `>= 8.5`, disappointment `<= 6`). Year endpoints accept 1970 to next year (`400 INVALID_YEAR` otherwise).
 
 Year attribution (`ExperiencePeriod`, used by `/by-year`, `/years`, year totals, months and library aggregates): the explicit `year` field, else the year of `endDate`, else of `startDate`; runs with none are left out. Month: `endDate` if it falls in that year, else `startDate` if it does, else no month (counted in `hoursWithoutMonth`).
 

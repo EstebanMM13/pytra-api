@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.account.export;
 
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
+import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.Genre;
 import com.estebanmm13.pytra_api.stats.model.YearNote;
@@ -65,7 +66,7 @@ public final class AccountExportWriter {
                         text(run.getRunLabel()),
                         value(run.getYear()),
                         value(run.getStatus()),
-                        value(run.getRating()),
+                        rating(run.getRating()),
                         number(run.getHours()),
                         value(run.getStartDate()),
                         value(run.getEndDate()),
@@ -111,7 +112,7 @@ public final class AccountExportWriter {
             for (Experience run : runs) {
                 out.append("\n### ").append(heading(run.getRunLabel())).append("\n\n");
                 field(out, "Status", value(run.getStatus()));
-                field(out, "Rating", run.getRating() != null ? run.getRating() + "/10" : null);
+                field(out, "Rating", run.getRating() != null ? rating(run.getRating()) + "/10" : null);
                 field(out, "Hours", number(run.getHours()));
                 field(out, "Year", value(run.getYear()));
                 field(out, "Start", value(run.getStartDate()));
@@ -183,6 +184,11 @@ public final class AccountExportWriter {
     /** 42.5 -> "42.5", 10.0 -> "10", never scientific notation. */
     static String number(Double value) {
         return value == null ? "" : BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
+    }
+
+    /** 9.00 -> "9", 9.50 -> "9.5", 9.25 -> "9.25". */
+    static String rating(BigDecimal value) {
+        return value == null ? "" : Ratings.normalize(value).toPlainString();
     }
 
     private static Double onlineHours(ExportData data, Game game) {

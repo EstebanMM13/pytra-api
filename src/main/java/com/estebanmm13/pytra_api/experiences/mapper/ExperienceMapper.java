@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.experiences.mapper;
 
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceResponseDto;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
+import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -15,7 +16,7 @@ public class ExperienceMapper {
                 experience.getRunLabel(),
                 experience.getYear(),
                 experience.getStatus(),
-                experience.getRating(),
+                Ratings.normalize(experience.getRating()),
                 experience.getHours(),
                 experience.getStartDate(),
                 experience.getEndDate(),

@@ -3,6 +3,8 @@ package com.estebanmm13.pytra_api.stats.dto;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+import java.math.BigDecimal;
+
 import java.util.List;
 
 /**
@@ -19,7 +21,7 @@ public class YearSummaryDto {
     private long completedCount;
     private long abandonedCount;
     /** Mean rating of the year's rated experiences, 2 decimals; null when none is rated. */
-    private Double averageRating;
+    private BigDecimal averageRating;
     private long platinumCount;
     /** Hours of runs that belong to the year but have no date inside it, so no month bucket. */
     private double hoursWithoutMonth;

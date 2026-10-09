@@ -109,7 +109,7 @@ public abstract class AbstractIntegrationTest {
     }
 
     /** Experience request body; null values are omitted. */
-    protected static String run(String label, String status, Integer rating, Double hours, Integer year,
+    protected static String run(String label, String status, Number rating, Double hours, Integer year,
                                  String startDate, String endDate, String extraJson) {
         StringBuilder json = new StringBuilder("{\"runLabel\": \"" + label + "\", \"status\": \"" + status
                 + "\", \"platform\": \"PC\"");
