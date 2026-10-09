@@ -78,13 +78,14 @@ public class GameServiceImpl implements GameService {
 
     @Override
     public GameResponseDto update(Long id, GameRequestDto gameRequestDto, Long userId) {
-        if (gameRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, gameRequestDto.getName(), id)) {
-            throw new DuplicateResourceException("Game already exists");
-        }
-
+        // Ownership first: a game that isn't the caller's must be a plain 404, whatever the payload.
         Optional<Game> gameOptional = gameRepository.findByIdAndUserId(id, userId);
         if (gameOptional.isEmpty()) {
             throw new ResourceNotFoundException("Game not found");
+        }
+
+        if (gameRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, gameRequestDto.getName(), id)) {
+            throw new DuplicateResourceException("Game already exists");
         }
 
         Saga saga = resolveSaga(gameRequestDto.getSagaId(), userId);

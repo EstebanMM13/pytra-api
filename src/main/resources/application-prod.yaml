@@ -22,3 +22,10 @@ server:
         secure: true
         http-only: true
         same-site: lax
+
+# OpenAPI docs / Swagger UI are a development aid only; don't expose the API surface in production.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

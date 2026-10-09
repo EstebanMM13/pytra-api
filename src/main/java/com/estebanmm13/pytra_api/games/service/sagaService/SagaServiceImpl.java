@@ -61,17 +61,16 @@ public class SagaServiceImpl implements SagaService {
     @Override
     public SagaResponseDto update(Long id, SagaRequestDto sagaRequestDto, Long userId) {
 
-        if (sagaRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, sagaRequestDto.getName(),id)) {
+        // Ownership first: a saga that isn't the caller's must be a plain 404, whatever the payload.
+        Saga saga = sagaRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Saga not found"));
+
+        if (sagaRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, sagaRequestDto.getName(), id)) {
             throw new DuplicateResourceException("Saga already exists");
         }
-        Optional<Saga> saga = sagaRepository.findByIdAndUserId(id,userId);
-        if (saga.isPresent()) {
-            saga.get().setName(sagaRequestDto.getName());
-            sagaRepository.save(saga.get());
-            return sagaMapper.toResponseDto(saga.get());
-        }else{
-            throw new ResourceNotFoundException("Saga not found");
-        }
+        saga.setName(sagaRequestDto.getName());
+        sagaRepository.save(saga);
+        return sagaMapper.toResponseDto(saga);
     }
 
     @Override

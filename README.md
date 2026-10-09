@@ -41,12 +41,12 @@ Without `BREVO_API_KEY`, verification and password-reset emails are **logged ins
 | Persistence | Spring Data JPA, PostgreSQL 16, Flyway (`ddl-auto: validate`) |
 | Security | Spring Security, stateless JWT (jjwt 0.12.6), OAuth2/OIDC login with Google |
 | Integrations | Steam OpenID 2.0 (hand-written, no client library), Steam Web API, Brevo transactional email (HTTP API) |
-| Validation / docs | Jakarta Bean Validation, springdoc-openapi 2.8.6 |
-| Tests | JUnit 5, Testcontainers (PostgreSQL) |
+| Validation / docs | Jakarta Bean Validation, springdoc-openapi 3.1.1 (Swagger UI, non-prod only) |
+| Tests | JUnit 5, MockMvc, Testcontainers (PostgreSQL), GitHub Actions CI |
 
 ## Configuration
 
-`application.yaml` holds local-friendly defaults. The `prod` profile (`SPRING_PROFILES_ACTIVE=prod`, file `application-prod.yaml`) removes the defaults for URL, CORS and mail settings, so the app **fails fast at startup** if any of them is missing. It also marks the session cookie `Secure`, `HttpOnly`, `SameSite=Lax` (the session only holds the pending Google authorization request).
+`application.yaml` holds local-friendly defaults. The `prod` profile (`SPRING_PROFILES_ACTIVE=prod`, file `application-prod.yaml`) removes the defaults for URL, CORS and mail settings, so the app **fails fast at startup** if any of them is missing. It also marks the session cookie `Secure`, `HttpOnly`, `SameSite=Lax` (the session only holds the pending Google authorization request), and disables the OpenAPI docs and Swagger UI.
 
 Only variable names are listed here. Never commit real values.
 
@@ -129,6 +129,8 @@ Each module uses the same internal layout: `model/`, `dto/`, `mapper/`, `reposit
 ## API overview
 
 All endpoints except auth, the Google OAuth2 endpoints, Steam `login`/`callback` and the OpenAPI/Swagger paths require `Authorization: Bearer <jwt>`.
+
+Outside the `prod` profile, the OpenAPI spec is served at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`. Both are disabled in `prod` (`springdoc.api-docs.enabled=false`, `springdoc.swagger-ui.enabled=false` in `application-prod.yaml`).
 
 ### Auth (`/api/v1/auth`, public)
 | Method | Endpoint | Description |
@@ -215,8 +217,16 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 
 | Command | Needs Docker | What runs |
 |---|---|---|
-| `./mvnw test` | Yes | Everything, including `PytraApiApplicationTests` (context load against a Testcontainers PostgreSQL) |
-| `./mvnw test -Dtest="BrevoEmailSenderTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest"` | No | Unit tests only |
+| `./mvnw test` | Yes | Everything, including the integration tests below |
+| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest"` | No | Unit tests only |
+
+Integration tests extend `AbstractIntegrationTest`: full Spring context, MockMvc, the `test` profile (`src/test/resources/application-test.yaml`, which supplies dummy JWT/Google/mail settings so no environment variable is needed) and one shared PostgreSQL Testcontainer via `@ServiceConnection`.
+
+- `TenantIsolationTests` proves that one user can never read, modify or delete another user's games, sagas, experiences, online playtime, stats, profile or Steam pending queue (cross-user access is always `404`), and that every protected endpoint answers `401` without a valid token.
+- `ApiDocsTests` checks that `/v3/api-docs` is served outside `prod`.
+- `PytraApiApplicationTests` is the context-load smoke test.
+
+**CI:** `.github/workflows/ci.yml` runs `./mvnw -B verify` (JDK 21 Temurin, Maven cache) on every push and pull request to `master`. GitHub's `ubuntu-latest` runners have Docker, so the Testcontainers tests run there even when they can't run locally.
 
 ## Deployment (Railway)
 
