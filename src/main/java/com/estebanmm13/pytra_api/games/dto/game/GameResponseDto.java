@@ -1,6 +1,7 @@
 package com.estebanmm13.pytra_api.games.dto.game;
 
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
+import com.estebanmm13.pytra_api.experiences.model.Platform;
 import com.estebanmm13.pytra_api.games.dto.genre.GenreResponseDto;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
@@ -36,4 +37,8 @@ public class GameResponseDto {
     private ExperienceStatus lastExperienceStatus;
     private Integer lastPlayedYear;
     private Boolean hasPlatinum;
+    /** Distinct platforms of the game's experiences, in Platform enum order. */
+    private List<Platform> platforms;
+    /** Latest endDate/startDate among the game's experiences; null when none has a date. */
+    private LocalDate lastPlayedAt;
 }

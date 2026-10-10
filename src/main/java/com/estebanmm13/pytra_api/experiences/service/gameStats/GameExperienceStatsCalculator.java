@@ -2,13 +2,16 @@ package com.estebanmm13.pytra_api.experiences.service.gameStats;
 
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperiencePeriod;
+import com.estebanmm13.pytra_api.experiences.model.Platform;
 import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +50,8 @@ public class GameExperienceStatsCalculator {
         Integer lastPlayedYear = null;
         boolean hasPlatinum = false;
         Experience latest = null;
+        EnumSet<Platform> platforms = EnumSet.noneOf(Platform.class);
+        LocalDate lastPlayedAt = null;
 
         for (Experience experience : experiences) {
             totalHours += experience.getHours() != null ? experience.getHours() : 0.0;
@@ -58,11 +63,21 @@ public class GameExperienceStatsCalculator {
                 lastPlayedYear = year;
             }
             hasPlatinum |= Boolean.TRUE.equals(experience.getPlatinum());
+            if (experience.getPlatform() != null) {
+                platforms.add(experience.getPlatform());
+            }
+            lastPlayedAt = latestOf(latestOf(lastPlayedAt, experience.getEndDate()), experience.getStartDate());
             if (latest == null || ExperiencePeriod.RECENCY.compare(experience, latest) > 0) {
                 latest = experience;
             }
         }
         return new GameExperienceStats(
-                experiences.size(), totalHours, Ratings.normalize(bestRating), latest.getStatus(), lastPlayedYear, hasPlatinum);
+                experiences.size(), totalHours, Ratings.normalize(bestRating), latest.getStatus(), lastPlayedYear, hasPlatinum,
+                List.copyOf(platforms), lastPlayedAt);
+    }
+
+    private static LocalDate latestOf(LocalDate current, LocalDate candidate) {
+        if (candidate == null) return current;
+        return current == null || candidate.isAfter(current) ? candidate : current;
     }
 }

@@ -133,12 +133,24 @@ public class SteamLibraryImporter {
                 }
                 continue;
             }
+            refreshLastPlayed(link, app);
             if (applyPlaytime(link, app.playtimeForeverMinutes(), now)) {
                 counters.updated++;
             }
         }
 
         return new LinkedPhaseResult(unlinked, buildNameIndex(userId, linksByAppId.values()));
+    }
+
+    /**
+     * Keeps the link's last-played time in step with Steam. Only overwritten with a known value:
+     * a missing/zero {@code rtime_last_played} never erases what an earlier sync recorded.
+     * Dirty-checked like the playtime, so an unchanged value is not written.
+     */
+    private static void refreshLastPlayed(GamePlatformLink link, SteamOwnedGame app) {
+        if (app.lastPlayedAt() != null) {
+            link.setLastPlayedAt(app.lastPlayedAt());
+        }
     }
 
     /**
@@ -212,6 +224,7 @@ public class SteamLibraryImporter {
                     .externalId(appId)
                     .lastSyncedPlaytimeMinutes(app.playtimeForeverMinutes())
                     .lastSyncedAt(now)
+                    .lastPlayedAt(app.lastPlayedAt())
                     .build());
             return new Attachment(Outcome.LINKED_EXISTING, existingGameId, key);
         }
@@ -230,6 +243,7 @@ public class SteamLibraryImporter {
                 .externalId(appId)
                 .lastSyncedPlaytimeMinutes(app.playtimeForeverMinutes())
                 .lastSyncedAt(now)
+                .lastPlayedAt(app.lastPlayedAt())
                 .build());
         return new Attachment(Outcome.CREATED_PENDING, game.getId(), key);
     }

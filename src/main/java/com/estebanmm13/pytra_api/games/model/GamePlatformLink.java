@@ -3,6 +3,7 @@ package com.estebanmm13.pytra_api.games.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @NoArgsConstructor
@@ -43,4 +44,8 @@ public class GamePlatformLink {
     // @ManyToOne: Experience vive en el módulo experiences, no en games.
     // Null hasta que el juego se confirma como SINGLEPLAYER y se crea esa Experience.
     private Long experienceId;
+
+    // Last time played according to the platform (Steam rtime_last_played). Null when the
+    // platform never reported it (never played, or not synced since this column was added).
+    private Instant lastPlayedAt;
 }

@@ -19,6 +19,7 @@ import com.estebanmm13.pytra_api.games.repository.SagaRepository;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGamesResult;
 import com.estebanmm13.pytra_api.steamsync.client.SteamWebApiClient;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamIgnoredAppDto;
+import com.estebanmm13.pytra_api.steamsync.dto.SteamPendingGameDto;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamSyncResultDto;
 import com.estebanmm13.pytra_api.steamsync.model.SteamIgnoredApp;
 import com.estebanmm13.pytra_api.steamsync.model.SteamLink;
@@ -34,7 +35,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -73,10 +77,21 @@ public class SteamSyncServiceImpl implements SteamSyncService {
         });
     }
 
+    /** Two queries in total (pending games + the user's STEAM links), joined in memory. */
     @Override
-    public List<GameResponseDto> getPending(Long userId) {
+    public List<SteamPendingGameDto> getPending(Long userId) {
+        Map<Long, GamePlatformLink> linksByGameId = gamePlatformLinkRepository
+                .findAllByUserIdAndPlatformWithGame(userId, ExternalPlatform.STEAM).stream()
+                .collect(Collectors.toMap(link -> link.getGame().getId(), Function.identity(), (a, b) -> a));
         return gameRepository.findAllByUserIdAndReviewStatus(userId, ReviewStatus.PENDING_REVIEW).stream()
-                .map(gameMapper::toResponseDto)
+                .map(game -> {
+                    GamePlatformLink link = linksByGameId.get(game.getId());
+                    return SteamPendingGameDto.of(
+                            gameMapper.toResponseDto(game),
+                            link != null ? link.getExternalId() : null,
+                            link != null ? link.getLastSyncedPlaytimeMinutes() : null,
+                            link != null ? link.getLastPlayedAt() : null);
+                })
                 .toList();
     }
 

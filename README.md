@@ -171,7 +171,7 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 ### Games (`/api/v1/games`)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/` | List the current user's games, with library aggregates: `experienceCount`, `totalHours`, `bestRating`, `lastExperienceStatus`, `lastPlayedYear`, `hasPlatinum` (two queries in total, no N+1) |
+| GET | `/` | List the current user's games, with library aggregates: `experienceCount`, `totalHours`, `bestRating`, `lastExperienceStatus`, `lastPlayedYear`, `hasPlatinum`, `platforms` (distinct, enum order), `lastPlayedAt` (latest experience `endDate`/`startDate`, nullable date) (two queries in total, no N+1) |
 | GET | `/{id}` | Get a game (same aggregates) |
 | POST | `/` | Create a game (optionally linked to a saga and/or genres) |
 | PUT | `/{id}` | Update a game |
@@ -224,10 +224,10 @@ Highlights (`YearHighlightsCalculator`) use two different attributions:
 | POST | `/connect-token` | Required | Issues a one-time state token (valid 10 min) for the current user |
 | GET | `/login?state=` | Public | Full-page redirect to Steam OpenID; identity travels in `state` |
 | GET | `/callback` | Public | Verifies Steam's response, upserts `SteamLink`, ALWAYS redirects to the client callback: `?code=…&next=steam` or `?error=steam_link_failed\|steam_account_already_linked&next=steam` |
-| GET | `/status` | Required | `{linked, steamId, personaName, lastSyncAt, configured}` |
+| GET | `/status` | Required | `{linked, steamId, personaName, lastSyncAt, configured, linkedGamesCount, pendingCount, ignoredCount}` (`linkedGamesCount` = STEAM links, pending placeholders included) |
 | DELETE | `/link` | Required | Unlinks (`204`). Confirmed games keep their hours; pending Steam placeholders and the ignore list are deleted |
 | POST | `/sync` | Required | Pulls the Steam library → `{gamesScanned, newGamesPending, linkedExisting, gamesUpdated, ignored, skipped, errored, profilePrivate}` |
-| GET | `/pending` | Required | Games discovered by sync awaiting review |
+| GET | `/pending` | Required | Games discovered by sync awaiting review: game fields plus `appId`, `steamPlaytimeMinutes` (latest Steam total) and `lastPlayedAt` (Steam `rtime_last_played` as an ISO instant, null if never played) |
 | PUT | `/pending/{gameId}/confirm` | Required | Confirms category/saga/genres and imports the Steam total |
 | PUT | `/pending/{gameId}/ignore` | Required | Deletes the placeholder and never re-imports that app (`204`) |
 | GET | `/ignored` | Required | Ignored apps `{appId, name, ignoredAt}` |

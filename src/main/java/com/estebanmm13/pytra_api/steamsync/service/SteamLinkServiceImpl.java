@@ -129,9 +129,14 @@ public class SteamLinkServiceImpl implements SteamLinkService {
     @Override
     public SteamStatusDto getStatus(Long userId) {
         boolean configured = steamWebApiClient.isConfigured();
+        // Counted even when unlinked: unlink clears all three, so they read 0 rather than null.
+        long linkedGames = gamePlatformLinkRepository.countByUserIdAndPlatform(userId, ExternalPlatform.STEAM);
+        long pending = gameRepository.countByUserIdAndReviewStatus(userId, ReviewStatus.PENDING_REVIEW);
+        long ignored = steamIgnoredAppRepository.countByUserId(userId);
         return steamLinkRepository.findByUserId(userId)
-                .map(link -> new SteamStatusDto(true, link.getSteamId(), link.getPersonaName(), link.getLastSyncAt(), configured))
-                .orElseGet(() -> new SteamStatusDto(false, null, null, null, configured));
+                .map(link -> new SteamStatusDto(true, link.getSteamId(), link.getPersonaName(), link.getLastSyncAt(),
+                        configured, linkedGames, pending, ignored))
+                .orElseGet(() -> new SteamStatusDto(false, null, null, null, configured, linkedGames, pending, ignored));
     }
 
     /**

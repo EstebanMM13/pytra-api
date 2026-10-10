@@ -14,6 +14,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -83,11 +84,17 @@ public class SteamWebApiClient {
                 result.add(new SteamOwnedGame(
                         game.path("appid").asLong(),
                         game.path("name").asText("Unknown"),
-                        game.path("playtime_forever").asLong(0)
+                        game.path("playtime_forever").asLong(0),
+                        lastPlayed(game.path("rtime_last_played").asLong(0))
                 ));
             }
         }
         return new SteamOwnedGamesResult(false, result);
+    }
+
+    /** Steam sends unix seconds, with 0 meaning "never played". */
+    static Instant lastPlayed(long epochSeconds) {
+        return epochSeconds > 0 ? Instant.ofEpochSecond(epochSeconds) : null;
     }
 
     private JsonNode get(String path, String idParam, String steamId64) {

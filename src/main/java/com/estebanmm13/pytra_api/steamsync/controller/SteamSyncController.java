@@ -4,6 +4,7 @@ import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
 import com.estebanmm13.pytra_api.games.dto.game.GameRequestDto;
 import com.estebanmm13.pytra_api.games.dto.game.GameResponseDto;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamIgnoredAppDto;
+import com.estebanmm13.pytra_api.steamsync.dto.SteamPendingGameDto;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamStatusDto;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamSyncResultDto;
 import com.estebanmm13.pytra_api.steamsync.service.SteamLinkService;
@@ -48,7 +49,7 @@ public class SteamSyncController {
     }
 
     @GetMapping("/pending")
-    public ResponseEntity<List<GameResponseDto>> getPending() {
+    public ResponseEntity<List<SteamPendingGameDto>> getPending() {
         return ResponseEntity.ok(steamSyncService.getPending(currentUserResolver.getCurrentUserId()));
     }
 

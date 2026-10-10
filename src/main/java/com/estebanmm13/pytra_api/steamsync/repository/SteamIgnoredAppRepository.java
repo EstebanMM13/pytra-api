@@ -20,6 +20,8 @@ public interface SteamIgnoredAppRepository extends JpaRepository<SteamIgnoredApp
 
     boolean existsByUserIdAndAppId(Long userId, String appId);
 
+    long countByUserId(Long userId);
+
     @Query("SELECT i.appId FROM SteamIgnoredApp i WHERE i.userId = :userId")
     Set<String> findAppIdsByUserId(@Param("userId") Long userId);
 
