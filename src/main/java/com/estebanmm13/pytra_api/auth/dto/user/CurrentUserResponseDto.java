@@ -16,4 +16,6 @@ public class CurrentUserResponseDto {
     private boolean googleLinked;
     /** Account creation time ("member since"). */
     private LocalDateTime createdAt;
+    /** Preset avatar key, or null when the user has not picked one. */
+    private String avatar;
 }

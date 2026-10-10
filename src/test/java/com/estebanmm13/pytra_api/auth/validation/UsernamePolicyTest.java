@@ -1,7 +1,7 @@
 package com.estebanmm13.pytra_api.auth.validation;
 
 import com.estebanmm13.pytra_api.auth.dto.register.RegisterRequestDto;
-import com.estebanmm13.pytra_api.auth.dto.user.UpdateUsernameRequestDto;
+import com.estebanmm13.pytra_api.auth.dto.user.UpdateProfileRequestDto;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
@@ -40,11 +40,17 @@ class UsernamePolicyTest {
 
     @Test
     void updateDtoUsesTheSameRules() {
-        UpdateUsernameRequestDto dto = new UpdateUsernameRequestDto();
+        UpdateProfileRequestDto dto = new UpdateProfileRequestDto();
         dto.setUsername("victim@x.com");
         assertFalse(validator.validate(dto).isEmpty());
         dto.setUsername(" new.name ");
         assertTrue(validator.validate(dto).isEmpty());
+    }
+
+    @Test
+    void updateDtoTreatsAMissingUsernameAsUnchangedButRegisterRequiresIt() {
+        assertTrue(validator.validate(new UpdateProfileRequestDto()).isEmpty());
+        assertFalse(validator.validateProperty(registerDto(null), "username").isEmpty());
     }
 
     @Test

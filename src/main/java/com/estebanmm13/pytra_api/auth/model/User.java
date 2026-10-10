@@ -38,6 +38,10 @@ public class User {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
+    /** Preset avatar key (see AvatarPolicy); null shows the username initial. */
+    @Column(length = 32)
+    private String avatar;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;

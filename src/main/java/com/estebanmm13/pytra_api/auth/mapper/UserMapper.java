@@ -25,7 +25,8 @@ public class UserMapper {
                 user.getEmail(),
                 user.getPasswordHash() != null,
                 user.getGoogleId() != null,
-                user.getCreatedAt()
+                user.getCreatedAt(),
+                user.getAvatar()
         );
     }
 }

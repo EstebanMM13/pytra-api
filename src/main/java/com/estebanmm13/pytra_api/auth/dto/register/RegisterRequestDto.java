@@ -11,6 +11,7 @@ import org.hibernate.validator.constraints.Length;
 @Setter
 public class RegisterRequestDto {
 
+    @NotBlank
     @ValidUsername
     private String username;
 

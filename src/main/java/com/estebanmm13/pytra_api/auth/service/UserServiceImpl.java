@@ -1,12 +1,14 @@
 package com.estebanmm13.pytra_api.auth.service;
 
 import com.estebanmm13.pytra_api.auth.dto.user.CurrentUserResponseDto;
-import com.estebanmm13.pytra_api.auth.dto.user.UpdateUsernameRequestDto;
+import com.estebanmm13.pytra_api.auth.dto.user.UpdateProfileRequestDto;
 import com.estebanmm13.pytra_api.auth.mapper.UserMapper;
 import com.estebanmm13.pytra_api.auth.model.User;
+import com.estebanmm13.pytra_api.auth.validation.AvatarPolicy;
 import com.estebanmm13.pytra_api.auth.validation.UsernamePolicy;
 import com.estebanmm13.pytra_api.auth.repository.UserRepository;
 import com.estebanmm13.pytra_api.error.DuplicateResourceException;
+import com.estebanmm13.pytra_api.error.InvalidRequestException;
 import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,20 +34,20 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public CurrentUserResponseDto updateUsername(Long userId, UpdateUsernameRequestDto requestDto) {
+    public CurrentUserResponseDto updateProfile(Long userId, UpdateProfileRequestDto requestDto) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        // Usernames are stored lowercase (see AuthServiceImpl.register), so uniqueness is case-insensitive.
-        String normalizedUsername = UsernamePolicy.normalize(requestDto.getUsername());
-
-        if (!normalizedUsername.equals(user.getUsername()) && userRepository.existsByUsername(normalizedUsername)) {
-            log.warn("Username change attempt to existing username: {}", requestDto.getUsername());
-            throw new DuplicateResourceException("Username: " + requestDto.getUsername() + " already exists");
+        if (requestDto.isAvatarPresent()) {
+            String avatar = requestDto.getAvatar();
+            if (avatar != null && !AvatarPolicy.isValid(avatar)) {
+                throw new InvalidRequestException(InvalidRequestException.INVALID_AVATAR);
+            }
+            user.setAvatar(avatar);
         }
-
-        user.setUsername(normalizedUsername);
-        user.setUsernameDisplay(requestDto.getUsername());
+        if (requestDto.getUsername() != null) {
+            applyUsername(user, requestDto.getUsername());
+        }
         try {
             // Flush now so a concurrent rename to the same name surfaces here as a 409.
             return userMapper.toCurrentUserResponseDto(userRepository.saveAndFlush(user));
@@ -53,5 +55,18 @@ public class UserServiceImpl implements UserService {
             log.warn("Username change lost a race on username uniqueness");
             throw new DuplicateResourceException("Username: " + requestDto.getUsername() + " already exists");
         }
+    }
+
+    private void applyUsername(User user, String username) {
+        // Usernames are stored lowercase (see AuthServiceImpl.register), so uniqueness is case-insensitive.
+        String normalizedUsername = UsernamePolicy.normalize(username);
+
+        if (!normalizedUsername.equals(user.getUsername()) && userRepository.existsByUsername(normalizedUsername)) {
+            log.warn("Username change attempt to existing username: {}", username);
+            throw new DuplicateResourceException("Username: " + username + " already exists");
+        }
+
+        user.setUsername(normalizedUsername);
+        user.setUsernameDisplay(username);
     }
 }

@@ -24,15 +24,17 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Profile createdAt, data export and account deletion. */
+/** Profile createdAt and avatar, data export and account deletion. */
 class AccountIntegrationTests extends AbstractIntegrationTest {
 
     /** Every table holding rows owned by a user (all reference users(id) ON DELETE CASCADE). */
@@ -70,6 +72,48 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.createdAt").exists())
                 .andExpect(jsonPath("$.createdAt", containsString(String.valueOf(LocalDateTime.now().getYear()))));
+    }
+
+    @Test
+    void avatarIsNullUntilPickedAndCanBeChangedAndCleared() throws Exception {
+        performAs(aliceAuth, get("/api/v1/users/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatar").value(nullValue()));
+
+        performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"ghost\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatar").value("ghost"))
+                .andExpect(jsonPath("$.username").value(alice.getUsername()));
+        assertThat(userRepository.findById(alice.getId()).orElseThrow().getAvatar()).isEqualTo("ghost");
+
+        // A username-only update leaves the avatar alone.
+        String newName = "avrenamed" + alice.getId();
+        performAs(aliceAuth, patch("/api/v1/users/me"), "{\"username\": \"" + newName + "\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value(newName))
+                .andExpect(jsonPath("$.avatar").value("ghost"));
+
+        performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": null}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatar").value(nullValue()))
+                .andExpect(jsonPath("$.username").value(newName));
+        assertThat(userRepository.findById(alice.getId()).orElseThrow().getAvatar()).isNull();
+    }
+
+    @Test
+    void unknownAvatarIs400AndChangesNothing() throws Exception {
+        performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"crown\"}")
+                .andExpect(status().isOk());
+
+        for (String invalid : List.of("dragon", "", "CROWN", "x".repeat(40))) {
+            performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"" + invalid + "\"}")
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value("INVALID_AVATAR"));
+        }
+        assertThat(userRepository.findById(alice.getId()).orElseThrow().getAvatar()).isEqualTo("crown");
+
+        // Another user's avatar is untouched.
+        assertThat(userRepository.findById(bob.getId()).orElseThrow().getAvatar()).isNull();
     }
 
     @Test

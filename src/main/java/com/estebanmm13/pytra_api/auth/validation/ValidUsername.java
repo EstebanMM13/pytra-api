@@ -2,7 +2,6 @@ package com.estebanmm13.pytra_api.auth.validation;
 
 import jakarta.validation.Constraint;
 import jakarta.validation.Payload;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -15,13 +14,12 @@ import java.lang.annotation.Target;
 /**
  * Username rules shared by registration and profile updates: 3-30 characters, only ASCII letters, digits,
  * '.', '_' and '-' (so never '@', spaces, control or other unicode characters). DTO setters trim the value
- * before validation.
+ * before validation. A null value passes, so add {@code @NotBlank} where the username is required.
  */
 @Documented
 @Constraint(validatedBy = {})
 @Target({ElementType.FIELD, ElementType.PARAMETER})
 @Retention(RetentionPolicy.RUNTIME)
-@NotBlank
 @Size(min = UsernamePolicy.MIN_LENGTH, max = UsernamePolicy.MAX_LENGTH)
 @Pattern(regexp = UsernamePolicy.INPUT_REGEX,
         message = "must be 3-30 characters: letters, digits, '.', '_' or '-'")

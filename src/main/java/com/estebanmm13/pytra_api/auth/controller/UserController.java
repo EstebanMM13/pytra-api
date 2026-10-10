@@ -1,7 +1,7 @@
 package com.estebanmm13.pytra_api.auth.controller;
 
 import com.estebanmm13.pytra_api.auth.dto.user.CurrentUserResponseDto;
-import com.estebanmm13.pytra_api.auth.dto.user.UpdateUsernameRequestDto;
+import com.estebanmm13.pytra_api.auth.dto.user.UpdateProfileRequestDto;
 import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
 import com.estebanmm13.pytra_api.auth.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -23,8 +23,8 @@ public class UserController {
     }
 
     @PatchMapping("/me")
-    public ResponseEntity<CurrentUserResponseDto> updateUsername(
-            @Valid @RequestBody UpdateUsernameRequestDto updateUsernameRequestDto) {
-        return ResponseEntity.ok(userService.updateUsername(currentUserResolver.getCurrentUserId(), updateUsernameRequestDto));
+    public ResponseEntity<CurrentUserResponseDto> updateProfile(
+            @Valid @RequestBody UpdateProfileRequestDto updateProfileRequestDto) {
+        return ResponseEntity.ok(userService.updateProfile(currentUserResolver.getCurrentUserId(), updateProfileRequestDto));
     }
 }
