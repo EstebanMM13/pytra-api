@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.steamsync.controller;
 
+import com.estebanmm13.pytra_api.auth.security.AuthenticatedUser;
 import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
 import com.estebanmm13.pytra_api.games.dto.game.GameRequestDto;
 import com.estebanmm13.pytra_api.games.dto.game.GameResponseDto;
@@ -34,7 +35,15 @@ public class SteamSyncController {
 
     @GetMapping("/status")
     public ResponseEntity<SteamStatusDto> status() {
-        return ResponseEntity.ok(steamLinkService.getStatus(currentUserResolver.getCurrentUserId()));
+        AuthenticatedUser currentUser = currentUserResolver.getCurrentUser();
+        SteamStatusDto status = steamLinkService.getStatus(currentUser.getUserId());
+        return ResponseEntity.ok(currentUser.isDemo() ? redactForDemo(status) : status);
+    }
+
+    /** The demo account is public: hide which Steam account is linked to it (id and persona name). */
+    private static SteamStatusDto redactForDemo(SteamStatusDto status) {
+        return new SteamStatusDto(status.linked(), null, null, status.lastSyncAt(), status.configured(),
+                status.linkedGamesCount(), status.pendingCount(), status.ignoredCount());
     }
 
     @DeleteMapping("/link")

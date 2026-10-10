@@ -75,7 +75,12 @@ class DemoModeIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[0].id").value(demoGameId));
         performAs(demoAuth, get("/api/v1/users/me"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.username").value(demoUser.getUsername()));
+                .andExpect(jsonPath("$.username").value(demoUser.getUsername()))
+                // The demo account is public: its owner's email is never shown to visitors.
+                .andExpect(jsonPath("$.email").value("demo@example.com"));
+        performAs(ownerAuth, get("/api/v1/users/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(demoUser.getEmail()));
     }
 
     @Test

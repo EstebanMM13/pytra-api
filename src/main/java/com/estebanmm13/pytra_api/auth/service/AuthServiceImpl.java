@@ -129,7 +129,8 @@ public class AuthServiceImpl implements AuthService {
                 ? userRepository.findByEmail(normalizedIdentifier)
                 : userRepository.findByUsername(normalizedIdentifier);
 
-        if (user.isEmpty() || user.get().getPasswordHash() == null) {
+        // The demo account is demo-only (POST /auth/demo): it answers exactly like an unknown account.
+        if (user.isEmpty() || user.get().getPasswordHash() == null || demoMode.isDemoUser(user.get().getId())) {
             passwordEncoder.matches(loginRequestDto.getPassword(), dummyPasswordHash);
             throw new InvalidCredentialException("Invalid credentials");
         }
@@ -183,7 +184,7 @@ public class AuthServiceImpl implements AuthService {
         String emailNormalized = UsernamePolicy.normalizeEmail(requestDto.getEmail());
         Optional<User> user = userRepository.findByEmailForUpdate(emailNormalized);
 
-        if (user.isEmpty() || user.get().getEmailVerified()) {
+        if (user.isEmpty() || user.get().getEmailVerified() || demoMode.isDemoUser(user.get().getId())) {
             return new ResendVerificationResponseDto();
         }
 
@@ -210,7 +211,8 @@ public class AuthServiceImpl implements AuthService {
         String emailNormalized = UsernamePolicy.normalizeEmail(requestDto.getEmail());
         Optional<User> user = userRepository.findByEmailForUpdate(emailNormalized);
 
-        if (user.isEmpty()) {
+        // The demo account must not be recoverable: same response as an unknown email, nothing is sent.
+        if (user.isEmpty() || demoMode.isDemoUser(user.get().getId())) {
             return new ForgotPasswordResponseDto();
         }
 
@@ -258,6 +260,10 @@ public class AuthServiceImpl implements AuthService {
         if (passwordResetToken.get().getExpiresAt().isBefore(LocalDateTime.now())) {
             throw new ExpiredTokenException("Token expired");
         }
+        // Defense in depth (forgot-password never issues one for it): a reset token can not unlock the demo account.
+        if (demoMode.isDemoUser(passwordResetToken.get().getUser().getId())) {
+            throw new InvalidTokenException("Invalid token");
+        }
         passwordResetToken.get().setConsumedAt(LocalDateTime.now());
         passwordResetTokenRepository.save(passwordResetToken.get());
 
@@ -282,6 +288,10 @@ public class AuthServiceImpl implements AuthService {
             throw new InvalidTokenException("Invalid token");
         }
         if (exchangeCodeTokenRequest.get().getConsumedAt() != null) {
+            throw new InvalidTokenException("Invalid token");
+        }
+        // Defense in depth (GoogleOidcUserService already refuses it): never mint a full token for the demo account.
+        if (demoMode.isDemoUser(exchangeCodeTokenRequest.get().getUser().getId())) {
             throw new InvalidTokenException("Invalid token");
         }
 

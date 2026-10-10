@@ -2,6 +2,8 @@ package com.estebanmm13.pytra_api.auth.security;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletRequestWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +16,9 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,10 +27,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * In-memory, per-instance abuse protection for the public auth endpoints: at most {@value #MAX_REQUESTS}
  * POSTs per client IP per endpoint in each fixed one-minute window; extra requests get 429.
  * <p>
- * Client IP: {@code request.getRemoteAddr()}. With {@code server.forward-headers-strategy: framework}
- * Spring's ForwardedHeaderFilter runs first (highest precedence) and makes it return the left-most
- * X-Forwarded-For entry set behind Railway's proxy. That entry can be supplied by the client, so this
- * slows down casual abuse but is not a hard guarantee.
+ * Path: matched on {@link RequestPaths#pathWithinApplication} (servletPath + pathInfo), not on
+ * {@code getRequestURI()}: ForwardedHeaderFilter rewrites the URI from the client-supplied X-Forwarded-Prefix,
+ * and the raw URI is not percent-decoded, so either would let a caller dodge the limit.
+ * <p>
+ * Client IP: see {@link #clientIp}.
  * <p>
  * Registered as a plain servlet filter (lowest precedence), i.e. after the Spring Security chain, so CORS
  * headers are already on the response and the browser can read the 429.
@@ -37,6 +43,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
     static final int MAX_REQUESTS = 5;
     static final Duration WINDOW = Duration.ofMinutes(1);
     private static final int CLEANUP_THRESHOLD = 10_000;
+    private static final String X_FORWARDED_FOR = "X-Forwarded-For";
 
     private static final Set<String> LIMITED_PATHS = Set.of(
             "/api/v1/auth/register",
@@ -59,16 +66,18 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !"POST".equalsIgnoreCase(request.getMethod()) || !LIMITED_PATHS.contains(request.getRequestURI());
+        return !"POST".equalsIgnoreCase(request.getMethod())
+                || !LIMITED_PATHS.contains(RequestPaths.pathWithinApplication(request));
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        String key = request.getRequestURI() + "|" + request.getRemoteAddr();
+        String path = RequestPaths.pathWithinApplication(request);
+        String key = path + "|" + clientIp(request);
         if (!tryAcquire(key)) {
-            log.warn("Rate limit exceeded on {}", request.getRequestURI());
+            log.warn("Rate limit exceeded on {}", path);
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setHeader("Retry-After", String.valueOf(WINDOW.toSeconds()));
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -77,6 +86,42 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             return;
         }
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * The client IP used as the rate-limit key.
+     * <p>
+     * Assumption: the app is only reachable through Railway's proxy, which appends the address of the peer it
+     * received the connection from to X-Forwarded-For. Everything to the left of that entry comes from the client
+     * and can be forged, so the right-most entry is the only trustworthy one. (ForwardedHeaderFilter's
+     * {@code getRemoteAddr()} is the left-most entry, i.e. client-controlled, so it is not used.)
+     * <p>
+     * ForwardedHeaderFilter hides the X-Forwarded-* headers from the request it wraps, so they are read from the
+     * original container request. Without the header (local runs, tests) the socket peer address is used.
+     */
+    static String clientIp(HttpServletRequest request) {
+        HttpServletRequest original = unwrap(request);
+        Enumeration<String> headers = original.getHeaders(X_FORWARDED_FOR);
+        List<String> headerLines = headers == null ? List.of() : Collections.list(headers);
+        for (int line = headerLines.size() - 1; line >= 0; line--) {
+            String[] entries = headerLines.get(line).split(",");
+            for (int i = entries.length - 1; i >= 0; i--) {
+                String entry = entries[i].trim();
+                if (!entry.isEmpty()) {
+                    return entry;
+                }
+            }
+        }
+        return original.getRemoteAddr();
+    }
+
+    private static HttpServletRequest unwrap(HttpServletRequest request) {
+        ServletRequest current = request;
+        while (current instanceof ServletRequestWrapper wrapper
+                && wrapper.getRequest() instanceof HttpServletRequest) {
+            current = wrapper.getRequest();
+        }
+        return (HttpServletRequest) current;
     }
 
     boolean tryAcquire(String key) {

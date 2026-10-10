@@ -26,17 +26,26 @@ public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest,
 
     private final UserRepository userRepository;
     private final RegistrationPolicy registrationPolicy;
+    private final DemoMode demoMode;
     private final OidcUserService oidcUserService = new OidcUserService();
 
-    public GoogleOidcUserService(UserRepository userRepository, RegistrationPolicy registrationPolicy) {
+    /** Generic OAuth2 error code for a refused sign-in; the client only sees "google_login_failed". */
+    static final String LOGIN_REFUSED_ERROR_CODE = "login_refused";
+
+    public GoogleOidcUserService(UserRepository userRepository, RegistrationPolicy registrationPolicy, DemoMode demoMode) {
         this.userRepository = userRepository;
         this.registrationPolicy = registrationPolicy;
+        this.demoMode = demoMode;
     }
 
     @Override
     public @Nullable OidcUser loadUser(OidcUserRequest oidcUserRequest) throws OAuth2AuthenticationException {
 
-        OidcUser oidcUser = oidcUserService.loadUser(oidcUserRequest);
+        return resolveUser(oidcUserService.loadUser(oidcUserRequest));
+    }
+
+    /** Maps the verified Google identity to a Pytra account (find, link or create). */
+    PytraOidcUser resolveUser(OidcUser oidcUser) {
         String googleId = oidcUser.getSubject();
         String email = UsernamePolicy.normalizeEmail(oidcUser.getEmail());
         boolean emailVerified = Boolean.TRUE.equals(oidcUser.getEmailVerified());
@@ -44,10 +53,13 @@ public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest,
         Optional<User> user = userRepository.findByGoogleId(googleId);
 
         if (user.isPresent()) {
+            rejectDemoUser(user.get());
             return new PytraOidcUser(oidcUser,user.get());
         }
         user = userRepository.findByEmail(email);
         if (user.isPresent() && emailVerified) {
+            // Checked before linking: the demo account must never gain a Google identity.
+            rejectDemoUser(user.get());
             User existing = user.get();
             existing.setGoogleId(googleId);
             if (!existing.getEmailVerified()) {
@@ -82,6 +94,13 @@ public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest,
                     .build();
             userRepository.save(newUser);
             return new PytraOidcUser(oidcUser,newUser);
+        }
+    }
+
+    /** The demo account is demo-only (POST /auth/demo); refuse it with a generic failure. */
+    private void rejectDemoUser(User user) {
+        if (demoMode.isDemoUser(user.getId())) {
+            throw new OAuth2AuthenticationException(new OAuth2Error(LOGIN_REFUSED_ERROR_CODE));
         }
     }
 

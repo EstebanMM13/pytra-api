@@ -23,9 +23,16 @@ class DemoReadOnlyFilterTest {
     }
 
     private MockHttpServletResponse run(boolean demo, String method, String uri) throws Exception {
+        return run(demo, method, uri, uri);
+    }
+
+    /** {@code servletPath} is what Tomcat derives from the raw {@code requestUri}: decoded, normalized, no ";" params. */
+    private MockHttpServletResponse run(boolean demo, String method, String requestUri, String servletPath)
+            throws Exception {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 new AuthenticatedUser("demo", 5L, null, demo), null, List.of()));
-        MockHttpServletRequest request = new MockHttpServletRequest(method, uri);
+        MockHttpServletRequest request = new MockHttpServletRequest(method, requestUri);
+        request.setServletPath(servletPath);
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
         filter.doFilter(request, response, chain);
@@ -44,7 +51,12 @@ class DemoReadOnlyFilterTest {
             "POST, /api/v1/integrations/steam/connect-token",
             "DELETE, /api/v1/integrations/steam/link",
             "PUT, /api/v1/stats/years/2024/note",
-            "GET, /api/v1/users/me/export"
+            "GET, /api/v1/users/me/export",
+            "GET, /api/v1/users/me/export/",
+            "GET, /api/v1/users/me/export/archive.zip",
+            "POST, /api/v1/auth/unknown",
+            "POST, /API/V1/AUTH/LOGIN",
+            "POST, /api/v1/auth/login/"
     })
     void demoSessionCannotWrite(String method, String uri) throws Exception {
         MockHttpServletResponse response = run(true, method, uri);
@@ -74,5 +86,22 @@ class DemoReadOnlyFilterTest {
     })
     void normalSessionIsUnaffected(String method, String uri) throws Exception {
         assertThat(run(false, method, uri).getStatus()).isEqualTo(200);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            // Raw URI starts with the auth prefix, but the path actually routed is a write elsewhere.
+            "POST, /api/v1/auth/../games, /api/v1/games",
+            "POST, /api/v1/auth/login/../../games, /api/v1/games",
+            "POST, /api/v1/auth;x=1/../games, /api/v1/games",
+            "DELETE, /api/v1/auth/%2e%2e/users/me, /api/v1/users/me",
+            // Raw URI does not look like the export, but it is.
+            "GET, /api/v1/users/me/%65xport, /api/v1/users/me/export",
+            "GET, /api/v1/users/me/export;jsessionid=1, /api/v1/users/me/export",
+            "GET, /api/v1/users/me/./export, /api/v1/users/me/export"
+    })
+    void demoSessionDecidesOnTheNormalizedPathNotTheRawUri(String method, String requestUri, String servletPath)
+            throws Exception {
+        assertThat(run(true, method, requestUri, servletPath).getStatus()).isEqualTo(403);
     }
 }

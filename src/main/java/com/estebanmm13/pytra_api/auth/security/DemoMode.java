@@ -9,6 +9,9 @@ import java.util.Objects;
  * Public read-only demo: {@code app.demo.user-id} ({@code DEMO_USER_ID}) names the account that
  * anonymous visitors may browse. Blank = demo disabled ({@code POST /api/v1/auth/demo} answers 404
  * and any outstanding demo token stops authenticating).
+ * <p>
+ * While enabled, that account is demo-only: password login, Google login/exchange-code, resend-verification,
+ * forgot-password and reset-password all treat it like an unknown account (see {@link #isDemoUser}).
  */
 @Component
 public class DemoMode {
