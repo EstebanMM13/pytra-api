@@ -15,6 +15,7 @@ public interface GamePlatformLinkRepository extends JpaRepository<GamePlatformLi
     Optional<GamePlatformLink> findByUserIdAndPlatformAndExternalId(Long userId, ExternalPlatform platform, String externalId);
     Optional<GamePlatformLink> findByUserIdAndGameId(Long userId, Long gameId);
     Optional<GamePlatformLink> findByUserIdAndGameIdAndPlatform(Long userId, Long gameId, ExternalPlatform platform);
+    long countByUserIdAndPlatform(Long userId, ExternalPlatform platform);
 
     /** Every link of the user on one platform with its game, in a single query (no N+1 during sync). */
     @Query("SELECT l FROM GamePlatformLink l JOIN FETCH l.game WHERE l.userId = :userId AND l.platform = :platform")

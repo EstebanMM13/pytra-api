@@ -4,6 +4,8 @@ import com.estebanmm13.pytra_api.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -72,5 +74,42 @@ class GameLibraryAggregatesTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].experienceCount").value(1))
                 .andExpect(jsonPath("$[0].totalHours").value(99.0));
+    }
+
+    @Test
+    void platformsAndLastPlayedAtComeFromTheGamesExperiences() throws Exception {
+        createExperienceVia(auth, playedId, """
+                {"runLabel": "Handheld", "status": "COMPLETADO", "platform": "SWITCH", "endDate": "2023-08-15"}""");
+
+        performAs(auth, get("/api/v1/games"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(playedId))
+                // Distinct, in Platform enum order (PC before SWITCH), whatever the insertion order.
+                .andExpect(jsonPath("$[0].platforms", contains("PC", "SWITCH")))
+                // Latest of every endDate/startDate: the replay's startDate.
+                .andExpect(jsonPath("$[0].lastPlayedAt").value("2024-01-01"))
+                .andExpect(jsonPath("$[1].id").value(untouchedId))
+                .andExpect(jsonPath("$[1].platforms", empty()))
+                .andExpect(jsonPath("$[1].lastPlayedAt").value(nullValue()));
+
+        performAs(auth, get("/api/v1/games/{id}", playedId))
+                .andExpect(jsonPath("$.platforms", contains("PC", "SWITCH")))
+                .andExpect(jsonPath("$.lastPlayedAt").value("2024-01-01"));
+    }
+
+    @Test
+    void platformsAndLastPlayedAtNeverIncludeOtherUsersExperiences() throws Exception {
+        String otherAuth = bearer(createVerifiedUser("libplatforms"));
+        Long otherGame = createGameVia(otherAuth, "Played", "");
+        createExperienceVia(otherAuth, otherGame, """
+                {"runLabel": "Other", "status": "EN_CURSO", "platform": "PS5", "startDate": "2025-02-02"}""");
+
+        performAs(auth, get("/api/v1/games/{id}", playedId))
+                .andExpect(jsonPath("$.platforms", contains("PC")))
+                .andExpect(jsonPath("$.lastPlayedAt").value("2024-01-01"));
+        performAs(otherAuth, get("/api/v1/games"))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].platforms", contains("PS5")))
+                .andExpect(jsonPath("$[0].lastPlayedAt").value("2025-02-02"));
     }
 }

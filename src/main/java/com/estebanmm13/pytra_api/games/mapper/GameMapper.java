@@ -40,7 +40,9 @@ public class GameMapper {
                 stats != null ? stats.bestRating() : null,
                 stats != null ? stats.lastExperienceStatus() : null,
                 stats != null ? stats.lastPlayedYear() : null,
-                stats != null ? stats.hasPlatinum() : null
+                stats != null ? stats.hasPlatinum() : null,
+                stats != null ? stats.platforms() : null,
+                stats != null ? stats.lastPlayedAt() : null
         );
     }
 }

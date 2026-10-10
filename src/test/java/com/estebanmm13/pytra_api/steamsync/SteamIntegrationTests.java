@@ -35,6 +35,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -459,6 +460,84 @@ class SteamIntegrationTests extends AbstractIntegrationTest {
         assertThat(steamIgnoredAppRepository.findAppIdsByUserId(alice.getId())).isEmpty();
     }
 
+    // ---- Redesign data: pending app data and status counts --------------------------------
+
+    @Test
+    void pendingItemsExposeSteamAppIdPlaytimeAndLastPlayed() throws Exception {
+        link(alice);
+        Instant played = Instant.ofEpochSecond(1_700_000_000L);
+        library(new SteamOwnedGame(620, "Portal 2", 600, played),
+                new SteamOwnedGame(570, "Dota 2", 0, null));
+        sync(aliceAuth);
+
+        perform(get("/api/v1/integrations/steam/pending"), aliceAuth)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.name == 'Portal 2')].appId").value("620"))
+                .andExpect(jsonPath("$[?(@.name == 'Portal 2')].steamPlaytimeMinutes").value(600))
+                .andExpect(jsonPath("$[?(@.name == 'Portal 2')].reviewStatus").value("PENDING_REVIEW"))
+                .andExpect(jsonPath("$[?(@.name == 'Dota 2')].appId").value("570"))
+                .andExpect(jsonPath("$[?(@.name == 'Dota 2')].steamPlaytimeMinutes").value(0));
+        assertThat(pendingLastPlayed("Portal 2")).isEqualTo(played);
+        assertThat(pendingLastPlayed("Dota 2")).isNull();
+    }
+
+    @Test
+    void resyncUpdatesLastPlayedAndPlaytimeButNeverErasesLastPlayed() throws Exception {
+        link(alice);
+        library(new SteamOwnedGame(620, "Portal 2", 600, Instant.ofEpochSecond(1_700_000_000L)));
+        sync(aliceAuth);
+        Long gameId = pendingIds().getFirst();
+
+        Instant later = Instant.ofEpochSecond(1_710_000_000L);
+        library(new SteamOwnedGame(620, "Portal 2", 660, later));
+        sync(aliceAuth);
+        assertThat(steamLinkOf(gameId).getLastPlayedAt()).isEqualTo(later);
+        assertThat(pendingLastPlayed("Portal 2")).isEqualTo(later);
+        perform(get("/api/v1/integrations/steam/pending"), aliceAuth)
+                .andExpect(jsonPath("$[0].steamPlaytimeMinutes").value(660));
+
+        // Steam omitting rtime_last_played (or sending 0) keeps the last known value.
+        library(new SteamOwnedGame(620, "Portal 2", 660, null));
+        sync(aliceAuth);
+        assertThat(steamLinkOf(gameId).getLastPlayedAt()).isEqualTo(later);
+    }
+
+    @Test
+    void statusCountsLinkedPendingAndIgnoredPerUser() throws Exception {
+        perform(get("/api/v1/integrations/steam/status"), aliceAuth)
+                .andExpect(jsonPath("$.linked").value(false))
+                .andExpect(jsonPath("$.linkedGamesCount").value(0))
+                .andExpect(jsonPath("$.pendingCount").value(0))
+                .andExpect(jsonPath("$.ignoredCount").value(0));
+
+        link(alice);
+        createGame(aliceAuth, "Portal 2", "SINGLEPLAYER");
+        library(new SteamOwnedGame(620, "Portal 2", 600),
+                new SteamOwnedGame(570, "Dota 2", 10),
+                new SteamOwnedGame(440, "Team Fortress 2", 10));
+        sync(aliceAuth);
+        perform(put("/api/v1/integrations/steam/pending/{id}/ignore", gameIdByName("Dota 2")), aliceAuth)
+                .andExpect(status().isNoContent());
+
+        // Portal 2 linked to the existing game + TF2 placeholder; Dota 2 ignored (its link deleted).
+        perform(get("/api/v1/integrations/steam/status"), aliceAuth)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.linked").value(true))
+                .andExpect(jsonPath("$.linkedGamesCount").value(2))
+                .andExpect(jsonPath("$.pendingCount").value(1))
+                .andExpect(jsonPath("$.ignoredCount").value(1));
+
+        User bob = createVerifiedUser("steamcounts");
+        String bobAuth = bearer(bob);
+        perform(get("/api/v1/integrations/steam/status"), bobAuth)
+                .andExpect(jsonPath("$.linkedGamesCount").value(0))
+                .andExpect(jsonPath("$.pendingCount").value(0))
+                .andExpect(jsonPath("$.ignoredCount").value(0));
+        perform(get("/api/v1/integrations/steam/pending"), bobAuth)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
     // ---- Helpers -------------------------------------------------------------------------
 
     /** Unique per user: steam_links.steam_id is unique and the DB is shared across tests. */
@@ -504,6 +583,14 @@ class SteamIntegrationTests extends AbstractIntegrationTest {
     private List<String> pendingNames() throws Exception {
         MvcResult result = perform(get("/api/v1/integrations/steam/pending"), aliceAuth).andReturn();
         return JsonPath.read(result.getResponse().getContentAsString(), "$[*].name");
+    }
+
+    private Instant pendingLastPlayed(String name) throws Exception {
+        MvcResult result = perform(get("/api/v1/integrations/steam/pending"), aliceAuth).andReturn();
+        List<String> values = JsonPath.read(result.getResponse().getContentAsString(),
+                "$[?(@.name == '" + name + "')].lastPlayedAt");
+        assertThat(values).hasSize(1);
+        return values.getFirst() == null ? null : Instant.parse(values.getFirst());
     }
 
     private Long gameIdByName(String name) {

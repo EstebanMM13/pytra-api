@@ -12,6 +12,7 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import java.net.SocketTimeoutException;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -60,6 +61,24 @@ class SteamWebApiClientTest {
         assertThat(result.games()).containsExactly(
                 new SteamOwnedGame(620, "Portal 2", 600),
                 new SteamOwnedGame(570, "Dota 2", 0));
+    }
+
+    @Test
+    void parsesLastPlayedAsInstantAndTreatsZeroOrMissingAsNever() {
+        server.expect(requestTo(startsWith(OWNED_GAMES_URL)))
+                .andRespond(withSuccess("""
+                        {"response":{"game_count":3,"games":[
+                          {"appid":620,"name":"Portal 2","playtime_forever":600,"rtime_last_played":1700000000},
+                          {"appid":570,"name":"Dota 2","playtime_forever":0,"rtime_last_played":0},
+                          {"appid":440,"name":"Team Fortress 2","playtime_forever":5}
+                        ]}}""", MediaType.APPLICATION_JSON));
+
+        SteamOwnedGamesResult result = client.getOwnedGames(STEAM_ID);
+
+        assertThat(result.games()).containsExactly(
+                new SteamOwnedGame(620, "Portal 2", 600, Instant.ofEpochSecond(1_700_000_000L)),
+                new SteamOwnedGame(570, "Dota 2", 0, null),
+                new SteamOwnedGame(440, "Team Fortress 2", 5, null));
     }
 
     @Test
