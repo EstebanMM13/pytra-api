@@ -80,18 +80,18 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.avatar").value(nullValue()));
 
-        performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"ghost\"}")
+        performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"fantasmapx\"}")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.avatar").value("ghost"))
+                .andExpect(jsonPath("$.avatar").value("fantasmapx"))
                 .andExpect(jsonPath("$.username").value(alice.getUsername()));
-        assertThat(userRepository.findById(alice.getId()).orElseThrow().getAvatar()).isEqualTo("ghost");
+        assertThat(userRepository.findById(alice.getId()).orElseThrow().getAvatar()).isEqualTo("fantasmapx");
 
         // A username-only update leaves the avatar alone.
         String newName = "avrenamed" + alice.getId();
         performAs(aliceAuth, patch("/api/v1/users/me"), "{\"username\": \"" + newName + "\"}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value(newName))
-                .andExpect(jsonPath("$.avatar").value("ghost"));
+                .andExpect(jsonPath("$.avatar").value("fantasmapx"));
 
         performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": null}")
                 .andExpect(status().isOk())
@@ -102,15 +102,15 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
 
     @Test
     void unknownAvatarIs400AndChangesNothing() throws Exception {
-        performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"crown\"}")
+        performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"moneda\"}")
                 .andExpect(status().isOk());
 
-        for (String invalid : List.of("dragon", "", "CROWN", "x".repeat(40))) {
+        for (String invalid : List.of("dragon", "", "MONEDA", "x".repeat(40))) {
             performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"" + invalid + "\"}")
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.message").value("INVALID_AVATAR"));
         }
-        assertThat(userRepository.findById(alice.getId()).orElseThrow().getAvatar()).isEqualTo("crown");
+        assertThat(userRepository.findById(alice.getId()).orElseThrow().getAvatar()).isEqualTo("moneda");
 
         // Another user's avatar is untouched.
         assertThat(userRepository.findById(bob.getId()).orElseThrow().getAvatar()).isNull();
