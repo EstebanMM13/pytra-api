@@ -137,6 +137,29 @@ class SteamIntegrationTests extends AbstractIntegrationTest {
     }
 
     @Test
+    void steamGamesGetHeaderCoverWithoutOverwritingUserCovers() throws Exception {
+        link(alice);
+        Long noCoverId = createGame(aliceAuth, "Half-Life 2", "SINGLEPLAYER");
+        Long withCoverId = readId(perform(post("/api/v1/games"), aliceAuth,
+                "{\"name\": \"Portal\", \"category\": \"SINGLEPLAYER\", \"coverImageUrl\": \"https://example.com/mine.png\"}")
+                .andExpect(status().isCreated()).andReturn());
+        library(new SteamOwnedGame(620, "Portal 2", 600),
+                new SteamOwnedGame(220, "Half-Life 2", 60),
+                new SteamOwnedGame(400, "Portal", 30));
+
+        sync(aliceAuth)
+                .andExpect(jsonPath("$.newGamesPending").value(1))
+                .andExpect(jsonPath("$.linkedExisting").value(2));
+
+        assertThat(gameRepository.findById(gameIdByName("Portal 2")).orElseThrow().getCoverImageUrl())
+                .isEqualTo("https://cdn.cloudflare.steamstatic.com/steam/apps/620/header.jpg");
+        assertThat(gameRepository.findById(noCoverId).orElseThrow().getCoverImageUrl())
+                .isEqualTo("https://cdn.cloudflare.steamstatic.com/steam/apps/220/header.jpg");
+        assertThat(gameRepository.findById(withCoverId).orElseThrow().getCoverImageUrl())
+                .isEqualTo("https://example.com/mine.png");
+    }
+
+    @Test
     void oneFailingAppDoesNotAbortTheRestOfTheLibrary() throws Exception {
         link(alice);
         // Postgres rejects NUL bytes in text: this app's insert fails at the database.
