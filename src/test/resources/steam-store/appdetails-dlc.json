@@ -1,0 +1,37 @@
+{
+  "2778580": {
+    "success": true,
+    "data": {
+      "type": "dlc",
+      "name": "ELDEN RING Shadow of the Erdtree",
+      "steam_appid": 2778580,
+      "developers": [
+        "FromSoftware, Inc."
+      ],
+      "publishers": [
+        "FromSoftware, Inc.",
+        "Bandai Namco Entertainment"
+      ],
+      "release_date": {
+        "coming_soon": false,
+        "date": "20 JUN 2024"
+      },
+      "genres": [
+        {
+          "id": "1",
+          "description": "Acción"
+        },
+        {
+          "id": "3",
+          "description": "Rol"
+        }
+      ],
+      "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2778580/header.jpg?t=1787586064",
+      "short_description": "Shadow of the Erdtree es una expansión de ELDEN RING, el Juego del Año de 2022. En un entorno oscuro e intenso, Shadow of the Erdtree invita a los jugadores a seguir su viaje con la libertad de explorar y disfrutar de la aventura a su propio ritmo.",
+      "fullgame": {
+        "appid": "1245620",
+        "name": "ELDEN RING"
+      }
+    }
+  }
+}

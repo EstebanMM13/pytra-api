@@ -1,0 +1,65 @@
+{
+  "total": 10,
+  "items": [
+    {
+      "type": "app",
+      "name": "ELDEN RING",
+      "id": 1245620,
+      "tiny_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1245620/801d3febc6153497b1baafc2ace5cc4cad7c0213/capsule_231x87_alt_assets_3_spanish.jpg?t=1790290043"
+    },
+    {
+      "type": "app",
+      "name": "ELDEN RING Tarnished Pack",
+      "id": 3655690,
+      "tiny_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3655690/c6fd066656060ea1d8bd540873beb90762dafdc9/capsule_231x87.jpg?t=1788321529"
+    },
+    {
+      "type": "app",
+      "name": "ELDEN RING Shadow of the Erdtree",
+      "id": 2778580,
+      "tiny_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2778580/capsule_231x87.jpg?t=1787586064"
+    },
+    {
+      "type": "app",
+      "name": "ELDEN RING NIGHTREIGN",
+      "id": 2622380,
+      "tiny_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2622380/8ebc4260af27bc55ba8b88982fd7eb7f970d43c9/capsule_231x87.jpg?t=1791488960"
+    },
+    {
+      "type": "app",
+      "name": "ELDEN RING NIGHTREIGN The Forsaken Hollows",
+      "id": 3531720,
+      "tiny_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3531720/a6ab221829dc59c7014353dfde0004e2dfd48575/capsule_231x87.jpg?t=1765506462"
+    },
+    {
+      "type": "app",
+      "name": "Elden Gunfire 2",
+      "id": 2059760,
+      "tiny_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2059760/capsule_231x87.jpg?t=1742313561"
+    },
+    {
+      "type": "app",
+      "name": "Elden Gunfire",
+      "id": 2768050,
+      "tiny_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2768050/2afa45264d327b0488ebd98615485eeb319404c3/capsule_231x87.jpg?t=1772629317"
+    },
+    {
+      "type": "app",
+      "name": "ELDEN RING Shadow of the Erdtree Premium Bundle",
+      "id": 2778590,
+      "tiny_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2778590/capsule_231x87.jpg?t=1787676353"
+    },
+    {
+      "type": "app",
+      "name": "Elden: Path of the Forgotten",
+      "id": 715020,
+      "tiny_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/715020/capsule_231x87.jpg?t=1779871637"
+    },
+    {
+      "type": "app",
+      "name": "Elden Gunfire 2 Demo",
+      "id": 2063410,
+      "tiny_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2063410/capsule_231x87.jpg?t=1655756359"
+    }
+  ]
+}

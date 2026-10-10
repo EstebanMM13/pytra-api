@@ -1,0 +1,33 @@
+{
+  "1245620": {
+    "success": true,
+    "data": {
+      "type": "game",
+      "name": "ELDEN RING",
+      "steam_appid": 1245620,
+      "developers": [
+        "FromSoftware, Inc."
+      ],
+      "publishers": [
+        "FromSoftware, Inc.",
+        "Bandai Namco Entertainment"
+      ],
+      "release_date": {
+        "coming_soon": false,
+        "date": "24 FEB 2022"
+      },
+      "genres": [
+        {
+          "id": "1",
+          "description": "Acción"
+        },
+        {
+          "id": "3",
+          "description": "Rol"
+        }
+      ],
+      "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1245620/d98994fe44b885fd491f3ccc93e3fd6a5e0feece/header_alt_assets_3_spanish.jpg?t=1790290043",
+      "short_description": "EL NUEVO JUEGO DE ROL Y ACCIÓN DE AMBIENTACIÓN FANTÁSTICA. Álzate, Sinluz, y que la gracia te guíe para abrazar el poder del Círculo de Elden y encumbrarte como señor del Círculo en las Tierras Intermedias."
+    }
+  }
+}

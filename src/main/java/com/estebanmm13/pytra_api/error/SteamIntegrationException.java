@@ -18,6 +18,8 @@ public class SteamIntegrationException extends RuntimeException {
     public static final String RATE_LIMITED = "STEAM_RATE_LIMITED";
     public static final String UNAVAILABLE = "STEAM_UNAVAILABLE";
     public static final String ACCOUNT_ALREADY_LINKED = "STEAM_ACCOUNT_ALREADY_LINKED";
+    public static final String APP_NOT_FOUND = "STEAM_APP_NOT_FOUND";
+    public static final String APP_NOT_A_GAME = "STEAM_APP_NOT_A_GAME";
 
     private final HttpStatus status;
     private final String code;
@@ -58,5 +60,14 @@ public class SteamIntegrationException extends RuntimeException {
 
     public static SteamIntegrationException accountAlreadyLinked() {
         return new SteamIntegrationException(HttpStatus.CONFLICT, ACCOUNT_ALREADY_LINKED);
+    }
+
+    public static SteamIntegrationException appNotFound() {
+        return new SteamIntegrationException(HttpStatus.NOT_FOUND, APP_NOT_FOUND);
+    }
+
+    /** The app exists but is a DLC, soundtrack, demo... (appdetails {@code type != "game"}). */
+    public static SteamIntegrationException appNotAGame() {
+        return new SteamIntegrationException(HttpStatus.UNPROCESSABLE_CONTENT, APP_NOT_A_GAME);
     }
 }
