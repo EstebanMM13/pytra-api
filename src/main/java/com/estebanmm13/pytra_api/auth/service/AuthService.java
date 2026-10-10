@@ -20,5 +20,6 @@ public interface AuthService {
     ForgotPasswordResponseDto forgotPassword(ForgotPasswordRequestDto forgotPasswordRequestDto);
     void resetPassword(ResetPasswordRequestDto requestPasswordRequestDto);
     LoginResponseDto exchangeCodeToken(ExchangeCodeTokenRequestDto exchangeCodeTokenRequestDto);
+    LoginResponseDto demoLogin();
 
 }

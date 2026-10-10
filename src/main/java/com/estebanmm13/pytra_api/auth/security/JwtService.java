@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.security.Key;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
@@ -22,6 +23,11 @@ import java.util.function.Function;
 @Service
 public class JwtService {
 
+    /** Claim marking a read-only demo session (see DemoReadOnlyFilter). */
+    public static final String DEMO_CLAIM = "demo";
+    /** Demo sessions are short-lived and never refreshed: the client asks for a new one instead. */
+    public static final Duration DEMO_TOKEN_TTL = Duration.ofHours(2);
+
     @Value("${JWT_SECRET}")
     private String SECRET_KEY;
 
@@ -29,10 +35,14 @@ public class JwtService {
     private Long EXPIRATION_TIME;
 
     public String generateToken(Map<String, Object> extraClaims, String subject) {
+        return generateToken(extraClaims, subject, EXPIRATION_TIME);
+    }
+
+    private String generateToken(Map<String, Object> extraClaims, String subject, long expirationMillis) {
         return Jwts.builder()
                 .setClaims(extraClaims).setSubject(subject)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
+                .setExpiration(new Date(System.currentTimeMillis() + expirationMillis))
                 .signWith(getSignInKey(), SignatureAlgorithm.HS256).compact();
     }
 
@@ -69,6 +79,19 @@ public class JwtService {
         claims.put("role", role);
         claims.put("userId", userId);
         return generateToken(claims, subject);
+    }
+
+    /** Read-only demo token: always role USER, flagged with {@link #DEMO_CLAIM}, valid {@link #DEMO_TOKEN_TTL}. */
+    public String generateDemoToken(String subject, Long userId) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("role", "USER");
+        claims.put("userId", userId);
+        claims.put(DEMO_CLAIM, true);
+        return generateToken(claims, subject, DEMO_TOKEN_TTL.toMillis());
+    }
+
+    public boolean isDemo(String token) {
+        return getClaim(token, claims -> Boolean.TRUE.equals(claims.get(DEMO_CLAIM, Boolean.class)));
     }
 
     public String extractRole(String token) {

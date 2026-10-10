@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.config;
 
+import com.estebanmm13.pytra_api.auth.security.DemoReadOnlyFilter;
 import com.estebanmm13.pytra_api.auth.security.JwtFilter;
 import com.estebanmm13.pytra_api.auth.security.MobileAwareAuthorizationRequestResolver;
 import com.estebanmm13.pytra_api.auth.security.MobileFlagAuthorizationRequestRepository;
@@ -37,6 +38,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
+    private final DemoReadOnlyFilter demoReadOnlyFilter;
     private final OAuth2UserService <OidcUserRequest, OidcUser> oAuth2UserService;
     private final AuthenticationSuccessHandler successHandler;
     private final AuthenticationFailureHandler failureHandler;
@@ -49,6 +51,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                // After JwtFilter (which runs before UsernamePasswordAuthenticationFilter): needs the demo principal.
+                .addFilterAfter(demoReadOnlyFilter, UsernamePasswordAuthenticationFilter.class)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .oauth2Login(oauth2 -> oauth2
                         // ?client=android marks the flow as mobile; the flag travels inside the
@@ -78,6 +82,13 @@ public class SecurityConfig {
     @Bean
     public FilterRegistrationBean<JwtFilter> jwtFilterRegistration(JwtFilter filter) {
         FilterRegistrationBean<JwtFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<DemoReadOnlyFilter> demoReadOnlyFilterRegistration(DemoReadOnlyFilter filter) {
+        FilterRegistrationBean<DemoReadOnlyFilter> registration = new FilterRegistrationBean<>(filter);
         registration.setEnabled(false);
         return registration;
     }

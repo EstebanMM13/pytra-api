@@ -41,6 +41,9 @@ app:
   # Empty = registration open to everyone. Existing users can always sign in.
   registration:
     allowed-emails: ${ALLOWED_EMAILS:}
+  # Public read-only demo: id of the account visitors browse via POST /api/v1/auth/demo. Empty = demo disabled.
+  demo:
+    user-id: ${DEMO_USER_ID:}
   # Transactional email via Brevo's HTTP API. With no API key, emails are only logged (local dev).
   mail:
     brevo-api-key: ${BREVO_API_KEY:}

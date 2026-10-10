@@ -68,6 +68,7 @@ Only variable names are listed here. Never commit real values.
 | `BREVO_API_KEY` | Prod | empty | Brevo API key; blank means emails are logged (blank is rejected in `prod`) |
 | `MAIL_FROM_EMAIL` | Prod | empty | Sender address; required whenever `BREVO_API_KEY` is set |
 | `MAIL_FROM_NAME` | No | `Pytra` | Sender display name |
+| `DEMO_USER_ID` | No | empty | Id of the account exposed as the public read-only demo (`POST /api/v1/auth/demo`); empty disables the demo (`404`) |
 | `JAVA_TOOL_OPTIONS` | No | none | JVM flags (for example a heap cap) set at the Railway service level; not read by the app itself |
 
 **Google Cloud Console:** the authorized redirect URI must be `{PUBLIC_API_URL}/login/oauth2/code/google`.
@@ -82,7 +83,8 @@ Only variable names are listed here. Never commit real values.
 | Forgot / reset password | Reset link valid for 1 h |
 | Google login | OIDC with `prompt=select_account` (always shows the account chooser). Only Google-verified emails are accepted; an existing account with the same email gets linked |
 | Exchange code | Google and Steam flows end with a one-time code (valid 1 min) that the client exchanges at `POST /api/v1/auth/exchange-code` for a JWT |
-| Rate limit | Max 5 POSTs per IP per minute on `register`, `login`, `resend-verification`, `forgot-password`; extra requests get `429`. In-memory, per instance |
+| Rate limit | Max 5 POSTs per IP per minute on `register`, `login`, `resend-verification`, `forgot-password`, `demo`; extra requests get `429`. In-memory, per instance |
+| Demo | `POST /api/v1/auth/demo` returns a JWT for the `DEMO_USER_ID` account with a `demo: true` claim, valid 2 h and never refreshed (the client asks again). `DemoReadOnlyFilter` answers `403 DEMO_READ_ONLY` to any non-GET/HEAD/OPTIONS request made with it (except the public `/api/v1/auth/**` endpoints, which ignore the caller) and to `GET /users/me/export`. Unsetting `DEMO_USER_ID` also invalidates outstanding demo tokens |
 
 Emails go through the Brevo transactional HTTP API (`api.brevo.com/v3`) rather than SMTP, because Railway blocks outbound SMTP on non-Pro plans. Email links point to `{FRONTEND_URL}/verify-email?token=...` and `{FRONTEND_URL}/reset-password?token=...`.
 
@@ -247,13 +249,14 @@ Sync rules:
 | Command | Needs Docker | What runs |
 |---|---|---|
 | `./mvnw test` | Yes | Everything, including the integration tests below |
-| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest,SteamWebApiClientTest,SteamSyncSchedulerTest,ExperiencePeriodTest,StatsMathTest,YearHighlightsCalculatorTest,AccountExportWriterTest,ExportRateLimiterTest"` | No | Unit tests only |
+| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest,SteamWebApiClientTest,SteamSyncSchedulerTest,ExperiencePeriodTest,StatsMathTest,YearHighlightsCalculatorTest,AccountExportWriterTest,ExportRateLimiterTest,DemoReadOnlyFilterTest"` | No | Unit tests only |
 
 Integration tests extend `AbstractIntegrationTest`: full Spring context, MockMvc, the `test` profile (`src/test/resources/application-test.yaml`, which supplies dummy JWT/Google/mail settings so no environment variable is needed) and one shared PostgreSQL Testcontainer via `@ServiceConnection`.
 
 - `TenantIsolationTests` proves that one user can never read, modify or delete another user's games, sagas, experiences, online playtime, stats, profile or Steam pending queue (cross-user access is always `404`), and that every protected endpoint answers `401` without a valid token.
 - `SteamIntegrationTests` covers the Steam sync with the HTTP client mocked: pending creation, same-name linking, per-app failure isolation, private profiles, negative deltas, ignore/unignore, status, unlink/relink and cross-user isolation.
 - `StatsIntegrationTests`, `GameLibraryAggregatesTests` and `AccountIntegrationTests` cover averages and status counts, year/month attribution, highlights, yearly notes, in-progress runs, library aggregates, both export formats and account deletion (every user-owned table emptied, other users untouched).
+- `DemoModeIntegrationTests` covers the read-only demo: `404` when disabled, demo token reads the demo account, every write method gets `403 DEMO_READ_ONLY`, normal tokens unaffected.
 - `ApiDocsTests` checks that `/v3/api-docs` is served outside `prod`.
 - `PytraApiApplicationTests` is the context-load smoke test.
 

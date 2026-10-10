@@ -26,6 +26,7 @@ public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserRepository userRepository;
+    private final DemoMode demoMode;
 
     @Override
     protected void doFilterInternal(
@@ -44,11 +45,13 @@ public class JwtFilter extends OncePerRequestFilter {
         final String username;
         final Long userId;
         final Instant issuedAt;
+        final boolean demo;
         final List<GrantedAuthority> authorities;
         try {
             username = jwtService.getUserName(jwt);
             userId = jwtService.getUserId(jwt);
             issuedAt = jwtService.getIssuedAt(jwt);
+            demo = jwtService.isDemo(jwt);
             // Use the explicit authorities carried in the JWT
             authorities = jwtService.getAuthorities(jwt);
         } catch (Exception e) {
@@ -56,10 +59,16 @@ public class JwtFilter extends OncePerRequestFilter {
             return;
         }
 
+        // Kill switch: once demo mode is disabled (or points to another account), outstanding demo tokens stop working.
+        if (demo && !demoMode.isDemoUser(userId)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         // A validly signed token of a deleted account must not authenticate anything (stays anonymous -> 401).
         if (username != null && userId != null && SecurityContextHolder.getContext().getAuthentication() == null
                 && userRepository.existsById(userId)) {
-            AuthenticatedUser authenticatedUser = new AuthenticatedUser(username, userId, issuedAt);
+            AuthenticatedUser authenticatedUser = new AuthenticatedUser(username, userId, issuedAt, demo);
 
             UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
                     authenticatedUser, null, authorities

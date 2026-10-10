@@ -12,4 +12,6 @@ public class AuthenticatedUser {
     private Long userId;
     /** {@code iat} of the JWT that authenticated this request; null if the token carries none. */
     private Instant issuedAt;
+    /** True for a read-only demo session; DemoReadOnlyFilter rejects its writes. */
+    private boolean demo;
 }

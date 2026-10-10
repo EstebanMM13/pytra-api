@@ -16,6 +16,7 @@ import com.estebanmm13.pytra_api.auth.repository.EmailVerificationTokenRepositor
 import com.estebanmm13.pytra_api.auth.repository.ExchangeCodeTokenRepository;
 import com.estebanmm13.pytra_api.auth.repository.PasswordResetTokenRepository;
 import com.estebanmm13.pytra_api.auth.repository.UserRepository;
+import com.estebanmm13.pytra_api.auth.security.DemoMode;
 import com.estebanmm13.pytra_api.auth.security.JwtService;
 import com.estebanmm13.pytra_api.auth.security.TokenGenerator;
 import com.estebanmm13.pytra_api.auth.validation.RegistrationPolicy;
@@ -27,6 +28,7 @@ import com.estebanmm13.pytra_api.error.EmailNotVerifiedException;
 import com.estebanmm13.pytra_api.error.ExpiredTokenException;
 import com.estebanmm13.pytra_api.error.InvalidCredentialException;
 import com.estebanmm13.pytra_api.error.InvalidTokenException;
+import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -58,6 +60,7 @@ public class AuthServiceImpl implements AuthService {
     private final ExchangeCodeTokenRepository  exchangeCodeTokenRepository;
     private final AuthEmailService authEmailService;
     private final RegistrationPolicy registrationPolicy;
+    private final DemoMode demoMode;
 
     // Hash compared against when the account does not exist (or has no password), so a failed login costs
     // the same bcrypt work either way and response time does not reveal which identifiers are registered.
@@ -289,6 +292,21 @@ public class AuthServiceImpl implements AuthService {
         String token = jwtService.generateTokenWithRole(user.getUsername(), user.getRole().name(), user.getId());
         return new LoginResponseDto(token);
 
+    }
+
+    /**
+     * No refresh token exists in this API, and the demo token is a separate short-lived JWT carrying the
+     * demo claim, so a demo session can never turn into a normal one: when it expires the client asks again.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public LoginResponseDto demoLogin() {
+        if (!demoMode.isEnabled()) {
+            throw new ResourceNotFoundException("Demo not available");
+        }
+        User user = userRepository.findById(demoMode.getDemoUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("Demo not available"));
+        return new LoginResponseDto(jwtService.generateDemoToken(user.getUsername(), user.getId()));
     }
 
     private void issueVerificationEmail(User user) {

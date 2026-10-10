@@ -84,4 +84,11 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
+    /** Read-only session on the demo account; 404 when DEMO_USER_ID is not set. */
+    @PostMapping("/demo")
+    public ResponseEntity<LoginResponseDto> demo() {
+        LoginResponseDto response = authService.demoLogin();
+        return ResponseEntity.status(HttpStatus.OK).body(response);
+    }
+
 }
