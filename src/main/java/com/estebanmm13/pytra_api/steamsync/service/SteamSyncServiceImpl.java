@@ -118,7 +118,11 @@ public class SteamSyncServiceImpl implements SteamSyncService {
         game.setReleaseDate(gameRequestDto.getReleaseDate());
         game.setCategory(gameRequestDto.getCategory());
         game.setSaga(resolveSaga(gameRequestDto.getSagaId(), userId));
-        game.setCoverImageUrl(gameRequestDto.getCoverImageUrl());
+        // Keep the cover set at import (Steam header) unless the client sends a new one.
+        String cover = gameRequestDto.getCoverImageUrl();
+        if (cover != null && !cover.isBlank()) {
+            game.setCoverImageUrl(cover);
+        }
         game.setGenres(resolveGenres(gameRequestDto.getGenreIds()));
         game.setReviewStatus(ReviewStatus.CONFIRMED);
         gameRepository.save(game);

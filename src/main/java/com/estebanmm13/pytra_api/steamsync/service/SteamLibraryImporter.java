@@ -50,6 +50,9 @@ public class SteamLibraryImporter {
     /** games.name is VARCHAR(255). */
     private static final int MAX_NAME_LENGTH = 255;
 
+    /** Steam store header image; public CDN, no API key needed. */
+    private static final String STEAM_HEADER_URL = "https://cdn.cloudflare.steamstatic.com/steam/apps/%s/header.jpg";
+
     private final SteamLinkRepository steamLinkRepository;
     private final GameRepository gameRepository;
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
@@ -217,9 +220,15 @@ public class SteamLibraryImporter {
             // The user already tracks this game by hand. Its hours were entered manually and very
             // likely include (part of) the Steam total, so importing that total would double count:
             // the current Steam playtime becomes the baseline and only future deltas are added.
+            Game existing = gameRepository.getReferenceById(existingGameId);
+            // Fill in a missing cover only; a user-provided cover is never overwritten. The managed
+            // entity is dirty-checked, so nothing is written when the game already has one.
+            if (isBlank(existing.getCoverImageUrl())) {
+                existing.setCoverImageUrl(steamCoverUrl(appId));
+            }
             gamePlatformLinkRepository.save(GamePlatformLink.builder()
                     .userId(userId)
-                    .game(gameRepository.getReferenceById(existingGameId))
+                    .game(existing)
                     .platform(ExternalPlatform.STEAM)
                     .externalId(appId)
                     .lastSyncedPlaytimeMinutes(app.playtimeForeverMinutes())
@@ -234,6 +243,7 @@ public class SteamLibraryImporter {
                 .name(name)
                 .category(null)
                 .reviewStatus(ReviewStatus.PENDING_REVIEW)
+                .coverImageUrl(steamCoverUrl(appId))
                 .genres(new HashSet<>())
                 .build());
         gamePlatformLinkRepository.save(GamePlatformLink.builder()
@@ -251,6 +261,14 @@ public class SteamLibraryImporter {
     private static String truncate(String name) {
         String safe = (name == null || name.isBlank()) ? "Unknown" : name.strip();
         return safe.length() <= MAX_NAME_LENGTH ? safe : safe.substring(0, MAX_NAME_LENGTH);
+    }
+
+    static String steamCoverUrl(String appId) {
+        return STEAM_HEADER_URL.formatted(appId);
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /** Mirrors the unique index on (user_id, LOWER(name)). */
