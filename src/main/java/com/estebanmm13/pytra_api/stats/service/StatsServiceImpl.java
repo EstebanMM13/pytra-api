@@ -13,6 +13,7 @@ import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.games.repository.SagaRepository;
 import com.estebanmm13.pytra_api.error.DuplicateResourceException;
 import com.estebanmm13.pytra_api.error.InvalidRequestException;
+import com.estebanmm13.pytra_api.platforms.mapper.PlatformMapper;
 import com.estebanmm13.pytra_api.stats.dto.*;
 import com.estebanmm13.pytra_api.stats.model.YearNote;
 import com.estebanmm13.pytra_api.stats.repository.YearNoteRepository;
@@ -123,7 +124,10 @@ public class StatsServiceImpl implements StatsService {
                     hours,
                     Ratings.normalize(experience.getRating()),
                     Boolean.TRUE.equals(experience.getPlatinum()),
-                    experience.getPlatform(),
+                    PlatformMapper.legacyCodeOf(experience.getPlatform()),
+                    PlatformMapper.idOf(experience.getPlatform()),
+                    PlatformMapper.nameOf(experience.getPlatform()),
+                    PlatformMapper.colorOf(experience.getPlatform()),
                     month,
                     experience.getStartDate(),
                     experience.getEndDate()
@@ -236,7 +240,10 @@ public class StatsServiceImpl implements StatsService {
                     game != null ? game.getName() : "Unknown",
                     game != null ? game.getCoverImageUrl() : null,
                     experience.getRunLabel(),
-                    experience.getPlatform(),
+                    PlatformMapper.legacyCodeOf(experience.getPlatform()),
+                    PlatformMapper.idOf(experience.getPlatform()),
+                    PlatformMapper.nameOf(experience.getPlatform()),
+                    PlatformMapper.colorOf(experience.getPlatform()),
                     experience.getStartDate(),
                     hoursOf(experience),
                     experience.getUpdatedAt()

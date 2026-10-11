@@ -84,12 +84,15 @@ class GameLibraryAggregatesTests extends AbstractIntegrationTest {
         performAs(auth, get("/api/v1/games"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(playedId))
-                // Distinct, in Platform enum order (PC before SWITCH), whatever the insertion order.
+                // Distinct, in catalog order (PC before Switch), whatever the insertion order.
                 .andExpect(jsonPath("$[0].platforms", contains("PC", "SWITCH")))
+                .andExpect(jsonPath("$[0].platformRefs[*].name", contains("PC", "Switch")))
+                .andExpect(jsonPath("$[0].platformRefs[1].color").value("#E0524C"))
                 // Latest of every endDate/startDate: the replay's startDate.
                 .andExpect(jsonPath("$[0].lastPlayedAt").value("2024-01-01"))
                 .andExpect(jsonPath("$[1].id").value(untouchedId))
                 .andExpect(jsonPath("$[1].platforms", empty()))
+                .andExpect(jsonPath("$[1].platformRefs", empty()))
                 .andExpect(jsonPath("$[1].lastPlayedAt").value(nullValue()));
 
         performAs(auth, get("/api/v1/games/{id}", playedId))

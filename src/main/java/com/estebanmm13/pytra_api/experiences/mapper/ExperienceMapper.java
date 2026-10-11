@@ -3,6 +3,7 @@ package com.estebanmm13.pytra_api.experiences.mapper;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceResponseDto;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.Ratings;
+import com.estebanmm13.pytra_api.platforms.mapper.PlatformMapper;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -20,7 +21,10 @@ public class ExperienceMapper {
                 experience.getHours(),
                 experience.getStartDate(),
                 experience.getEndDate(),
-                experience.getPlatform(),
+                PlatformMapper.legacyCodeOf(experience.getPlatform()),
+                PlatformMapper.idOf(experience.getPlatform()),
+                PlatformMapper.nameOf(experience.getPlatform()),
+                PlatformMapper.colorOf(experience.getPlatform()),
                 experience.getPlatinum(),
                 experience.getReplay(),
                 experience.getSummary(),

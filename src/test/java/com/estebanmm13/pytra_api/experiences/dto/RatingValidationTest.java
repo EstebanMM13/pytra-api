@@ -3,7 +3,6 @@ package com.estebanmm13.pytra_api.experiences.dto;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceRequestDto;
 import com.estebanmm13.pytra_api.experiences.dto.onlinePlaytime.OnlinePlaytimeRequestDto;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
-import com.estebanmm13.pytra_api.experiences.model.Platform;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -40,7 +39,7 @@ class RatingValidationTest {
         ExperienceRequestDto dto = new ExperienceRequestDto();
         dto.setRunLabel("Run");
         dto.setStatus(ExperienceStatus.COMPLETADO);
-        dto.setPlatform(Platform.PC);
+        dto.setPlatform("PC");
         dto.setRating(new BigDecimal(rating));
         return dto;
     }

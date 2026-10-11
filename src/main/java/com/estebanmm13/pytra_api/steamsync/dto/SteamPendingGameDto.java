@@ -1,11 +1,11 @@
 package com.estebanmm13.pytra_api.steamsync.dto;
 
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
-import com.estebanmm13.pytra_api.experiences.model.Platform;
 import com.estebanmm13.pytra_api.games.dto.game.GameResponseDto;
 import com.estebanmm13.pytra_api.games.dto.genre.GenreResponseDto;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
+import com.estebanmm13.pytra_api.platforms.dto.PlatformRefDto;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -44,7 +44,8 @@ public record SteamPendingGameDto(
         ExperienceStatus lastExperienceStatus,
         Integer lastPlayedYear,
         Boolean hasPlatinum,
-        List<Platform> platforms,
+        List<String> platforms,
+        List<PlatformRefDto> platformRefs,
         String appId,
         Long steamPlaytimeMinutes,
         Instant lastPlayedAt
@@ -57,7 +58,7 @@ public record SteamPendingGameDto(
                 game.getReviewStatus(), game.getGenres(), game.getUpdatedAt(),
                 game.getExperienceCount(), game.getTotalHours(), game.getBestRating(),
                 game.getLastExperienceStatus(), game.getLastPlayedYear(), game.getHasPlatinum(),
-                game.getPlatforms(),
+                game.getPlatforms(), game.getPlatformRefs(),
                 appId, steamPlaytimeMinutes, lastPlayedAt);
     }
 }

@@ -3,12 +3,12 @@ package com.estebanmm13.pytra_api.steamsync.service;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
-import com.estebanmm13.pytra_api.experiences.model.Platform;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
+import com.estebanmm13.pytra_api.platforms.service.PlatformService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -34,9 +34,12 @@ public class SteamPlaytimeWriter {
 
     static final String STEAM_IMPORT_NOTE = "Horas importadas automáticamente desde Steam";
     static final String STEAM_RUN_LABEL = "Importado de Steam";
+    /** Steam runs always go to the seeded PC entry. */
+    static final String STEAM_PLATFORM_CODE = "PC";
 
     private final ExperienceRepository experienceRepository;
     private final OnlinePlaytimeRepository onlinePlaytimeRepository;
+    private final PlatformService platformService;
 
     /**
      * Confirm-time import of the whole Steam total.
@@ -107,7 +110,7 @@ public class SteamPlaytimeWriter {
                 .runLabel(STEAM_RUN_LABEL)
                 .status(ExperienceStatus.EN_CURSO)
                 .hours(hours)
-                .platform(Platform.PC)
+                .platform(platformService.requireByLegacyCode(STEAM_PLATFORM_CODE))
                 .platinum(false)
                 .replay(false)
                 .notes(STEAM_IMPORT_NOTE)

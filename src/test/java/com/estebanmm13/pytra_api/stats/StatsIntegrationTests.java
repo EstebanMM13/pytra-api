@@ -109,7 +109,9 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.experiences[0].gameName").value("Month Game"))
                 .andExpect(jsonPath("$.experiences[0].gameId").value(gameId))
                 .andExpect(jsonPath("$.experiences[0].month").value(7))
-                .andExpect(jsonPath("$.experiences[0].platform").value("PC"));
+                .andExpect(jsonPath("$.experiences[0].platform").value("PC"))
+                .andExpect(jsonPath("$.experiences[0].platformName").value("PC"))
+                .andExpect(jsonPath("$.experiences[0].platformId").isNumber());
     }
 
     @Test
@@ -215,6 +217,8 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[0].gameName").value("Second"))
                 .andExpect(jsonPath("$[0].runLabel").value("Newer"))
                 .andExpect(jsonPath("$[0].platform").value("PC"))
+                .andExpect(jsonPath("$[0].platformName").value("PC"))
+                .andExpect(jsonPath("$[0].platformColor").value("#8A857C"))
                 .andExpect(jsonPath("$[0].startDate").value("2025-02-01"))
                 .andExpect(jsonPath("$[0].hours").value(1.5))
                 .andExpect(jsonPath("$[1].experienceId").value(older))

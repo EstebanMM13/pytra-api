@@ -1,7 +1,6 @@
 package com.estebanmm13.pytra_api.experiences.dto.experience;
 
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
-import com.estebanmm13.pytra_api.experiences.model.Platform;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -34,8 +33,14 @@ public class ExperienceRequestDto {
 
     private LocalDate endDate;
 
-    @NotNull
-    private Platform platform;
+    /** Catalog platform id. Required unless the legacy {@code platform} code is sent. */
+    private Long platformId;
+
+    /**
+     * Legacy enum code (PC, PS5, PS4, XBOX, SWITCH, MOBILE) sent by clients built before the catalog
+     * existed; only used when {@code platformId} is absent.
+     */
+    private String platform;
 
     private Boolean platinum = false;
 

@@ -4,6 +4,7 @@ import com.estebanmm13.pytra_api.AbstractIntegrationTest;
 import com.estebanmm13.pytra_api.auth.model.User;
 import com.estebanmm13.pytra_api.auth.security.DemoMode;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
+import com.estebanmm13.pytra_api.platforms.repository.PlatformRepository;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,9 @@ class DemoModeIntegrationTests extends AbstractIntegrationTest {
 
     @Autowired
     private GameRepository gameRepository;
+
+    @Autowired
+    private PlatformRepository platformRepository;
 
     private User demoUser;
     private String ownerAuth;
@@ -106,6 +110,7 @@ class DemoModeIntegrationTests extends AbstractIntegrationTest {
                 put("/api/v1/games/{id}/online-playtime", demoGameId),
                 post("/api/v1/sagas"),
                 post("/api/v1/genres"),
+                post("/api/v1/platforms"),
                 put("/api/v1/stats/years/2024/note"),
                 patch("/api/v1/users/me"),
                 delete("/api/v1/users/me"),
@@ -124,6 +129,7 @@ class DemoModeIntegrationTests extends AbstractIntegrationTest {
         assertThat(gameRepository.findById(demoGameId)).get()
                 .extracting(game -> game.getName()).isEqualTo("Demo Game");
         assertThat(userRepository.existsById(demoUser.getId())).isTrue();
+        assertThat(platformRepository.findByNameIgnoreCase("Hacked")).isEmpty();
     }
 
     @Test

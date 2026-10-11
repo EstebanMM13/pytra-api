@@ -1,7 +1,6 @@
 package com.estebanmm13.pytra_api.experiences.dto.experience;
 
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
-import com.estebanmm13.pytra_api.experiences.model.Platform;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -21,7 +20,11 @@ public class ExperienceResponseDto {
     private Double hours;
     private LocalDate startDate;
     private LocalDate endDate;
-    private Platform platform;
+    /** Legacy enum code for old clients ("OTHER" for platforms the enum did not have). */
+    private String platform;
+    private Long platformId;
+    private String platformName;
+    private String platformColor;
     private Boolean platinum;
     private Boolean replay;
     private String summary;

@@ -5,6 +5,7 @@ import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.Genre;
+import com.estebanmm13.pytra_api.platforms.mapper.PlatformMapper;
 import com.estebanmm13.pytra_api.stats.model.YearNote;
 
 import java.math.BigDecimal;
@@ -70,7 +71,8 @@ public final class AccountExportWriter {
                         number(run.getHours()),
                         value(run.getStartDate()),
                         value(run.getEndDate()),
-                        value(run.getPlatform()),
+                        // Catalog names are user-editable: neutralize formulas like any other free text.
+                        text(PlatformMapper.nameOf(run.getPlatform())),
                         value(run.getPlatinum()),
                         value(run.getReplay()),
                         text(run.getSummary()),
@@ -117,7 +119,7 @@ public final class AccountExportWriter {
                 field(out, "Year", value(run.getYear()));
                 field(out, "Start", value(run.getStartDate()));
                 field(out, "End", value(run.getEndDate()));
-                field(out, "Platform", value(run.getPlatform()));
+                field(out, "Platform", value(PlatformMapper.nameOf(run.getPlatform())));
                 field(out, "Platinum", Boolean.TRUE.equals(run.getPlatinum()) ? "yes" : null);
                 field(out, "Replay", Boolean.TRUE.equals(run.getReplay()) ? "yes" : null);
                 block(out, "Summary", run.getSummary());

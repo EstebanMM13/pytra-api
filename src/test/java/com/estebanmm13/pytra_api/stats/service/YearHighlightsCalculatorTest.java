@@ -2,7 +2,7 @@ package com.estebanmm13.pytra_api.stats.service;
 
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
-import com.estebanmm13.pytra_api.experiences.model.Platform;
+import com.estebanmm13.pytra_api.platforms.TestPlatforms;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.Genre;
 import com.estebanmm13.pytra_api.games.model.Saga;
@@ -299,7 +299,7 @@ class YearHighlightsCalculatorTest {
                 .hours(hours)
                 .endDate(endDate)
                 .year(year)
-                .platform(Platform.PC)
+                .platform(TestPlatforms.PC)
                 .platinum(false)
                 .replay(false)
                 .build());

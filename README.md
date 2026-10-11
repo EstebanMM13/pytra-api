@@ -108,6 +108,7 @@ com.estebanmm13.pytra_api/
 ├── auth/         # Users, registration, login, email verification, password reset, Google OIDC, JWT, rate limiting
 ├── games/        # Genres (catalog), Sagas, Games, GamePlatformLink
 ├── experiences/  # Experience (playthroughs), OnlinePlaytime
+├── platforms/    # Platform catalog (global, editable)
 ├── steamsync/    # Steam OpenID linking, Steam Web API client, library sync
 ├── stats/        # Aggregated stats across games/sagas/genres/experiences
 ├── mail/         # EmailSender: Brevo HTTP sender or logging fallback
@@ -161,6 +162,14 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 | GET | `/` | List all genres |
 | POST | `/` | Create a genre if it does not exist yet |
 
+### Platforms (`/api/v1/platforms`, global catalog)
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/` | List all platforms ordered by `sortOrder`, then name: `{id, name, color, family, legacyCode, sortOrder}` |
+| POST | `/` | Body `{name, family?, color?}`. Create-if-missing: `201` when created, `200` with the existing entry when the trimmed name matches case-insensitively. `name` 1–40 chars; `family` one of `PLAYSTATION`, `XBOX`, `NINTENDO`, `PC`, `MOBILE`, `OTHER` (default `OTHER`); `color` `#RRGGBB` (default: the family color) |
+
+Seeded with the common platforms (PC, PlayStation, Xbox, Nintendo, Móvil, Retro / Emulador). The six values of the old fixed enum keep a `legacyCode` (`PC`, `PS5`, `PS4`, `XBOX` → generic "Xbox", `SWITCH`, `MOBILE`).
+
 ### Sagas (`/api/v1/sagas`)
 | Method | Endpoint | Description |
 |---|---|---|
@@ -173,7 +182,7 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 ### Games (`/api/v1/games`)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/` | List the current user's games, with library aggregates: `experienceCount`, `totalHours`, `bestRating`, `lastExperienceStatus`, `lastPlayedYear`, `hasPlatinum`, `platforms` (distinct, enum order), `lastPlayedAt` (latest experience `endDate`/`startDate`, nullable date) (two queries in total, no N+1) |
+| GET | `/` | List the current user's games, with library aggregates: `experienceCount`, `totalHours`, `bestRating`, `lastExperienceStatus`, `lastPlayedYear`, `hasPlatinum`, `platforms` (legacy codes, distinct, catalog order; `OTHER` for platforms the old enum lacked), `platformRefs` (`[{id, name, color}]`, catalog order), `lastPlayedAt` (latest experience `endDate`/`startDate`, nullable date) (two queries in total, no N+1) |
 | GET | `/{id}` | Get a game (same aggregates) |
 | POST | `/` | Create a game (optionally linked to a saga and/or genres) |
 | PUT | `/{id}` | Update a game |
@@ -187,6 +196,8 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 | GET | `/api/v1/experiences/{id}` | Get a playthrough |
 | PUT | `/api/v1/experiences/{id}` | Update a playthrough |
 | DELETE | `/api/v1/experiences/{id}` | Delete a playthrough |
+
+Platform: send `platformId` (catalog id). Clients built before the catalog may send the legacy `platform` code instead (`PC`, `PS5`, `PS4`, `XBOX`, `SWITCH`, `MOBILE`); on update, echoing the run's current legacy code (including `OTHER`) keeps its platform. Unknown id/code → `400 INVALID_PLATFORM`. Responses carry `platformId`, `platformName`, `platformColor` and the legacy `platform` code (`OTHER` for platforms the old enum lacked); the stats run lists (`/years/{year}` experiences, `/in-progress`) do too.
 
 Ratings (`rating` here, `generalRating` in online playtime) are `0`–`10` with up to 2 decimals (e.g. `9.25`), stored as `NUMERIC(4,2)`. Values out of range or with more decimals (`9.255`) are rejected with `400` (never rounded). Responses return them as JSON numbers without trailing zeros (`9`, `9.5`, `9.25`). Jackson's float-to-int coercion is disabled globally (`accept-float-as-int: false`), so a decimal sent to an integer field (e.g. `"year": 2024.5`) fails with `400` instead of being silently truncated.
 

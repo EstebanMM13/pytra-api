@@ -1,7 +1,6 @@
 package com.estebanmm13.pytra_api.stats.dto;
 
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
-import com.estebanmm13.pytra_api.experiences.model.Platform;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -20,7 +19,11 @@ public class YearExperienceDto {
     private Double hours;
     private BigDecimal rating;
     private Boolean platinum;
-    private Platform platform;
+    /** Legacy enum code for old clients ("OTHER" for platforms the enum did not have). */
+    private String platform;
+    private Long platformId;
+    private String platformName;
+    private String platformColor;
     /** Month (1-12) the run counts toward, or null when no date falls in the year. */
     private Integer month;
     private LocalDate startDate;

@@ -1,7 +1,7 @@
 package com.estebanmm13.pytra_api.experiences.service.gameStats;
 
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
-import com.estebanmm13.pytra_api.experiences.model.Platform;
+import com.estebanmm13.pytra_api.platforms.model.Platform;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -12,7 +12,7 @@ import java.util.List;
  *
  * @param lastExperienceStatus status of the most recent run (see ExperiencePeriod#RECENCY), null without runs
  * @param lastPlayedYear       latest ExperiencePeriod#yearOf among the runs, null when none has a year
- * @param platforms            distinct platforms of the runs, in {@link Platform} enum order (empty without runs)
+ * @param platforms            distinct platforms of the runs, in catalog order (empty without runs)
  * @param lastPlayedAt         latest endDate/startDate among the runs, null when none has a date
  */
 public record GameExperienceStats(

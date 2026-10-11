@@ -4,7 +4,8 @@ import com.estebanmm13.pytra_api.error.InvalidRequestException;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
-import com.estebanmm13.pytra_api.experiences.model.Platform;
+import com.estebanmm13.pytra_api.platforms.TestPlatforms;
+import com.estebanmm13.pytra_api.platforms.model.Platform;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.model.Genre;
@@ -36,7 +37,7 @@ class AccountExportWriterTest {
     private final Experience run = Experience.builder()
             .id(10L).gameId(1L).runLabel("First run").year(2024).status(ExperienceStatus.COMPLETADO)
             .rating(new BigDecimal("9.00")).hours(120.5).startDate(LocalDate.of(2024, 1, 2)).endDate(LocalDate.of(2024, 3, 4))
-            .platform(Platform.PC).platinum(true).replay(false)
+            .platform(TestPlatforms.PC).platinum(true).replay(false)
             .summary("Loved it, \"truly\"\nsecond line").pros("=open world").build();
 
     private final ExportData data = new ExportData(
@@ -56,6 +57,24 @@ class AccountExportWriterTest {
         assertThat(lines[1]).startsWith("Elden Ring,FromSoftware,,,SINGLEPLAYER,Souls,RPG,CONFIRMED,3,First run,2024,COMPLETADO,9,120.5,2024-01-02,2024-03-04,PC,true,false,");
         assertThat(csv).contains("\"Loved it, \"\"truly\"\"\nsecond line\"");
         assertThat(csv).contains("Backlog game,,,,,,,CONFIRMED,,,,,,,,,,,,,,,");
+    }
+
+    @Test
+    void platformIsExportedByCatalogNameAndNeutralized() {
+        Experience handheld = Experience.builder()
+                .id(11L).gameId(1L).runLabel("Handheld").status(ExperienceStatus.COMPLETADO).hours(1.0)
+                .platform(TestPlatforms.DS).platinum(false).replay(false).build();
+        Experience injected = Experience.builder()
+                .id(12L).gameId(1L).runLabel("Injected").status(ExperienceStatus.COMPLETADO).hours(1.0)
+                .platform(Platform.builder().id(99L).name("=HYPERLINK(1)").sortOrder(1000).build())
+                .platinum(false).replay(false).build();
+        ExportData withPlatforms = new ExportData("Esteban", LocalDateTime.of(2026, 10, 9, 12, 0), List.of(elden),
+                Map.of(1L, List.of(handheld, injected)), Map.of(), List.of());
+
+        String csv = AccountExportWriter.csv(withPlatforms);
+        assertThat(csv).contains(",DS,false,false,");
+        assertThat(csv).contains(",'=HYPERLINK(1),false,false,");
+        assertThat(AccountExportWriter.markdown(withPlatforms)).contains("DS");
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.estebanmm13.pytra_api.games.mapper;
 import com.estebanmm13.pytra_api.experiences.service.gameStats.GameExperienceStats;
 import com.estebanmm13.pytra_api.games.dto.game.GameResponseDto;
 import com.estebanmm13.pytra_api.games.model.Game;
+import com.estebanmm13.pytra_api.platforms.mapper.PlatformMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -41,7 +42,8 @@ public class GameMapper {
                 stats != null ? stats.lastExperienceStatus() : null,
                 stats != null ? stats.lastPlayedYear() : null,
                 stats != null ? stats.hasPlatinum() : null,
-                stats != null ? stats.platforms() : null,
+                stats != null ? stats.platforms().stream().map(PlatformMapper::legacyCodeOf).distinct().toList() : null,
+                stats != null ? stats.platforms().stream().map(PlatformMapper::toRefDto).toList() : null,
                 stats != null ? stats.lastPlayedAt() : null
         );
     }

@@ -110,6 +110,8 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.DELETE, "/api/v1/sagas/1"),
                 Arguments.of(HttpMethod.GET, "/api/v1/genres"),
                 Arguments.of(HttpMethod.POST, "/api/v1/genres"),
+                Arguments.of(HttpMethod.GET, "/api/v1/platforms"),
+                Arguments.of(HttpMethod.POST, "/api/v1/platforms"),
                 Arguments.of(HttpMethod.GET, "/api/v1/games/1/experiences"),
                 Arguments.of(HttpMethod.POST, "/api/v1/games/1/experiences"),
                 Arguments.of(HttpMethod.GET, "/api/v1/experiences/1"),

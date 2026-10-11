@@ -7,6 +7,7 @@ import com.estebanmm13.pytra_api.experiences.mapper.ExperienceMapper;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
+import com.estebanmm13.pytra_api.platforms.service.PlatformService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +22,7 @@ public class ExperienceServiceImpl implements ExperienceService {
     private final ExperienceRepository experienceRepository;
     private final GameRepository gameRepository;
     private final ExperienceMapper experienceMapper;
+    private final PlatformService platformService;
 
     @Override
     public List<ExperienceResponseDto> findAllByGame(Long gameId, Long userId) {
@@ -55,7 +57,8 @@ public class ExperienceServiceImpl implements ExperienceService {
                 .hours(experienceRequestDto.getHours() != null ? experienceRequestDto.getHours() : 0.0)
                 .startDate(experienceRequestDto.getStartDate())
                 .endDate(experienceRequestDto.getEndDate())
-                .platform(experienceRequestDto.getPlatform())
+                .platform(platformService.resolve(
+                        experienceRequestDto.getPlatformId(), experienceRequestDto.getPlatform(), null))
                 .platinum(experienceRequestDto.getPlatinum() != null ? experienceRequestDto.getPlatinum() : false)
                 .replay(experienceRequestDto.getReplay() != null ? experienceRequestDto.getReplay() : false)
                 .summary(experienceRequestDto.getSummary())
@@ -80,7 +83,8 @@ public class ExperienceServiceImpl implements ExperienceService {
         experience.setHours(experienceRequestDto.getHours() != null ? experienceRequestDto.getHours() : 0.0);
         experience.setStartDate(experienceRequestDto.getStartDate());
         experience.setEndDate(experienceRequestDto.getEndDate());
-        experience.setPlatform(experienceRequestDto.getPlatform());
+        experience.setPlatform(platformService.resolve(
+                experienceRequestDto.getPlatformId(), experienceRequestDto.getPlatform(), experience.getPlatform()));
         experience.setPlatinum(experienceRequestDto.getPlatinum() != null ? experienceRequestDto.getPlatinum() : false);
         experience.setReplay(experienceRequestDto.getReplay() != null ? experienceRequestDto.getReplay() : false);
         experience.setSummary(experienceRequestDto.getSummary());

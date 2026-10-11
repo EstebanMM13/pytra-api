@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.experiences.model;
 
+import com.estebanmm13.pytra_api.platforms.model.Platform;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -46,8 +47,9 @@ public class Experience {
 
     private LocalDate endDate;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    /** Catalog entry (platform_id). Eager: tiny global table, always rendered with the run. */
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "platform_id", nullable = false)
     private Platform platform;
 
     @Column(nullable = false)

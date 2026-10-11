@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.experiences.repository;
 
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,14 +14,20 @@ import java.util.Optional;
 
 @Repository
 public interface ExperienceRepository extends JpaRepository<Experience, Long> {
+    // Lists fetch the (eager) platform in the same query instead of one extra select per distinct platform.
+    @EntityGraph(attributePaths = "platform")
     List<Experience> findAllByGameIdAndUserId(Long gameId, Long userId);
+    @EntityGraph(attributePaths = "platform")
     Optional<Experience> findByIdAndUserId(Long id, Long userId);
     long countByUserId(Long userId);
     long countByUserIdAndPlatinumTrue(Long userId);
     long countByUserIdAndReplayTrue(Long userId);
     long countByUserIdAndStatus(Long userId, ExperienceStatus status);
+    @EntityGraph(attributePaths = "platform")
     List<Experience> findAllByUserId(Long userId);
+    @EntityGraph(attributePaths = "platform")
     List<Experience> findAllByUserIdAndStatus(Long userId, ExperienceStatus status);
+    @EntityGraph(attributePaths = "platform")
     List<Experience> findAllByUserIdAndRatingIsNotNullOrderByRatingDesc(Long userId);
 
     @Query("SELECT COALESCE(SUM(e.hours), 0.0) FROM Experience e WHERE e.userId = :userId")

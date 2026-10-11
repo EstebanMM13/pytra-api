@@ -2,7 +2,8 @@ package com.estebanmm13.pytra_api.experiences.service.gameStats;
 
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
-import com.estebanmm13.pytra_api.experiences.model.Platform;
+import com.estebanmm13.pytra_api.platforms.model.Platform;
+import com.estebanmm13.pytra_api.platforms.TestPlatforms;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -23,23 +24,25 @@ class GameExperienceStatsCalculatorTest {
     }
 
     @Test
-    void platformsAreDistinctAndInEnumOrder() {
+    void platformsAreDistinctAndInCatalogOrder() {
         GameExperienceStats stats = GameExperienceStatsCalculator.of(List.of(
-                run(Platform.SWITCH, null, null),
-                run(Platform.PC, null, null),
-                run(Platform.SWITCH, null, null),
-                run(Platform.PS5, null, null)));
+                run(TestPlatforms.DS, null, null),
+                run(TestPlatforms.SWITCH, null, null),
+                run(TestPlatforms.PC, null, null),
+                run(TestPlatforms.SWITCH, null, null),
+                run(TestPlatforms.PS5, null, null)));
 
-        assertThat(stats.platforms()).containsExactly(Platform.PC, Platform.PS5, Platform.SWITCH);
+        assertThat(stats.platforms()).containsExactly(
+                TestPlatforms.PC, TestPlatforms.PS5, TestPlatforms.SWITCH, TestPlatforms.DS);
     }
 
     @Test
     void lastPlayedAtIsTheLatestEndOrStartDate() {
         GameExperienceStats stats = GameExperienceStatsCalculator.of(List.of(
-                run(Platform.PC, LocalDate.of(2022, 1, 1), LocalDate.of(2022, 5, 1)),
+                run(TestPlatforms.PC, LocalDate.of(2022, 1, 1), LocalDate.of(2022, 5, 1)),
                 // Still running: only a start date, and it is the most recent date overall.
-                run(Platform.PC, LocalDate.of(2024, 3, 10), null),
-                run(Platform.PC, null, LocalDate.of(2023, 12, 31))));
+                run(TestPlatforms.PC, LocalDate.of(2024, 3, 10), null),
+                run(TestPlatforms.PC, null, LocalDate.of(2023, 12, 31))));
 
         assertThat(stats.lastPlayedAt()).isEqualTo(LocalDate.of(2024, 3, 10));
     }
@@ -47,26 +50,26 @@ class GameExperienceStatsCalculatorTest {
     @Test
     void endDateWinsOverItsOwnEarlierStartDate() {
         GameExperienceStats stats = GameExperienceStatsCalculator.of(List.of(
-                run(Platform.PC, LocalDate.of(2021, 1, 1), LocalDate.of(2021, 6, 30))));
+                run(TestPlatforms.PC, LocalDate.of(2021, 1, 1), LocalDate.of(2021, 6, 30))));
 
         assertThat(stats.lastPlayedAt()).isEqualTo(LocalDate.of(2021, 6, 30));
     }
 
     @Test
     void lastPlayedAtIsNullWhenNoRunHasDates() {
-        GameExperienceStats stats = GameExperienceStatsCalculator.of(List.of(run(Platform.XBOX, null, null)));
+        GameExperienceStats stats = GameExperienceStatsCalculator.of(List.of(run(TestPlatforms.XBOX, null, null)));
 
         assertThat(stats.lastPlayedAt()).isNull();
-        assertThat(stats.platforms()).containsExactly(Platform.XBOX);
+        assertThat(stats.platforms()).containsExactly(TestPlatforms.XBOX);
         assertThat(stats.experienceCount()).isEqualTo(1);
     }
 
     @Test
     void existingAggregatesAreUnchanged() {
         GameExperienceStats stats = GameExperienceStatsCalculator.of(List.of(
-                Experience.builder().gameId(1L).status(ExperienceStatus.COMPLETADO).platform(Platform.PC)
+                Experience.builder().gameId(1L).status(ExperienceStatus.COMPLETADO).platform(TestPlatforms.PC)
                         .hours(10.0).rating(new BigDecimal("7.50")).platinum(true).year(2022).build(),
-                Experience.builder().gameId(1L).status(ExperienceStatus.EN_CURSO).platform(Platform.PC)
+                Experience.builder().gameId(1L).status(ExperienceStatus.EN_CURSO).platform(TestPlatforms.PC)
                         .hours(2.5).platinum(false).startDate(LocalDate.of(2024, 1, 1)).build()));
 
         assertThat(stats.totalHours()).isEqualTo(12.5);

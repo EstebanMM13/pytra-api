@@ -2,17 +2,18 @@ package com.estebanmm13.pytra_api.experiences.service.gameStats;
 
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperiencePeriod;
-import com.estebanmm13.pytra_api.experiences.model.Platform;
 import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
+import com.estebanmm13.pytra_api.platforms.mapper.PlatformMapper;
+import com.estebanmm13.pytra_api.platforms.model.Platform;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -50,7 +51,7 @@ public class GameExperienceStatsCalculator {
         Integer lastPlayedYear = null;
         boolean hasPlatinum = false;
         Experience latest = null;
-        EnumSet<Platform> platforms = EnumSet.noneOf(Platform.class);
+        Map<Long, Platform> platformsById = new LinkedHashMap<>();
         LocalDate lastPlayedAt = null;
 
         for (Experience experience : experiences) {
@@ -64,7 +65,7 @@ public class GameExperienceStatsCalculator {
             }
             hasPlatinum |= Boolean.TRUE.equals(experience.getPlatinum());
             if (experience.getPlatform() != null) {
-                platforms.add(experience.getPlatform());
+                platformsById.putIfAbsent(experience.getPlatform().getId(), experience.getPlatform());
             }
             lastPlayedAt = latestOf(latestOf(lastPlayedAt, experience.getEndDate()), experience.getStartDate());
             if (latest == null || ExperiencePeriod.RECENCY.compare(experience, latest) > 0) {
@@ -73,7 +74,7 @@ public class GameExperienceStatsCalculator {
         }
         return new GameExperienceStats(
                 experiences.size(), totalHours, Ratings.normalize(bestRating), latest.getStatus(), lastPlayedYear, hasPlatinum,
-                List.copyOf(platforms), lastPlayedAt);
+                platformsById.values().stream().sorted(PlatformMapper.CATALOG_ORDER).toList(), lastPlayedAt);
     }
 
     private static LocalDate latestOf(LocalDate current, LocalDate candidate) {
