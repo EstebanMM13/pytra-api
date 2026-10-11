@@ -62,8 +62,8 @@ class IgdbParserTest {
         assertThat(dto.releaseDate()).isEqualTo(LocalDate.of(2023, 12, 12));
         assertThat(dto.genres()).containsExactly("Role-playing (RPG)", "Hack and slash/Beat 'em up", "Adventure");
         assertThat(dto.platforms()).containsExactly("PlayStation 4", "PlayStation 5");
-        // Landscape artwork preferred over the portrait cover for Pytra's banner-shaped covers.
-        assertThat(dto.coverImageUrl()).isEqualTo("https://images.igdb.com/igdb/image/upload/t_screenshot_big/ar2x9z.jpg");
+        // The official cover wins: IGDB artworks are untyped and can be a publisher logo.
+        assertThat(dto.coverImageUrl()).isEqualTo("https://images.igdb.com/igdb/image/upload/t_cover_big/co7abc.jpg");
     }
 
     @Test

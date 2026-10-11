@@ -19,8 +19,8 @@ import java.util.regex.Pattern;
  *
  * <p>Images: Pytra shows covers as wide banners (Steam header ratio, ~2.14:1, {@code object-cover}).
  * IGDB's cover is portrait box art, which a banner crop reduces to a thin middle strip, so the game
- * cover prefers the first landscape artwork ({@code t_screenshot_big}: 889x500, center-filled 16:9)
- * and falls back to the cover ({@code t_cover_big}). Search rows show the small portrait cover.
+ * cover prefers the official portrait cover ({@code t_cover_big}): IGDB artworks are unordered and
+ * untyped (the first one can be a publisher logo), so they are only a fallback ({@code t_screenshot_big}). Search rows show the small portrait cover.
  */
 public final class IgdbParser {
 
@@ -81,8 +81,8 @@ public final class IgdbParser {
         // Announced games often carry a target date; the game form rejects future dates.
         if (releaseDate != null && releaseDate.isAfter(LocalDate.now(ZoneOffset.UTC))) releaseDate = null;
 
-        String cover = imageUrl("t_screenshot_big", firstImageId(game.path("artworks")));
-        if (cover == null) cover = imageUrl("t_cover_big", game.path("cover").path("image_id"));
+        String cover = imageUrl("t_cover_big", game.path("cover").path("image_id"));
+        if (cover == null) cover = imageUrl("t_screenshot_big", firstImageId(game.path("artworks")));
 
         return new IgdbGameMetadataDto(
                 igdbId,

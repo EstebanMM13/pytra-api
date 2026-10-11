@@ -11,7 +11,7 @@ import java.util.List;
  * @param publisher     first company IGDB flags as publisher; null when missing
  * @param releaseDate   first release date (UTC); null when unknown or in the future
  * @param genres        IGDB genre names (English, e.g. "Role-playing (RPG)"), never null
- * @param coverImageUrl landscape artwork when IGDB has one, the portrait cover otherwise (https); null when neither
+ * @param coverImageUrl official portrait cover, an artwork only when there is no cover (https); null when neither
  * @param platforms     full platform names, never null
  */
 public record IgdbGameMetadataDto(
