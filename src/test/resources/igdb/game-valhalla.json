@@ -1,0 +1,27 @@
+[
+  {
+    "id": 284715,
+    "artworks": [
+      {"id": 120001, "image_id": "ar2x9z"},
+      {"id": 120002, "image_id": "ar2xa0"}
+    ],
+    "cover": {"id": 333333, "image_id": "co7abc"},
+    "first_release_date": 1702339200,
+    "game_type": 1,
+    "genres": [
+      {"id": 12, "name": "Role-playing (RPG)"},
+      {"id": 25, "name": "Hack and slash/Beat 'em up"},
+      {"id": 31, "name": "Adventure"}
+    ],
+    "involved_companies": [
+      {"id": 1, "company": {"id": 1003, "name": "Sony Interactive Entertainment"}, "developer": false, "publisher": true},
+      {"id": 2, "company": {"id": 51, "name": "Santa Monica Studio"}, "developer": true, "publisher": false},
+      {"id": 3, "company": {"id": 9000, "name": "Jetpack Interactive"}, "developer": true, "publisher": false}
+    ],
+    "name": "God of War Ragnarök: Valhalla",
+    "platforms": [
+      {"id": 48, "name": "PlayStation 4"},
+      {"id": 167, "name": "PlayStation 5"}
+    ]
+  }
+]

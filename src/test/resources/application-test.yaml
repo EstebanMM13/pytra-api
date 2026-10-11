@@ -26,6 +26,10 @@ app:
   registration:
     # Empty = open registration, so tests never depend on an invite list.
     allowed-emails: ""
+  igdb:
+    # No Twitch credentials: IGDB autofill is disabled in tests, whatever the environment says.
+    client-id: ""
+    client-secret: ""
   mail:
     # No Brevo key: MailConfig falls back to LoggingEmailSender.
     brevo-api-key: ""

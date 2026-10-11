@@ -44,6 +44,10 @@ app:
   # Public read-only demo: id of the account visitors browse via POST /api/v1/auth/demo. Empty = demo disabled.
   demo:
     user-id: ${DEMO_USER_ID:}
+  # IGDB metadata autofill (Twitch app credentials). Either blank = IGDB disabled (endpoints answer 404 IGDB_DISABLED).
+  igdb:
+    client-id: ${TWITCH_CLIENT_ID:}
+    client-secret: ${TWITCH_CLIENT_SECRET:}
   # Transactional email via Brevo's HTTP API. With no API key, emails are only logged (local dev).
   mail:
     brevo-api-key: ${BREVO_API_KEY:}

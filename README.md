@@ -61,6 +61,7 @@ Only variable names are listed here. Never commit real values.
 | `JWT_EXPIRATION` | Yes | none | Token lifetime in **milliseconds** (`2592000000` = 30 days) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Yes | none | Google OAuth2 client |
 | `STEAM_API_KEY` | No | empty | Steam Web API key; without it linking still works but sync answers `503 STEAM_NOT_CONFIGURED` |
+| `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | No | empty | Twitch app credentials for IGDB metadata autofill (`app.igdb.*`); if either is blank IGDB is disabled: `/metadata/providers` reports `igdb: false` and `/metadata/igdb/**` answers `404 IGDB_DISABLED` |
 | `FRONTEND_URL` | Prod | `http://localhost:4200` | Web app origin; used for email links and the web OAuth callback |
 | `PUBLIC_API_URL` | Prod | `http://localhost:8080` | Public API origin; used to build the Steam OpenID `return_to` |
 | `CORS_ALLOWED_ORIGINS` | Prod | `http://localhost:4200,https://localhost` | Comma-separated allowed origins (`https://localhost` is the Capacitor Android WebView) |
@@ -254,6 +255,20 @@ Sync rules:
 - Confirming an `ONLINE`/`HYBRID` game sets `OnlinePlaytime` to `max(existing, steamTotal)`; later syncs add deltas. A negative delta (refund, reset) only lowers the baseline.
 - One Steam account per Pytra user (`steam_links.steam_id` is unique). Re-linking a different account resets all Steam baselines.
 - `SteamSyncScheduler` re-syncs every linked account every 6 hours (first run 10 min after startup) and is skipped when `STEAM_API_KEY` is blank (linking still works). A run aborts after 3 consecutive `STEAM_UNAVAILABLE`. A per-user in-memory guard (single-instance deployment), held until commit, serializes sync, unlink, account switch, confirm and ignore (`409 SYNC_IN_PROGRESS`; a blocked account switch redirects with `error=steam_sync_in_progress`). `last_sync_at` is written with a conditional UPDATE on the expected `steam_id`, so a relink during the Steam call yields `STEAM_LINK_CHANGED` instead of being reverted.
+
+### Game metadata autofill (`/api/v1/metadata`)
+Read-only proxies used to prefill the game form; nothing is persisted. Results are cached in memory (searches 10 min, details 6 h); upstream calls use 3 s connect / 5 s read timeouts.
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/providers` | Required | `{igdb, steam}`: which sources this deployment offers (`igdb` is false without Twitch credentials) |
+| GET | `/igdb/search?q=` | Required | Up to 10 `{igdbId, name, year, imageUrl, platforms[]}`; editions, bundles, packs and mods are left out, DLC/expansions/remakes stay |
+| GET | `/igdb/{igdbId}` | Required | `{igdbId, name, developer, publisher, releaseDate, genres[], coverImageUrl, platforms[]}` (same shape as Steam's details plus `platforms`) |
+| GET | `/steam/search?q=` | Required | Up to 10 `{appId, name, imageUrl}` from the Spanish Steam store |
+| GET | `/steam/{appId}` | Required | `{steamAppId, name, developer, publisher, releaseDate, genres[], coverImageUrl}` |
+
+- IGDB: the Twitch app token (client credentials) is kept in memory, renewed 5 min before it expires and once more if IGDB answers `401`. The search term is escaped inside the Apicalypse string literal. `coverImageUrl` prefers a landscape artwork (`t_screenshot_big`, fits Pytra's banner-shaped covers) over the portrait box art (`t_cover_big`). Future release dates become `null`.
+- Errors (`message` code): `400 INVALID_SEARCH_QUERY` (2 to 100 chars), `400 INVALID_IGDB_ID` / `INVALID_STEAM_APP_ID`, `404 IGDB_DISABLED`, `404 IGDB_GAME_NOT_FOUND`, `503 IGDB_UNAVAILABLE`, `404 STEAM_APP_NOT_FOUND`, `422 STEAM_APP_NOT_A_GAME`, `503 STEAM_UNAVAILABLE`.
 
 ## Tests
 

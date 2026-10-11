@@ -95,6 +95,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(e.getStatus()).body(apiError);
     }
 
+    @ExceptionHandler(IgdbIntegrationException.class)
+    public ResponseEntity<ApiError> handleIgdbIntegration(IgdbIntegrationException e) {
+        ApiError apiError = new ApiError(e.getStatus().value(), e.getCode(), Map.of(), LocalDateTime.now());
+        return ResponseEntity.status(e.getStatus()).body(apiError);
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrityViolation(DataIntegrityViolationException e) {
         // The raw message contains SQL and constraint details; never echo it to clients.

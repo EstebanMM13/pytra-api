@@ -1,0 +1,50 @@
+[
+  {
+    "id": 112875,
+    "cover": {"id": 213958, "image_id": "co4ocm"},
+    "first_release_date": 1667952000,
+    "game_type": 0,
+    "name": "God of War Ragnarök",
+    "platforms": [
+      {"id": 6, "abbreviation": "PC", "name": "PC (Microsoft Windows)"},
+      {"id": 48, "abbreviation": "PS4", "name": "PlayStation 4"},
+      {"id": 167, "abbreviation": "PS5", "name": "PlayStation 5"}
+    ]
+  },
+  {
+    "id": 284715,
+    "cover": {"id": 333333, "image_id": "co7abc"},
+    "first_release_date": 1702339200,
+    "game_type": 1,
+    "name": "God of War Ragnarök: Valhalla",
+    "platforms": [
+      {"id": 48, "abbreviation": "PS4", "name": "PlayStation 4"},
+      {"id": 167, "abbreviation": "PS5", "name": "PlayStation 5"}
+    ]
+  },
+  {
+    "id": 999001,
+    "first_release_date": 1667952000,
+    "game_type": 3,
+    "name": "God of War Ragnarök + PS5 Bundle",
+    "platforms": [{"id": 167, "abbreviation": "PS5", "name": "PlayStation 5"}]
+  },
+  {
+    "id": 549,
+    "cover": {"id": 1001, "image_id": "co1x7f"},
+    "first_release_date": 1111449600,
+    "game_type": 0,
+    "name": "God of War",
+    "platforms": [{"id": 8, "abbreviation": "PS2", "name": "PlayStation 2"}]
+  },
+  {
+    "id": 999002,
+    "name": "God of War Fan Remake",
+    "game_type": {"id": 5, "type": "Mod"}
+  },
+  {
+    "id": 999003,
+    "name": "God of War: Unknown Era",
+    "platforms": [{"id": 999, "name": "Mystery Console"}]
+  }
+]

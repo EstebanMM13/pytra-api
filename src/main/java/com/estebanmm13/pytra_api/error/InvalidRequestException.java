@@ -10,6 +10,7 @@ public class InvalidRequestException extends RuntimeException {
     public static final String INVALID_AVATAR = "INVALID_AVATAR";
     public static final String INVALID_SEARCH_QUERY = "INVALID_SEARCH_QUERY";
     public static final String INVALID_STEAM_APP_ID = "INVALID_STEAM_APP_ID";
+    public static final String INVALID_IGDB_ID = "INVALID_IGDB_ID";
     public static final String INVALID_PLATFORM = "INVALID_PLATFORM";
 
     public InvalidRequestException(String code) {
