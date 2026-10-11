@@ -65,7 +65,7 @@ public final class SteamStoreParser {
                 firstText(data.path("publishers")),
                 releaseDate(data.path("release_date")),
                 genres(data.path("genres")),
-                httpsUrl(data.path("header_image"))
+                SteamCoverImages.portraitCoverUrl(appId)
         );
     }
 

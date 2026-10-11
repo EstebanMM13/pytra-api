@@ -17,10 +17,10 @@ import java.util.regex.Pattern;
 /**
  * Turns IGDB {@code /games} JSON arrays into our DTOs. Pure and defensive: any field may be missing.
  *
- * <p>Images: Pytra shows covers as wide banners (Steam header ratio, ~2.14:1, {@code object-cover}).
- * IGDB's cover is portrait box art, which a banner crop reduces to a thin middle strip, so the game
- * cover prefers the official portrait cover ({@code t_cover_big}): IGDB artworks are unordered and
- * untyped (the first one can be a publisher logo), so they are only a fallback ({@code t_screenshot_big}). Search rows show the small portrait cover.
+ * <p>Images: Pytra shows covers as portrait box art (2:3, {@code object-cover}), so the game cover is
+ * IGDB's official portrait cover ({@code t_cover_big}). IGDB artworks are unordered and untyped (the
+ * first one can be a publisher logo) and landscape, so they are only a fallback ({@code t_screenshot_big}).
+ * Search rows show the small portrait cover.
  */
 public final class IgdbParser {
 

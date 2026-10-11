@@ -63,7 +63,7 @@ class SteamLibraryImporterTest {
         verify(gameRepository).save(saved.capture());
         assertThat(saved.getValue().getReviewStatus()).isEqualTo(ReviewStatus.PENDING_REVIEW);
         assertThat(saved.getValue().getCoverImageUrl())
-                .isEqualTo("https://cdn.cloudflare.steamstatic.com/steam/apps/620/header.jpg");
+                .isEqualTo("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/library_600x900.jpg");
     }
 
     @Test
@@ -73,7 +73,7 @@ class SteamLibraryImporterTest {
         importer.importLibrary(USER_ID, STEAM_ID, library(new SteamOwnedGame(620, "Portal 2", 600)));
 
         assertThat(existing.getCoverImageUrl())
-                .isEqualTo("https://cdn.cloudflare.steamstatic.com/steam/apps/620/header.jpg");
+                .isEqualTo("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/library_600x900.jpg");
     }
 
     @Test
@@ -83,7 +83,7 @@ class SteamLibraryImporterTest {
         importer.importLibrary(USER_ID, STEAM_ID, library(new SteamOwnedGame(620, "Portal 2", 600)));
 
         assertThat(existing.getCoverImageUrl())
-                .isEqualTo("https://cdn.cloudflare.steamstatic.com/steam/apps/620/header.jpg");
+                .isEqualTo("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/library_600x900.jpg");
     }
 
     @Test

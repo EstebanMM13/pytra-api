@@ -11,7 +11,7 @@ import java.util.List;
  * @param publisher     first publisher listed by Steam; null when missing
  * @param releaseDate   null when the game is not released yet or the date can't be parsed
  * @param genres        Steam genre names as localized by the store (Spanish), never null
- * @param coverImageUrl the store header image (https); null when missing
+ * @param coverImageUrl portrait library capsule (2:3, {@code library_600x900.jpg}) built from the appid, never null
  */
 public record SteamGameMetadataDto(
         long steamAppId,

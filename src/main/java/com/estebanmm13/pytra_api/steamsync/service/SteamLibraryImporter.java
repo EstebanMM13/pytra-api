@@ -7,6 +7,7 @@ import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
+import com.estebanmm13.pytra_api.metadata.client.SteamCoverImages;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGame;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGamesResult;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamSyncResultDto;
@@ -264,7 +265,7 @@ public class SteamLibraryImporter {
     }
 
     static String steamCoverUrl(String appId) {
-        return STEAM_HEADER_URL.formatted(appId);
+        return SteamCoverImages.portraitCoverUrl(appId);
     }
 
     private static boolean isBlank(String value) {

@@ -31,7 +31,7 @@ class SteamStoreParserTest {
         assertThat(dto.releaseDate()).isEqualTo(LocalDate.of(2022, 2, 24));
         assertThat(dto.genres()).containsExactly("Acción", "Rol");
         assertThat(dto.coverImageUrl())
-                .startsWith("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1245620/");
+                .isEqualTo("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1245620/library_600x900.jpg");
     }
 
     @Test
@@ -71,7 +71,8 @@ class SteamStoreParserTest {
         assertThat(dto.publisher()).isNull();
         assertThat(dto.releaseDate()).isNull();
         assertThat(dto.genres()).isEmpty();
-        assertThat(dto.coverImageUrl()).isNull();
+        assertThat(dto.coverImageUrl())
+                .isEqualTo("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/10/library_600x900.jpg");
     }
 
     @Test
@@ -89,22 +90,24 @@ class SteamStoreParserTest {
     }
 
     @Test
-    void dedupesGenresAndUpgradesHttpCover() {
+    void dedupesGenresAndUsesThePortraitCapsuleInsteadOfTheHeader() {
         SteamGameMetadataDto dto = SteamStoreParser.parseDetails(json("""
                 {"1":{"success":true,"data":{"type":"game","name":"Game",
                   "genres":[{"id":"1","description":"Acción"},{"id":"1","description":"Acción"},{"id":"23","description":"Indie"}],
                   "header_image":"http://cdn.akamai.steamstatic.com/steam/apps/1/header.jpg"}}}"""), 1);
 
         assertThat(dto.genres()).containsExactly("Acción", "Indie");
-        assertThat(dto.coverImageUrl()).isEqualTo("https://cdn.akamai.steamstatic.com/steam/apps/1/header.jpg");
+        assertThat(dto.coverImageUrl())
+                .isEqualTo("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/library_600x900.jpg");
     }
 
     @Test
-    void dropsNonHttpCover() {
+    void coverIsBuiltFromTheAppIdNotFromTheHeaderValue() {
         SteamGameMetadataDto dto = SteamStoreParser.parseDetails(json("""
                 {"1":{"success":true,"data":{"type":"game","name":"Game","header_image":"javascript:alert(1)"}}}"""), 1);
 
-        assertThat(dto.coverImageUrl()).isNull();
+        assertThat(dto.coverImageUrl())
+                .isEqualTo("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/library_600x900.jpg");
     }
 
     @Test

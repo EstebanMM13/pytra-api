@@ -137,7 +137,7 @@ class SteamIntegrationTests extends AbstractIntegrationTest {
     }
 
     @Test
-    void steamGamesGetHeaderCoverWithoutOverwritingUserCovers() throws Exception {
+    void steamGamesGetPortraitCoverWithoutOverwritingUserCovers() throws Exception {
         link(alice);
         Long noCoverId = createGame(aliceAuth, "Half-Life 2", "SINGLEPLAYER");
         Long withCoverId = readId(perform(post("/api/v1/games"), aliceAuth,
@@ -152,9 +152,9 @@ class SteamIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.linkedExisting").value(2));
 
         assertThat(gameRepository.findById(gameIdByName("Portal 2")).orElseThrow().getCoverImageUrl())
-                .isEqualTo("https://cdn.cloudflare.steamstatic.com/steam/apps/620/header.jpg");
+                .isEqualTo("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/library_600x900.jpg");
         assertThat(gameRepository.findById(noCoverId).orElseThrow().getCoverImageUrl())
-                .isEqualTo("https://cdn.cloudflare.steamstatic.com/steam/apps/220/header.jpg");
+                .isEqualTo("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/220/library_600x900.jpg");
         assertThat(gameRepository.findById(withCoverId).orElseThrow().getCoverImageUrl())
                 .isEqualTo("https://example.com/mine.png");
     }

@@ -265,9 +265,9 @@ Read-only proxies used to prefill the game form; nothing is persisted. Results a
 | GET | `/igdb/search?q=` | Required | Up to 10 `{igdbId, name, year, imageUrl, platforms[]}`; editions, bundles, packs and mods are left out, DLC/expansions/remakes stay |
 | GET | `/igdb/{igdbId}` | Required | `{igdbId, name, developer, publisher, releaseDate, genres[], coverImageUrl, platforms[]}` (same shape as Steam's details plus `platforms`) |
 | GET | `/steam/search?q=` | Required | Up to 10 `{appId, name, imageUrl}` from the Spanish Steam store |
-| GET | `/steam/{appId}` | Required | `{steamAppId, name, developer, publisher, releaseDate, genres[], coverImageUrl}` |
+| GET | `/steam/{appId}` | Required | `{steamAppId, name, developer, publisher, releaseDate, genres[], coverImageUrl}` (`coverImageUrl` is the portrait library capsule `library_600x900.jpg`) |
 
-- IGDB: the Twitch app token (client credentials) is kept in memory, renewed 5 min before it expires and once more if IGDB answers `401`. The search term is escaped inside the Apicalypse string literal. `coverImageUrl` prefers a landscape artwork (`t_screenshot_big`, fits Pytra's banner-shaped covers) over the portrait box art (`t_cover_big`). Future release dates become `null`.
+- IGDB: the Twitch app token (client credentials) is kept in memory, renewed 5 min before it expires and once more if IGDB answers `401`. The search term is escaped inside the Apicalypse string literal. `coverImageUrl` is the official portrait box art (`t_cover_big`, Pytra shows covers as 2:3 posters), with a landscape artwork (`t_screenshot_big`) only as a fallback. Future release dates become `null`.
 - Errors (`message` code): `400 INVALID_SEARCH_QUERY` (2 to 100 chars), `400 INVALID_IGDB_ID` / `INVALID_STEAM_APP_ID`, `404 IGDB_DISABLED`, `404 IGDB_GAME_NOT_FOUND`, `503 IGDB_UNAVAILABLE`, `404 STEAM_APP_NOT_FOUND`, `422 STEAM_APP_NOT_A_GAME`, `503 STEAM_UNAVAILABLE`.
 
 ## Tests
