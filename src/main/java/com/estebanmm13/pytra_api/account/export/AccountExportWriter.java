@@ -6,6 +6,7 @@ import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.Genre;
 import com.estebanmm13.pytra_api.platforms.mapper.PlatformMapper;
+import com.estebanmm13.pytra_api.platforms.model.Platform;
 import com.estebanmm13.pytra_api.stats.model.YearNote;
 
 import java.math.BigDecimal;
@@ -21,7 +22,7 @@ public final class AccountExportWriter {
 
     static final List<String> CSV_HEADER = List.of(
             "gameName", "developer", "publisher", "releaseDate", "category", "saga", "genres", "reviewStatus",
-            "onlineHours", "runLabel", "year", "status", "rating", "hours", "startDate", "endDate", "platform",
+            "onlineHours", "onlinePlatforms", "runLabel", "year", "status", "rating", "hours", "startDate", "endDate", "platform",
             "platinum", "replay", "summary", "pros", "cons", "notes");
 
     /** Lets Excel detect UTF-8 (accents in game names). */
@@ -54,7 +55,8 @@ public final class AccountExportWriter {
                     text(game.getSaga() != null ? game.getSaga().getName() : null),
                     text(genreNames(game)),
                     value(game.getReviewStatus()),
-                    number(onlineHours(data, game)));
+                    number(onlineHours(data, game)),
+                    text(onlinePlatformNames(data, game)));
             List<Experience> runs = data.experiencesByGame().getOrDefault(game.getId(), List.of());
             if (runs.isEmpty()) {
                 List<String> row = new ArrayList<>(gameColumns);
@@ -106,6 +108,7 @@ public final class AccountExportWriter {
             field(out, "Genres", genreNames(game));
             Double online = onlineHours(data, game);
             field(out, "Online hours", online != null ? number(online) : null);
+            field(out, "Online platforms", onlinePlatformNames(data, game));
 
             List<Experience> runs = data.experiencesByGame().getOrDefault(game.getId(), List.of());
             if (runs.isEmpty()) {
@@ -196,6 +199,18 @@ public final class AccountExportWriter {
     private static Double onlineHours(ExportData data, Game game) {
         OnlinePlaytime online = data.onlinePlaytimeByGame().get(game.getId());
         return online != null ? online.getTotalHours() : null;
+    }
+
+    /** Catalog names of the online playtime's platforms in catalog order, or null when it has none. */
+    private static String onlinePlatformNames(ExportData data, Game game) {
+        OnlinePlaytime online = data.onlinePlaytimeByGame().get(game.getId());
+        if (online == null || online.getPlatforms() == null || online.getPlatforms().isEmpty()) {
+            return null;
+        }
+        return online.getPlatforms().stream()
+                .sorted(PlatformMapper.CATALOG_ORDER)
+                .map(Platform::getName)
+                .collect(Collectors.joining(", "));
     }
 
     private static String genreNames(Game game) {

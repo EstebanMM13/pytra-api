@@ -91,7 +91,8 @@ public class AccountServiceImpl implements AccountService {
         experiencesByGame.values().forEach(runs -> runs.sort(ExperiencePeriod.RECENCY));
 
         Map<Long, OnlinePlaytime> onlineByGame = new HashMap<>();
-        for (OnlinePlaytime online : onlinePlaytimeRepository.findAllByUserIdOrderByTotalHoursDesc(userId)) {
+        // With platforms in the same query: the export lists them per game.
+        for (OnlinePlaytime online : onlinePlaytimeRepository.findAllByUserId(userId)) {
             onlineByGame.put(online.getGameId(), online);
         }
 
