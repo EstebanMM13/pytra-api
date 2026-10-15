@@ -45,15 +45,23 @@ class GameReleaseDateIntegrationTests extends AbstractIntegrationTest {
     }
 
     @Test
-    void releaseDateFarInTheFutureOrTooOldIsRejected() throws Exception {
+    void releaseDateMoreThanTenYearsAheadIsRejectedOnTheReleaseDateField() throws Exception {
         String tooFar = LocalDate.now().plusYears(11).toString();
         performAs(auth, post("/api/v1/games"),
                 "{\"name\": \"Vapor\", \"category\": \"SINGLEPLAYER\", \"releaseDate\": \"" + tooFar + "\"}")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fieldErrors.releaseDateInRange").exists());
+                .andExpect(jsonPath("$.fieldErrors.releaseDate").exists());
+    }
 
-        performAs(auth, post("/api/v1/games"),
+    @Test
+    void oldReleaseDatesStayValid() throws Exception {
+        Long id = readId(performAs(auth, post("/api/v1/games"),
                 "{\"name\": \"Ancient\", \"category\": \"SINGLEPLAYER\", \"releaseDate\": \"1900-01-01\"}")
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isCreated())
+                .andReturn());
+
+        performAs(auth, put("/api/v1/games/{id}", id),
+                "{\"name\": \"Ancient 2\", \"category\": \"SINGLEPLAYER\", \"releaseDate\": \"1900-01-01\"}")
+                .andExpect(status().isOk());
     }
 }
