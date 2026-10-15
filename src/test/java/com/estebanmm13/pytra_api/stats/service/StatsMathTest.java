@@ -41,4 +41,12 @@ class StatsMathTest {
     private static BigDecimal bd(String value) {
         return new BigDecimal(value);
     }
+
+    @Test
+    void sumToleratesMissingAggregates() {
+        assertThat(StatsMath.sum(null, null)).isNull();
+        assertThat(StatsMath.sum(bd("7.5"), null)).isEqualTo(bd("7.5"));
+        assertThat(StatsMath.sum(null, bd("8"))).isEqualTo(bd("8"));
+        assertThat(StatsMath.sum(bd("7.5"), bd("8.25"))).isEqualTo(bd("15.75"));
+    }
 }

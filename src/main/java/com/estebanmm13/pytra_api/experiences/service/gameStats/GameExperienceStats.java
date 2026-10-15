@@ -8,11 +8,14 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Per-game aggregates over the game's experiences, used by the library listing.
+ * Per-game aggregates over the game's experiences (runs) and its online playtime, used by the library listing.
  *
+ * @param experienceCount      number of runs (online playtime is not a run)
+ * @param totalHours           run hours plus the online playtime's total hours
+ * @param bestRating           best of the run ratings and the online general rating
  * @param lastExperienceStatus status of the most recent run (see ExperiencePeriod#RECENCY), null without runs
  * @param lastPlayedYear       latest ExperiencePeriod#yearOf among the runs, null when none has a year
- * @param platforms            distinct platforms of the runs, in catalog order (empty without runs)
+ * @param platforms            distinct platforms of the runs and the online playtime, in catalog order
  * @param lastPlayedAt         latest endDate/startDate among the runs, null when none has a date
  */
 public record GameExperienceStats(

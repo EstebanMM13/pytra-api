@@ -2,13 +2,16 @@ package com.estebanmm13.pytra_api.experiences.service.gameStats;
 
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
+import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.platforms.model.Platform;
 import com.estebanmm13.pytra_api.platforms.TestPlatforms;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -76,6 +79,68 @@ class GameExperienceStatsCalculatorTest {
         assertThat(stats.bestRating()).isEqualByComparingTo("7.5");
         assertThat(stats.hasPlatinum()).isTrue();
         assertThat(stats.lastPlayedYear()).isEqualTo(2024);
+    }
+
+    @Test
+    void onlineHoursAddToTheRunHours() {
+        GameExperienceStats stats = GameExperienceStatsCalculator.of(
+                List.of(run(TestPlatforms.PC, null, null), run(TestPlatforms.PC, null, null)),
+                online(40.5, null, Set.of()));
+
+        assertThat(stats.totalHours()).isEqualTo(42.5);
+        assertThat(stats.experienceCount()).isEqualTo(2);
+    }
+
+    @Test
+    void onlineRatingCompetesForTheBestRating() {
+        Experience rated = run(TestPlatforms.PC, null, null);
+        rated.setRating(new BigDecimal("7.50"));
+
+        assertThat(GameExperienceStatsCalculator.of(List.of(rated), online(1.0, "9.25", Set.of())).bestRating())
+                .isEqualByComparingTo("9.25");
+        assertThat(GameExperienceStatsCalculator.of(List.of(rated), online(1.0, "6", Set.of())).bestRating())
+                .isEqualByComparingTo("7.5");
+        assertThat(GameExperienceStatsCalculator.of(List.of(rated), online(1.0, null, Set.of())).bestRating())
+                .isEqualByComparingTo("7.5");
+    }
+
+    @Test
+    void platformsAreTheDistinctUnionOfRunAndOnlinePlatformsInCatalogOrder() {
+        GameExperienceStats stats = GameExperienceStatsCalculator.of(
+                List.of(run(TestPlatforms.SWITCH, null, null), run(TestPlatforms.PC, null, null)),
+                online(3.0, null, Set.of(TestPlatforms.DS, TestPlatforms.PC, TestPlatforms.PS5)));
+
+        assertThat(stats.platforms()).containsExactly(
+                TestPlatforms.PC, TestPlatforms.PS5, TestPlatforms.SWITCH, TestPlatforms.DS);
+    }
+
+    @Test
+    void onlineOnlyGameHasHoursRatingAndPlatformsButNoRunAggregates() {
+        GameExperienceStats stats = GameExperienceStatsCalculator.of(
+                List.of(), online(120.0, "8", Set.of(TestPlatforms.PS5)));
+
+        assertThat(stats.experienceCount()).isZero();
+        assertThat(stats.totalHours()).isEqualTo(120.0);
+        assertThat(stats.bestRating()).isEqualByComparingTo("8");
+        assertThat(stats.platforms()).containsExactly(TestPlatforms.PS5);
+        assertThat(stats.lastExperienceStatus()).isNull();
+        assertThat(stats.lastPlayedYear()).isNull();
+        assertThat(stats.lastPlayedAt()).isNull();
+        assertThat(stats.hasPlatinum()).isFalse();
+    }
+
+    @Test
+    void noRunsAndNoOnlinePlaytimeGiveEmptyStats() {
+        assertThat(GameExperienceStatsCalculator.of(List.of(), null)).isEqualTo(GameExperienceStats.EMPTY);
+    }
+
+    private static OnlinePlaytime online(double hours, String rating, Set<Platform> platforms) {
+        return OnlinePlaytime.builder()
+                .gameId(1L)
+                .totalHours(hours)
+                .generalRating(rating != null ? new BigDecimal(rating) : null)
+                .platforms(new HashSet<>(platforms))
+                .build();
     }
 
     private static Experience run(Platform platform, LocalDate startDate, LocalDate endDate) {

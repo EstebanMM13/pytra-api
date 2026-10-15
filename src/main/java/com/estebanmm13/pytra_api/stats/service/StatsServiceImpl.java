@@ -23,6 +23,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Year;
 import java.util.*;
 
@@ -49,13 +50,21 @@ public class StatsServiceImpl implements StatsService {
                 experienceRepository.sumHoursByUserId(userId),
                 onlinePlaytimeRepository.sumTotalHoursByUserId(userId),
                 experienceRepository.countByUserIdAndPlatinumTrue(userId),
-                StatsMath.average(experienceRepository.sumRatingByUserId(userId),
-                        experienceRepository.countByUserIdAndRatingIsNotNull(userId)),
+                averageRating(userId),
                 experienceRepository.countByUserIdAndReplayTrue(userId),
                 experienceRepository.countByUserIdAndStatus(userId, ExperienceStatus.COMPLETADO),
                 experienceRepository.countByUserIdAndStatus(userId, ExperienceStatus.ABANDONADO),
                 experienceRepository.countByUserIdAndStatus(userId, ExperienceStatus.EN_CURSO)
         );
+    }
+
+    /** Runs and online playtimes weigh the same: each rated one counts once. */
+    private BigDecimal averageRating(Long userId) {
+        return StatsMath.average(
+                StatsMath.sum(experienceRepository.sumRatingByUserId(userId),
+                        onlinePlaytimeRepository.sumGeneralRatingByUserId(userId)),
+                experienceRepository.countByUserIdAndRatingIsNotNull(userId)
+                        + onlinePlaytimeRepository.countByUserIdAndGeneralRatingIsNotNull(userId));
     }
 
     @Override
@@ -309,9 +318,23 @@ public class StatsServiceImpl implements StatsService {
                     experience.getGameId(),
                     gameNames.getOrDefault(experience.getGameId(), "Unknown"),
                     experience.getRunLabel(),
-                    Ratings.normalize(experience.getRating())
+                    Ratings.normalize(experience.getRating()),
+                    experience.getId(),
+                    false
             ));
         }
+        for (OnlinePlaytime onlinePlaytime : onlinePlaytimeRepository.findAllByUserIdAndGeneralRatingIsNotNull(userId)) {
+            result.add(new TopRatedExperienceDto(
+                    onlinePlaytime.getGameId(),
+                    gameNames.getOrDefault(onlinePlaytime.getGameId(), "Unknown"),
+                    null,
+                    Ratings.normalize(onlinePlaytime.getGeneralRating()),
+                    null,
+                    true
+            ));
+        }
+        // Stable sort: on equal ratings runs keep their repository order and come before online entries.
+        result.sort(Comparator.comparing(TopRatedExperienceDto::getRating, Comparator.reverseOrder()));
         return result.stream().limit(clampLimit(limit)).toList();
     }
 
@@ -344,10 +367,14 @@ public class StatsServiceImpl implements StatsService {
         return result.stream().limit(clampLimit(limit)).toList();
     }
 
+    /** Run hours plus online hours per game, matching the library's totalHours. */
     private Map<Long, Double> hoursByGameId(Long userId) {
         Map<Long, Double> map = new HashMap<>();
         for (Object[] row : experienceRepository.sumHoursGroupedByGameId(userId)) {
-            map.put((Long) row[0], (Double) row[1]);
+            map.merge((Long) row[0], (Double) row[1], Double::sum);
+        }
+        for (Object[] row : onlinePlaytimeRepository.sumTotalHoursGroupedByGameId(userId)) {
+            map.merge((Long) row[0], (Double) row[1], Double::sum);
         }
         return map;
     }

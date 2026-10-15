@@ -2,8 +2,10 @@ package com.estebanmm13.pytra_api.experiences.service.gameStats;
 
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperiencePeriod;
+import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
+import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.platforms.mapper.PlatformMapper;
 import com.estebanmm13.pytra_api.platforms.model.Platform;
 import lombok.RequiredArgsConstructor;
@@ -18,32 +20,52 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Computes {@link GameExperienceStats} with ONE query per call (all the user's experiences),
- * grouped in memory, so listing the library never runs a query per game.
+ * Computes {@link GameExperienceStats} with TWO queries per call (all the user's experiences and all their
+ * online playtimes, platforms included), grouped in memory, so listing the library never runs a query per game.
  */
 @Component
 @RequiredArgsConstructor
 public class GameExperienceStatsCalculator {
 
     private final ExperienceRepository experienceRepository;
+    private final OnlinePlaytimeRepository onlinePlaytimeRepository;
 
-    /** Stats keyed by game id; games without experiences are absent (use {@link GameExperienceStats#EMPTY}). */
+    /**
+     * Stats keyed by game id; games without experiences nor online playtime are absent
+     * (use {@link GameExperienceStats#EMPTY}).
+     */
     public Map<Long, GameExperienceStats> byGame(Long userId) {
         Map<Long, List<Experience>> grouped = new HashMap<>();
         for (Experience experience : experienceRepository.findAllByUserId(userId)) {
             grouped.computeIfAbsent(experience.getGameId(), id -> new ArrayList<>()).add(experience);
         }
+        Map<Long, OnlinePlaytime> onlineByGame = new HashMap<>();
+        for (OnlinePlaytime online : onlinePlaytimeRepository.findAllByUserId(userId)) {
+            onlineByGame.put(online.getGameId(), online);
+            grouped.computeIfAbsent(online.getGameId(), id -> new ArrayList<>());
+        }
         Map<Long, GameExperienceStats> result = new HashMap<>();
-        grouped.forEach((gameId, experiences) -> result.put(gameId, of(experiences)));
+        grouped.forEach((gameId, experiences) -> result.put(gameId, of(experiences, onlineByGame.get(gameId))));
         return result;
     }
 
     public GameExperienceStats forGame(Long gameId, Long userId) {
-        return of(experienceRepository.findAllByGameIdAndUserId(gameId, userId));
+        return of(experienceRepository.findAllByGameIdAndUserId(gameId, userId),
+                onlinePlaytimeRepository.findByGameIdAndUserId(gameId, userId).orElse(null));
     }
 
+    /** Stats over runs only (no online playtime). */
     public static GameExperienceStats of(List<Experience> experiences) {
-        if (experiences.isEmpty()) {
+        return of(experiences, null);
+    }
+
+    /**
+     * Stats over the runs plus the game's online playtime ({@code online} may be null). Online hours add to
+     * {@code totalHours}, its rating competes for {@code bestRating} and its platforms join {@code platforms};
+     * run-only aggregates (count, status, year, platinum, last played) ignore it.
+     */
+    public static GameExperienceStats of(List<Experience> experiences, OnlinePlaytime online) {
+        if (experiences.isEmpty() && online == null) {
             return GameExperienceStats.EMPTY;
         }
         double totalHours = 0;
@@ -72,8 +94,21 @@ public class GameExperienceStatsCalculator {
                 latest = experience;
             }
         }
+        if (online != null) {
+            totalHours += online.getTotalHours() != null ? online.getTotalHours() : 0.0;
+            BigDecimal onlineRating = online.getGeneralRating();
+            if (onlineRating != null && (bestRating == null || onlineRating.compareTo(bestRating) > 0)) {
+                bestRating = onlineRating;
+            }
+            if (online.getPlatforms() != null) {
+                for (Platform platform : online.getPlatforms()) {
+                    platformsById.putIfAbsent(platform.getId(), platform);
+                }
+            }
+        }
         return new GameExperienceStats(
-                experiences.size(), totalHours, Ratings.normalize(bestRating), latest.getStatus(), lastPlayedYear, hasPlatinum,
+                experiences.size(), totalHours, Ratings.normalize(bestRating),
+                latest != null ? latest.getStatus() : null, lastPlayedYear, hasPlatinum,
                 platformsById.values().stream().sorted(PlatformMapper.CATALOG_ORDER).toList(), lastPlayedAt);
     }
 

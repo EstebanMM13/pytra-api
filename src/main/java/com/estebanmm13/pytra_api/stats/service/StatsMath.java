@@ -25,6 +25,13 @@ public final class StatsMath {
         return average(sum, count);
     }
 
+    /** Null-tolerant sum of two exact sums (an aggregate SUM is null when nothing matched). */
+    public static BigDecimal sum(BigDecimal a, BigDecimal b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a.add(b);
+    }
+
     /** {@code sum / count} rounded to 2 decimals (half up) without trailing zeros, or null when count is 0. */
     public static BigDecimal average(BigDecimal sum, long count) {
         if (count == 0 || sum == null) {

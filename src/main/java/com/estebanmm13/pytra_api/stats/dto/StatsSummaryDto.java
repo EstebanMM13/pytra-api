@@ -14,7 +14,7 @@ public class StatsSummaryDto {
     private double totalSingleplayerHours;
     private double totalOnlineHours;
     private long totalPlatinums;
-    /** Mean rating of the rated experiences, 2 decimals; null when nothing is rated. */
+    /** Mean of the run ratings and online general ratings, 2 decimals; null when nothing is rated. */
     private BigDecimal averageRating;
     private long replayCount;
     private long completedCount;
