@@ -408,7 +408,8 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                     "/api/v1/stats/most-played/singleplayer",
                     "/api/v1/stats/most-played/online"}) {
                 MvcResult result = perform(get(path), bobAuth).andExpect(status().isOk()).andReturn();
-                assertThat(readIds(result, "$[*].gameId")).as(path).containsExactly(bobGameId);
+                // Top rated lists a game once per rated run and once for its online playtime.
+                assertThat(readIds(result, "$[*].gameId")).as(path).isNotEmpty().containsOnly(bobGameId);
             }
 
             MvcResult bySaga = perform(get("/api/v1/stats/by-saga"), bobAuth).andExpect(status().isOk()).andReturn();
