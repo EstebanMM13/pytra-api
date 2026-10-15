@@ -78,7 +78,7 @@ public final class IgdbParser {
         if (name == null) throw IgdbIntegrationException.gameNotFound();
 
         LocalDate releaseDate = firstReleaseDate(game);
-        // Announced games often carry a target date; the game form rejects future dates.
+        // Announced games often carry a placeholder target date; autofill leaves it blank (users may type one).
         if (releaseDate != null && releaseDate.isAfter(LocalDate.now(ZoneOffset.UTC))) releaseDate = null;
 
         String cover = imageUrl("t_cover_big", game.path("cover").path("image_id"));

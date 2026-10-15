@@ -70,7 +70,7 @@ public final class SteamStoreParser {
     }
 
     private static LocalDate releaseDate(JsonNode releaseDate) {
-        // Unreleased games often carry a target date; it is not a release date (and the game form rejects future dates).
+        // Unreleased games often carry a placeholder target date; it is not a release date, so autofill leaves it blank.
         if (releaseDate.path("coming_soon").asBoolean(false)) return null;
         LocalDate parsed = SteamReleaseDateParser.parse(releaseDate.path("date").asText(null));
         return parsed != null && parsed.isAfter(LocalDate.now()) ? null : parsed;
