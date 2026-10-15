@@ -1,11 +1,14 @@
 package com.estebanmm13.pytra_api.experiences.model;
 
+import com.estebanmm13.pytra_api.platforms.model.Platform;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @NoArgsConstructor
 @AllArgsConstructor
@@ -36,6 +39,16 @@ public class OnlinePlaytime {
 
     @Column(columnDefinition = "TEXT")
     private String notes;
+
+    /** Catalog platforms played online on (optional). Lazy: repository methods that map it fetch it. */
+    @Builder.Default
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "online_playtime_platforms",
+            joinColumns = @JoinColumn(name = "online_playtime_id"),
+            inverseJoinColumns = @JoinColumn(name = "platform_id")
+    )
+    private Set<Platform> platforms = new HashSet<>();
 
     @UpdateTimestamp
     @Column(nullable = false)

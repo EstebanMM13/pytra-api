@@ -5,11 +5,13 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -28,4 +30,11 @@ public class OnlinePlaytimeRequestDto {
     private BigDecimal generalRating;
 
     private String notes;
+
+    /**
+     * Catalog platform ids played online on. Null keeps the stored platforms (clients that predate the
+     * field); an empty set clears them. Unknown ids are rejected with INVALID_PLATFORM.
+     */
+    @Size(max = 20)
+    private Set<@NotNull Long> platformIds;
 }
