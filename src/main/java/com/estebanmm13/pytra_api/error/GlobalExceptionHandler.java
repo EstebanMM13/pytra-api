@@ -83,6 +83,12 @@ public class GlobalExceptionHandler {
                 .body(apiError);
     }
 
+    @ExceptionHandler(ResourceLimitExceededException.class)
+    public ResponseEntity<ApiError> handleResourceLimitExceeded(ResourceLimitExceededException e) {
+        ApiError apiError = new ApiError(HttpStatus.CONFLICT.value(), e.getMessage(), Map.of(), LocalDateTime.now());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(apiError);
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiError> handleResourceNotFound(ResourceNotFoundException e) {
         ApiError apiError = new ApiError(HttpStatus.NOT_FOUND.value(),e.getMessage(), Map.of() ,LocalDateTime.now());

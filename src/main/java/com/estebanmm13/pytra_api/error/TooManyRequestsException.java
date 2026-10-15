@@ -7,6 +7,7 @@ import lombok.Getter;
 public class TooManyRequestsException extends RuntimeException {
 
     public static final String EXPORT_RATE_LIMITED = "EXPORT_RATE_LIMITED";
+    public static final String PLATFORM_RATE_LIMITED = "PLATFORM_RATE_LIMITED";
 
     private final long retryAfterSeconds;
 

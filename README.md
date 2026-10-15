@@ -70,6 +70,9 @@ Only variable names are listed here. Never commit real values.
 | `MAIL_FROM_EMAIL` | Prod | empty | Sender address; required whenever `BREVO_API_KEY` is set |
 | `MAIL_FROM_NAME` | No | `Pytra` | Sender display name |
 | `DEMO_USER_ID` | No | empty | Id of the account exposed as the public read-only demo (`POST /api/v1/auth/demo`); empty disables the demo (`404`) |
+| `PLATFORMS_MAX_TOTAL` | No | `200` | Cap on the global platform catalog (seeded entries included); new entries beyond it get `409 PLATFORM_CATALOG_FULL` |
+| `PLATFORMS_CREATE_MAX_PER_WINDOW` | No | `20` | New platforms each user may create per window; extra creations get `429 PLATFORM_RATE_LIMITED` |
+| `PLATFORMS_CREATE_WINDOW` | No | `1h` | Window of that per-user limit (Spring duration syntax: `1h`, `30m`, ...) |
 | `JAVA_TOOL_OPTIONS` | No | none | JVM flags (for example a heap cap) set at the Railway service level; not read by the app itself |
 
 **Google Cloud Console:** the authorized redirect URI must be `{PUBLIC_API_URL}/login/oauth2/code/google`.
@@ -85,6 +88,7 @@ Only variable names are listed here. Never commit real values.
 | Google login | OIDC with `prompt=select_account` (always shows the account chooser). Only Google-verified emails are accepted; an existing account with the same email gets linked |
 | Exchange code | Google and Steam flows end with a one-time code (valid 1 min) that the client exchanges at `POST /api/v1/auth/exchange-code` for a JWT |
 | Rate limit | Max 5 POSTs per IP per minute on `register`, `login`, `resend-verification`, `forgot-password`, `demo`; extra requests get `429`. In-memory, per instance. Client IP = right-most `X-Forwarded-For` entry (the one Railway's proxy appends); paths are matched on the normalized servlet path, so `X-Forwarded-Prefix` or encoded URIs do not bypass it |
+| Platform creation | `POST /api/v1/platforms` (create-if-missing on the global catalog) is limited per user to `PLATFORMS_CREATE_MAX_PER_WINDOW` new entries per `PLATFORMS_CREATE_WINDOW` (`429 PLATFORM_RATE_LIMITED`, in-memory, per instance) and the catalog is capped at `PLATFORMS_MAX_TOTAL` entries (`409 PLATFORM_CATALOG_FULL`). Requests that resolve to an existing entry (case-insensitive name match) count toward neither |
 | Demo | `POST /api/v1/auth/demo` returns a JWT for the `DEMO_USER_ID` account with a `demo: true` claim, valid 2 h and never refreshed (the client asks again). `DemoReadOnlyFilter` answers `403 DEMO_READ_ONLY` to any non-GET/HEAD/OPTIONS request made with it (except the public `/api/v1/auth/*` endpoints, exact paths, which ignore the caller) and to `GET /users/me/export/**`. Demo sessions get a placeholder email in `GET /users/me` and no Steam id/persona in the Steam status. While enabled, the demo account is demo-only: password login, Google login, resend-verification, forgot-password and reset-password treat it as an unknown account. Unsetting `DEMO_USER_ID` also invalidates outstanding demo tokens |
 
 Emails go through the Brevo transactional HTTP API (`api.brevo.com/v3`) rather than SMTP, because Railway blocks outbound SMTP on non-Pro plans. Email links point to `{FRONTEND_URL}/verify-email?token=...` and `{FRONTEND_URL}/reset-password?token=...`.

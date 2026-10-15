@@ -11,8 +11,14 @@ public interface PlatformService {
     /** The whole catalog in catalog order. */
     List<PlatformResponseDto> findAll();
 
-    /** Returns the existing entry on a case-insensitive name match, otherwise creates it. */
-    PlatformCreationResult createIfMissing(PlatformRequestDto request);
+    /**
+     * Returns the existing entry on a case-insensitive name match, otherwise creates it on behalf of
+     * {@code userId}. Only actual creations count toward the per-user rate limit and the catalog cap.
+     *
+     * @throws com.estebanmm13.pytra_api.error.ResourceLimitExceededException PLATFORM_CATALOG_FULL when the catalog is full
+     * @throws com.estebanmm13.pytra_api.error.TooManyRequestsException PLATFORM_RATE_LIMITED when the user creates too many
+     */
+    PlatformCreationResult createIfMissing(Long userId, PlatformRequestDto request);
 
     /**
      * Platform for a run create/update request.

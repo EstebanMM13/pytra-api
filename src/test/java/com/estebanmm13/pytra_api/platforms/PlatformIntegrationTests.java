@@ -16,6 +16,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -102,6 +103,28 @@ class PlatformIntegrationTests extends AbstractIntegrationTest {
         performAs(auth, post("/api/v1/platforms"), "{\"name\": \"" + colored + "\", \"color\": \"#a1b2c3\"}")
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.color").value("#A1B2C3"));
+    }
+
+    @Test
+    void creatingTooManyPlatformsIsRateLimitedPerUser() throws Exception {
+        String prefix = "Burst " + suffix() + " ";
+        for (int i = 0; i < 20; i++) {
+            performAs(auth, post("/api/v1/platforms"), "{\"name\": \"" + prefix + i + "\"}")
+                    .andExpect(status().isCreated());
+        }
+
+        performAs(auth, post("/api/v1/platforms"), "{\"name\": \"" + prefix + "20\"}")
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.message").value("PLATFORM_RATE_LIMITED"));
+
+        // Resolving an existing entry is not a creation, so it still works for the throttled user.
+        performAs(auth, post("/api/v1/platforms"), "{\"name\": \"" + (prefix + 0).toLowerCase() + "\"}")
+                .andExpect(status().isOk());
+        // The limit is per user.
+        performAs(bearer(createVerifiedUser("platforms3")), post("/api/v1/platforms"),
+                "{\"name\": \"" + prefix + "20\"}")
+                .andExpect(status().isCreated());
     }
 
     @Test

@@ -48,6 +48,13 @@ app:
   igdb:
     client-id: ${TWITCH_CLIENT_ID:}
     client-secret: ${TWITCH_CLIENT_SECRET:}
+  # Abuse protection for the global platform catalog (POST /api/v1/platforms). Only real creations count;
+  # create-if-missing hits on an existing entry are free. Window uses Spring duration syntax (1h, 30m, ...).
+  platforms:
+    max-total: ${PLATFORMS_MAX_TOTAL:200}
+    create-rate-limit:
+      max-per-window: ${PLATFORMS_CREATE_MAX_PER_WINDOW:20}
+      window: ${PLATFORMS_CREATE_WINDOW:1h}
   # Transactional email via Brevo's HTTP API. With no API key, emails are only logged (local dev).
   mail:
     brevo-api-key: ${BREVO_API_KEY:}

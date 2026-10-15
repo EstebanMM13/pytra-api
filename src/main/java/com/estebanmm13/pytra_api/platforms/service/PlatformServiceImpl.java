@@ -23,6 +23,7 @@ public class PlatformServiceImpl implements PlatformService {
     static final int USER_SORT_ORDER = 1000;
 
     private final PlatformRepository platformRepository;
+    private final PlatformCreationGuard creationGuard;
 
     @Override
     public List<PlatformResponseDto> findAll() {
@@ -32,12 +33,15 @@ public class PlatformServiceImpl implements PlatformService {
     }
 
     @Override
-    public PlatformCreationResult createIfMissing(PlatformRequestDto request) {
+    public PlatformCreationResult createIfMissing(Long userId, PlatformRequestDto request) {
         String name = request.getName().trim();
         Optional<Platform> existing = platformRepository.findByNameIgnoreCase(name);
         if (existing.isPresent()) {
             return new PlatformCreationResult(PlatformMapper.toResponseDto(existing.get()), false);
         }
+        // Capacity first, so a full catalog does not also burn the user's rate-limit slots.
+        creationGuard.checkCapacity(platformRepository.count());
+        creationGuard.acquire(userId);
         PlatformFamily family = request.getFamily() != null ? request.getFamily() : PlatformFamily.OTHER;
         String color = request.getColor() != null
                 ? request.getColor().toUpperCase(Locale.ROOT)

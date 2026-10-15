@@ -1,6 +1,7 @@
 package com.estebanmm13.pytra_api.platforms.service;
 
 import com.estebanmm13.pytra_api.error.InvalidRequestException;
+import com.estebanmm13.pytra_api.error.ResourceLimitExceededException;
 import com.estebanmm13.pytra_api.platforms.TestPlatforms;
 import com.estebanmm13.pytra_api.platforms.dto.PlatformRequestDto;
 import com.estebanmm13.pytra_api.platforms.model.Platform;
@@ -14,24 +15,57 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class PlatformServiceImplTest {
 
+    private static final Long USER_ID = 1L;
+
     private final PlatformRepository repository = mock(PlatformRepository.class);
-    private final PlatformServiceImpl service = new PlatformServiceImpl(repository);
+    private final PlatformCreationGuard guard = mock(PlatformCreationGuard.class);
+    private final PlatformServiceImpl service = new PlatformServiceImpl(repository, guard);
 
     @Test
     void existingNameIsReturnedWithoutCreating() {
         when(repository.findByNameIgnoreCase("ds")).thenReturn(Optional.of(TestPlatforms.DS));
 
-        PlatformCreationResult result = service.createIfMissing(request("  ds ", null, null));
+        PlatformCreationResult result = service.createIfMissing(USER_ID, request("  ds ", null, null));
 
         assertThat(result.created()).isFalse();
         assertThat(result.platform().name()).isEqualTo("DS");
+        verify(repository, never()).saveAndFlush(any());
+        // Dedupe hits never count toward the cap or the rate limit.
+        verifyNoInteractions(guard);
+    }
+
+    @Test
+    void newEntryIsCheckedAgainstTheCapAndTheUserRateLimit() {
+        when(repository.findByNameIgnoreCase("Saturn")).thenReturn(Optional.empty());
+        when(repository.count()).thenReturn(42L);
+        when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.createIfMissing(USER_ID, request("Saturn", null, null));
+
+        verify(guard).checkCapacity(42L);
+        verify(guard).acquire(USER_ID);
+    }
+
+    @Test
+    void fullCatalogRejectsBeforeConsumingTheRateLimit() {
+        when(repository.findByNameIgnoreCase("Saturn")).thenReturn(Optional.empty());
+        when(repository.count()).thenReturn(200L);
+        doThrow(new ResourceLimitExceededException(ResourceLimitExceededException.PLATFORM_CATALOG_FULL))
+                .when(guard).checkCapacity(200L);
+
+        assertThatThrownBy(() -> service.createIfMissing(USER_ID, request("Saturn", null, null)))
+                .isInstanceOf(ResourceLimitExceededException.class)
+                .hasMessage(ResourceLimitExceededException.PLATFORM_CATALOG_FULL);
+        verify(guard, never()).acquire(any());
         verify(repository, never()).saveAndFlush(any());
     }
 
@@ -40,7 +74,7 @@ class PlatformServiceImplTest {
         when(repository.findByNameIgnoreCase("Anbernic RG35XX")).thenReturn(Optional.empty());
         when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        PlatformCreationResult result = service.createIfMissing(request("Anbernic   RG35XX", null, null));
+        PlatformCreationResult result = service.createIfMissing(USER_ID, request("Anbernic   RG35XX", null, null));
 
         assertThat(result.created()).isTrue();
         assertThat(result.platform().name()).isEqualTo("Anbernic RG35XX");
@@ -55,7 +89,7 @@ class PlatformServiceImplTest {
         when(repository.findByNameIgnoreCase(any())).thenReturn(Optional.empty());
         when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        PlatformCreationResult result = service.createIfMissing(request("Saturn", PlatformFamily.OTHER, "#aabbcc"));
+        PlatformCreationResult result = service.createIfMissing(USER_ID, request("Saturn", PlatformFamily.OTHER, "#aabbcc"));
 
         assertThat(result.platform().color()).isEqualTo("#AABBCC");
     }
@@ -66,7 +100,7 @@ class PlatformServiceImplTest {
         when(repository.findByNameIgnoreCase("Saturn")).thenReturn(Optional.empty(), Optional.of(winner));
         when(repository.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("duplicate"));
 
-        PlatformCreationResult result = service.createIfMissing(request("Saturn", null, null));
+        PlatformCreationResult result = service.createIfMissing(USER_ID, request("Saturn", null, null));
 
         assertThat(result.created()).isFalse();
         assertThat(result.platform().id()).isEqualTo(99L);
