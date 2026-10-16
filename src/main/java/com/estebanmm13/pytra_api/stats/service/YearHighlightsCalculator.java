@@ -133,7 +133,9 @@ public final class YearHighlightsCalculator {
         byGame.forEach((gameId, runs) -> {
             BigDecimal avg = StatsMath.averageRating(runs.stream().map(Experience::getRating).toList());
             if (avg != null) {
-                ranked.add(new RatedGameDto(gameId, gamesById.get(gameId).getName(), avg, runs.size(), sumHours(runs)));
+                Game game = gamesById.get(gameId);
+                ranked.add(new RatedGameDto(gameId, game.getName(), avg, runs.size(), sumHours(runs),
+                        game.getCoverImageUrl()));
             }
         });
         ranked.sort(BEST_FIRST);

@@ -78,6 +78,20 @@ class YearHighlightsCalculatorTest {
     }
 
     @Test
+    void gotyCarriesTheCoverEvenWhenItsRunBelongsToAnotherYearPeriod() {
+        games.put(1L, Game.builder().id(1L).name("Silksong").genres(Set.of())
+                .coverImageUrl("https://covers.example/1030300.jpg").build());
+        // The year field points to the previous year (ExperiencePeriod), but it was completed in YEAR.
+        run(1, COMPLETADO, 10, 40.0, IN_YEAR, YEAR - 1);
+
+        YearHighlights highlights = compute();
+
+        assertThat(highlights.goty().getCoverImageUrl()).isEqualTo("https://covers.example/1030300.jpg");
+        assertThat(highlights.topRated()).extracting(RatedGameDto::getCoverImageUrl)
+                .containsExactly("https://covers.example/1030300.jpg");
+    }
+
+    @Test
     void mostPlayedIsTopFiveByHoursWithNameTieBreak() {
         for (long id = 1; id <= 6; id++) {
             game(id, "Game " + id);

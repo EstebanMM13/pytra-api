@@ -149,6 +149,7 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.goty.avgRating").value(9.0))
                 .andExpect(jsonPath("$.goty.experienceCount").value(1))
                 .andExpect(jsonPath("$.goty.totalHours").value(30.0))
+                .andExpect(jsonPath("$.goty.coverImageUrl").value(nullValue()))
                 .andExpect(jsonPath("$.topRated[*].gameName", contains("Finished", "Meh")))
                 .andExpect(jsonPath("$.mostPlayed[*].gameName", contains("Grinding", "Meh")))
                 .andExpect(jsonPath("$.mostPlayed[0].totalHours").value(80.0))

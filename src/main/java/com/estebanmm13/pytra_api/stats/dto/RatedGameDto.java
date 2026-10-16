@@ -14,4 +14,6 @@ public class RatedGameDto {
     private BigDecimal avgRating;
     private long experienceCount;
     private double totalHours;
+    /** The game's cover: the runs above need not be among the year summary's experiences. */
+    private String coverImageUrl;
 }
