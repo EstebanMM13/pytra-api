@@ -110,7 +110,9 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
         performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"moneda\"}")
                 .andExpect(status().isOk());
 
-        for (String invalid : List.of("dragon", "", "MONEDA", "x".repeat(40), "tipo-terror", "explorador")) {
+        for (String invalid : List.of("dragon", "", "MONEDA", "x".repeat(40), "tipo-terror", "explorador",
+                // Exclusive preset with no owner configured: same error as an unknown key.
+                "estebanexplorador")) {
             performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"" + invalid + "\"}")
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.message").value("INVALID_AVATAR"));

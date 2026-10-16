@@ -4,7 +4,7 @@ import com.estebanmm13.pytra_api.auth.dto.user.CurrentUserResponseDto;
 import com.estebanmm13.pytra_api.auth.dto.user.UpdateProfileRequestDto;
 import com.estebanmm13.pytra_api.auth.mapper.UserMapper;
 import com.estebanmm13.pytra_api.auth.model.User;
-import com.estebanmm13.pytra_api.auth.validation.AvatarPolicy;
+import com.estebanmm13.pytra_api.auth.validation.ExclusiveAvatars;
 import com.estebanmm13.pytra_api.auth.validation.UsernamePolicy;
 import com.estebanmm13.pytra_api.auth.repository.UserRepository;
 import com.estebanmm13.pytra_api.error.DuplicateResourceException;
@@ -23,6 +23,7 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final UserMapper userMapper;
+    private final ExclusiveAvatars exclusiveAvatars;
 
     @Override
     @Transactional(readOnly = true)
@@ -40,7 +41,8 @@ public class UserServiceImpl implements UserService {
 
         if (requestDto.isAvatarPresent()) {
             String avatar = requestDto.getAvatar();
-            if (avatar != null && !AvatarPolicy.isValid(avatar)) {
+            // An exclusive key picked by anyone but its owner gets the same error as an unknown key.
+            if (avatar != null && !exclusiveAvatars.isAllowed(avatar, user.getId())) {
                 throw new InvalidRequestException(InvalidRequestException.INVALID_AVATAR);
             }
             user.setAvatar(avatar);

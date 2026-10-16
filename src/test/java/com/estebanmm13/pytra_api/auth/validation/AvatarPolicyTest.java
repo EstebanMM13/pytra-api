@@ -59,4 +59,15 @@ class AvatarPolicyTest {
             assertFalse(AvatarPolicy.isValid(invalid), String.valueOf(invalid));
         }
     }
+
+    @Test
+    void exclusiveKeysFollowTheKeyRuleButAreNotSharedPresets() {
+        assertEquals(Set.of("estebanexplorador"), AvatarPolicy.EXCLUSIVE_KEYS);
+        for (String key : AvatarPolicy.EXCLUSIVE_KEYS) {
+            assertTrue(key.length() <= AvatarPolicy.MAX_LENGTH, key);
+            assertTrue(key.matches("[a-z]+"), key);
+            assertFalse(AvatarPolicy.KEYS.contains(key), key);
+            assertFalse(AvatarPolicy.isValid(key), key);
+        }
+    }
 }

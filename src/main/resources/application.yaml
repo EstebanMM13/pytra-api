@@ -44,6 +44,10 @@ app:
   # Public read-only demo: id of the account visitors browse via POST /api/v1/auth/demo. Empty = demo disabled.
   demo:
     user-id: ${DEMO_USER_ID:}
+  # Single-owner avatar presets (AvatarPolicy.EXCLUSIVE_KEYS): comma-separated key:userId pairs, e.g.
+  # "estebanexplorador:1". Bound by user id because usernames can be changed. Empty = nobody may pick them.
+  avatars:
+    exclusive-owners: ${EXCLUSIVE_AVATAR_OWNERS:}
   # IGDB metadata autofill (Twitch app credentials). Either blank = IGDB disabled (endpoints answer 404 IGDB_DISABLED).
   igdb:
     client-id: ${TWITCH_CLIENT_ID:}

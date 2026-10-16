@@ -7,6 +7,9 @@ import java.util.Set;
  * {@code /avatars/<key>.svg} from its own catalog (src/app/shared/ui/avatar-catalog.ts), so these keys must match
  * that catalog exactly. The list is intentionally duplicated across repos; AvatarPolicyTest and the web catalog spec
  * both pin the same 72 keys so a change on one side fails a test until the other side follows.
+ * <p>
+ * {@link #EXCLUSIVE_KEYS} are single-owner presets: they are NOT in {@link #KEYS} (so {@link #isValid} rejects
+ * them) and are only accepted for the account configured in {@link ExclusiveAvatars}.
  */
 public final class AvatarPolicy {
 
@@ -30,6 +33,9 @@ public final class AvatarPolicy {
             "tiposofa", "tipobacklog", "tiponocturno", "tiporetro", "tipomelomano", "tiporejugador",
             "tipomasoquista", "tipoestratega", "tipoconstructor", "tipocozy", "tipostreamer", "tipohacker",
             "tipopiloto", "tipoterror", "tipomovil", "tipocapitan", "tipocoleccionista", "tipofotografo");
+
+    /** Single-owner presets (owner bound by user id in {@link ExclusiveAvatars}); never part of {@link #KEYS}. */
+    public static final Set<String> EXCLUSIVE_KEYS = Set.of("estebanexplorador");
 
     private AvatarPolicy() {
     }
