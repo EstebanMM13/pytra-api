@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -32,6 +33,18 @@ public class ExclusiveAvatars {
             return true;
         }
         return key != null && userId != null && Objects.equals(ownerIds.get(key), userId);
+    }
+
+    /** Exclusive keys owned by {@code userId}, sorted; empty for everyone else (exposed on GET /users/me). */
+    public List<String> ownedBy(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        return ownerIds.entrySet().stream()
+                .filter(e -> userId.equals(e.getValue()))
+                .map(Map.Entry::getKey)
+                .sorted()
+                .toList();
     }
 
     static Map<String, Long> parse(String raw) {

@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -28,7 +29,8 @@ class UserControllerDemoRedactionTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(new UserController(userService, currentUserResolver)).build();
         when(userService.getCurrentUser(5L)).thenReturn(new CurrentUserResponseDto(
-                "owner", "Owner", "owner@real-mail.test", true, true, LocalDateTime.of(2025, 1, 1, 0, 0), "fox"));
+                "owner", "Owner", "owner@real-mail.test", true, true, LocalDateTime.of(2025, 1, 1, 0, 0), "fox",
+                List.of()));
     }
 
     private void signedInAs(boolean demo) {

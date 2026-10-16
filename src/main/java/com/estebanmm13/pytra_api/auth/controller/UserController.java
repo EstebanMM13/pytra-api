@@ -37,6 +37,7 @@ public class UserController {
     /** The demo account is public: never expose its owner's email. */
     private static CurrentUserResponseDto redactForDemo(CurrentUserResponseDto dto) {
         return new CurrentUserResponseDto(dto.getUsername(), dto.getUsernameDisplay(), DEMO_EMAIL_PLACEHOLDER,
-                dto.isHasPassword(), dto.isGoogleLinked(), dto.getCreatedAt(), dto.getAvatar());
+                dto.isHasPassword(), dto.isGoogleLinked(), dto.getCreatedAt(), dto.getAvatar(),
+                dto.getExclusiveAvatars());
     }
 }

@@ -78,7 +78,10 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
     void avatarIsNullUntilPickedAndCanBeChangedAndCleared() throws Exception {
         performAs(aliceAuth, get("/api/v1/users/me"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.avatar").value(nullValue()));
+                .andExpect(jsonPath("$.avatar").value(nullValue()))
+                // No exclusive avatar owner is configured in tests.
+                .andExpect(jsonPath("$.exclusiveAvatars").isArray())
+                .andExpect(jsonPath("$.exclusiveAvatars").isEmpty());
 
         performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"fantasmapx\"}")
                 .andExpect(status().isOk())

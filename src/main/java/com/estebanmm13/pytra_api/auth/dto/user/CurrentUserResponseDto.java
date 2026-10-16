@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @AllArgsConstructor
@@ -18,4 +19,6 @@ public class CurrentUserResponseDto {
     private LocalDateTime createdAt;
     /** Preset avatar key, or null when the user has not picked one. */
     private String avatar;
+    /** Exclusive avatar keys this user may pick (see ExclusiveAvatars); empty for almost everyone. */
+    private List<String> exclusiveAvatars;
 }

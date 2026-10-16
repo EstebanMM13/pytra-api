@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.auth.validation;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,6 +42,14 @@ class ExclusiveAvatarsTest {
         ExclusiveAvatars unconfigured = new ExclusiveAvatars("");
         assertFalse(unconfigured.isAllowed(KEY, OWNER_ID));
         assertTrue(unconfigured.isAllowed("mando", OWNER_ID));
+    }
+
+    @Test
+    void ownedByListsOnlyTheOwnersKeys() {
+        assertEquals(List.of(KEY), avatars.ownedBy(OWNER_ID));
+        assertEquals(List.of(), avatars.ownedBy(8L));
+        assertEquals(List.of(), avatars.ownedBy(null));
+        assertEquals(List.of(), new ExclusiveAvatars("").ownedBy(OWNER_ID));
     }
 
     @Test

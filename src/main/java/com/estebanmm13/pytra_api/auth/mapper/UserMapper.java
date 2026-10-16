@@ -3,10 +3,15 @@ package com.estebanmm13.pytra_api.auth.mapper;
 import com.estebanmm13.pytra_api.auth.dto.register.RegisterResponseDto;
 import com.estebanmm13.pytra_api.auth.dto.user.CurrentUserResponseDto;
 import com.estebanmm13.pytra_api.auth.model.User;
+import com.estebanmm13.pytra_api.auth.validation.ExclusiveAvatars;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class UserMapper {
+
+    private final ExclusiveAvatars exclusiveAvatars;
 
     public RegisterResponseDto toRegisterResponseDto(User user){
         if (user == null) return null;
@@ -26,7 +31,8 @@ public class UserMapper {
                 user.getPasswordHash() != null,
                 user.getGoogleId() != null,
                 user.getCreatedAt(),
-                user.getAvatar()
+                user.getAvatar(),
+                exclusiveAvatars.ownedBy(user.getId())
         );
     }
 }
