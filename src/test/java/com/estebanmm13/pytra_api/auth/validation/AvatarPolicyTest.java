@@ -22,11 +22,15 @@ class AvatarPolicyTest {
             "barras", "play", "pixeles", "anillo", "triangulos", "ondas", "rombo", "orbita",
             "zorro", "buho", "gato", "rana", "oso", "pulpo", "pinguino", "conejo",
             "heroe", "invasor", "fantasmapx", "setapx", "corazonpx", "espadapx", "slimepx", "calavera",
-            "rpg", "shooter", "carreras", "puzzle", "terror", "plataformas", "estrategia", "deportes");
+            "rpg", "shooter", "carreras", "puzzle", "terror", "plataformas", "estrategia", "deportes",
+            "tipoexplorador", "tipocazatrofeos", "tiporoguelitero", "tipocuentacuentos", "tipospeedrunner", "tipocompetitivo",
+            "tiposofa", "tipobacklog", "tiponocturno", "tiporetro", "tipomelomano", "tiporejugador",
+            "tipomasoquista", "tipoestratega", "tipoconstructor", "tipocozy", "tipostreamer", "tipohacker",
+            "tipopiloto", "tipoterror", "tipomovil", "tipocapitan", "tipocoleccionista", "tipofotografo");
 
     @Test
     void keysAreExactlyTheIllustratedPack() {
-        assertEquals(48, EXPECTED_KEYS.size());
+        assertEquals(72, EXPECTED_KEYS.size());
         assertEquals(Set.copyOf(EXPECTED_KEYS), AvatarPolicy.KEYS);
     }
 
@@ -39,9 +43,19 @@ class AvatarPolicyTest {
     }
 
     @Test
+    void isValidAcceptsThePlayerTypes() {
+        for (String key : new String[] {"tipoexplorador", "tipoterror", "tipocuentacuentos", "tipofotografo"}) {
+            assertTrue(AvatarPolicy.isValid(key), key);
+        }
+        // The genre "terror" stays a separate key.
+        assertTrue(AvatarPolicy.isValid("terror"));
+    }
+
+    @Test
     void isValidRejectsOldKeysAndOddInput() {
         assertTrue(AvatarPolicy.isValid("mando"));
-        for (String invalid : new String[] {null, "", "gamepad", "ghost", "crown", "MANDO", " mando"}) {
+        for (String invalid : new String[] {null, "", "gamepad", "ghost", "crown", "MANDO", " mando",
+                "explorador", "tipo-explorador", "tipoexploradora", "TIPOTERROR"}) {
             assertFalse(AvatarPolicy.isValid(invalid), String.valueOf(invalid));
         }
     }

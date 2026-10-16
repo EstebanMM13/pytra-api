@@ -102,10 +102,15 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
 
     @Test
     void unknownAvatarIs400AndChangesNothing() throws Exception {
+        // Player-type presets are accepted like any other preset.
+        performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"tipoterror\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatar").value("tipoterror"));
+
         performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"moneda\"}")
                 .andExpect(status().isOk());
 
-        for (String invalid : List.of("dragon", "", "MONEDA", "x".repeat(40))) {
+        for (String invalid : List.of("dragon", "", "MONEDA", "x".repeat(40), "tipo-terror", "explorador")) {
             performAs(aliceAuth, patch("/api/v1/users/me"), "{\"avatar\": \"" + invalid + "\"}")
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.message").value("INVALID_AVATAR"));

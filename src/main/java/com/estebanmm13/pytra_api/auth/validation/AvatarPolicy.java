@@ -6,7 +6,7 @@ import java.util.Set;
  * Single source of truth (server side) for the preset profile avatars. The web client renders each key as
  * {@code /avatars/<key>.svg} from its own catalog (src/app/shared/ui/avatar-catalog.ts), so these keys must match
  * that catalog exactly. The list is intentionally duplicated across repos; AvatarPolicyTest and the web catalog spec
- * both pin the same 48 keys so a change on one side fails a test until the other side follows.
+ * both pin the same 72 keys so a change on one side fails a test until the other side follows.
  */
 public final class AvatarPolicy {
 
@@ -24,7 +24,12 @@ public final class AvatarPolicy {
             // pixel
             "heroe", "invasor", "fantasmapx", "setapx", "corazonpx", "espadapx", "slimepx", "calavera",
             // generos
-            "rpg", "shooter", "carreras", "puzzle", "terror", "plataformas", "estrategia", "deportes");
+            "rpg", "shooter", "carreras", "puzzle", "terror", "plataformas", "estrategia", "deportes",
+            // tipos (player types; "tipo" prefix keeps "tipoterror" apart from the "terror" genre)
+            "tipoexplorador", "tipocazatrofeos", "tiporoguelitero", "tipocuentacuentos", "tipospeedrunner", "tipocompetitivo",
+            "tiposofa", "tipobacklog", "tiponocturno", "tiporetro", "tipomelomano", "tiporejugador",
+            "tipomasoquista", "tipoestratega", "tipoconstructor", "tipocozy", "tipostreamer", "tipohacker",
+            "tipopiloto", "tipoterror", "tipomovil", "tipocapitan", "tipocoleccionista", "tipofotografo");
 
     private AvatarPolicy() {
     }
