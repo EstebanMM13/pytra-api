@@ -8,11 +8,16 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface PsnLinkRepository extends JpaRepository<PsnLink, Long> {
     Optional<PsnLink> findByUserId(Long userId);
+
+    /** Scheduled sync order: never-synced first, then least recently synced, so a run cut short never starves the same users. */
+    @Query("SELECT l FROM PsnLink l ORDER BY l.lastSyncAt ASC NULLS FIRST, l.id ASC")
+    List<PsnLink> findAllInScheduledSyncOrder();
 
     /**
      * Fresh DB check, never answered from a managed (possibly stale) PsnLink: with open-in-view the

@@ -14,8 +14,11 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,6 +48,11 @@ public class PsnApiClient {
     static final String PS4_CATEGORY = "ps4_game";
     static final String PS5_CATEGORY = "ps5_native_game";
 
+    /** Pause after a 429 without a usable Retry-After (PSN's budget is ~300 requests per 15 min). */
+    static final Duration DEFAULT_RATE_LIMIT_COOLDOWN = Duration.ofMinutes(15);
+    static final Duration MIN_RATE_LIMIT_COOLDOWN = Duration.ofMinutes(1);
+    static final Duration MAX_RATE_LIMIT_COOLDOWN = Duration.ofHours(1);
+
     /** Sony error code for an unknown online ID on the profile endpoint. */
     static final int USER_NOT_FOUND_ERROR = 2105356;
     /** Sony error code for "Not permitted by access control" (privacy settings hide the data). */
@@ -53,15 +61,27 @@ public class PsnApiClient {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestClient restClient;
     private final PsnAuthenticator authenticator;
+    private final Clock clock;
+
+    /**
+     * Every user shares one service account, so a 429 from Sony applies to all of them: until this instant
+     * no call leaves (link, manual sync, scheduler all fail fast with PSN_RATE_LIMITED). Null when not limited.
+     */
+    private volatile Instant rateLimitedUntil;
 
     @Autowired
     public PsnApiClient(PsnAuthenticator authenticator) {
-        this(configure(RestClient.builder()).build(), authenticator);
+        this(configure(RestClient.builder()).build(), authenticator, Clock.systemUTC());
     }
 
     PsnApiClient(RestClient restClient, PsnAuthenticator authenticator) {
+        this(restClient, authenticator, Clock.systemUTC());
+    }
+
+    PsnApiClient(RestClient restClient, PsnAuthenticator authenticator, Clock clock) {
         this.restClient = restClient;
         this.authenticator = authenticator;
+        this.clock = clock;
     }
 
     /** Timeouts (5s connect / 15s read): a hung PSN must never pin a request thread. No base URL: two hosts. */
@@ -78,6 +98,12 @@ public class PsnApiClient {
     /** False when PSN_NPSSO is blank. */
     public boolean isConfigured() {
         return authenticator.isConfigured();
+    }
+
+    /** True while Sony's last 429 still applies; every call fails fast with PSN_RATE_LIMITED meanwhile. */
+    public boolean isRateLimited() {
+        Instant until = rateLimitedUntil;
+        return until != null && clock.instant().isBefore(until);
     }
 
     /** When Sony started rejecting the service account (expired NPSSO); null while healthy. */
@@ -200,7 +226,10 @@ public class PsnApiClient {
      */
     private JsonNode get(String purpose, String uriTemplate, Object... uriVariables) {
         for (int attempt = 1; ; attempt++) {
-            String token = authenticator.accessToken();
+            if (isRateLimited()) {
+                throw PsnIntegrationException.rateLimited();
+            }
+            String token = accessToken();
             String json;
             try {
                 json = restClient.get()
@@ -216,6 +245,11 @@ public class PsnApiClient {
                     authenticator.reportRejectedAccessToken();
                     throw PsnIntegrationException.unavailable();
                 }
+                if (status == HttpStatus.TOO_MANY_REQUESTS.value()) {
+                    startRateLimitCooldown(e.getResponseHeaders() != null
+                            ? e.getResponseHeaders().getFirst(HttpHeaders.RETRY_AFTER) : null, purpose);
+                    throw PsnIntegrationException.rateLimited();
+                }
                 throw new UpstreamError(status, sonyErrorCode(e.getResponseBodyAsString()));
             } catch (RestClientException e) {
                 // Timeouts / connection errors. Class name only: the message may embed request details.
@@ -230,6 +264,49 @@ public class PsnApiClient {
             }
             return body;
         }
+    }
+
+    /** The sign-in endpoints are rate-limited too: their 429 starts the same cooldown. */
+    private String accessToken() {
+        try {
+            return authenticator.accessToken();
+        } catch (PsnIntegrationException e) {
+            if (PsnIntegrationException.RATE_LIMITED.equals(e.getCode())) {
+                startRateLimitCooldown(null, "sign-in");
+            }
+            throw e;
+        }
+    }
+
+    private void startRateLimitCooldown(String retryAfter, String purpose) {
+        Instant now = clock.instant();
+        Duration cooldown = retryAfter(retryAfter, now);
+        rateLimitedUntil = now.plus(cooldown);
+        log.warn("PSN {} call was rate limited; pausing every PSN call for {} s", purpose, cooldown.toSeconds());
+    }
+
+    /**
+     * {@code Retry-After} as delay-seconds or an HTTP date, clamped to [1 min, 1 h];
+     * {@link #DEFAULT_RATE_LIMIT_COOLDOWN} when missing or unparseable.
+     */
+    static Duration retryAfter(String header, Instant now) {
+        Duration delay = null;
+        if (header != null && !header.isBlank()) {
+            String value = header.strip();
+            try {
+                delay = Duration.ofSeconds(Long.parseLong(value));
+            } catch (NumberFormatException notSeconds) {
+                try {
+                    delay = Duration.between(now, ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant());
+                } catch (DateTimeParseException notADate) {
+                    delay = null;
+                }
+            }
+        }
+        if (delay == null) return DEFAULT_RATE_LIMIT_COOLDOWN;
+        if (delay.compareTo(MIN_RATE_LIMIT_COOLDOWN) < 0) return MIN_RATE_LIMIT_COOLDOWN;
+        if (delay.compareTo(MAX_RATE_LIMIT_COOLDOWN) > 0) return MAX_RATE_LIMIT_COOLDOWN;
+        return delay;
     }
 
     private int sonyErrorCode(String body) {

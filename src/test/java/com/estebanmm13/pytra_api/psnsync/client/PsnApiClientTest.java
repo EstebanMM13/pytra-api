@@ -14,7 +14,11 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import java.net.SocketTimeoutException;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,11 +45,13 @@ class PsnApiClientTest {
     private MockRestServiceServer server;
     private PsnApiClient client;
 
+    private final MutableClock clock = new MutableClock(Instant.parse("2026-10-17T12:00:00Z"));
+
     @BeforeEach
     void setUp() {
         RestClient.Builder builder = PsnApiClient.configure(RestClient.builder());
         server = MockRestServiceServer.bindTo(builder).build();
-        client = new PsnApiClient(builder.build(), authenticator);
+        client = new PsnApiClient(builder.build(), authenticator, clock);
         when(authenticator.isConfigured()).thenReturn(true);
         when(authenticator.accessToken()).thenReturn("token-1");
     }
@@ -222,6 +228,63 @@ class PsnApiClientTest {
     }
 
     @Test
+    void rateLimitHonorsRetryAfterAndFailsFastMeanwhile() {
+        server.expect(requestTo(startsWith(TITLES_URL)))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS).header(HttpHeaders.RETRY_AFTER, "120"));
+
+        assertThatThrownBy(() -> client.getPlayedGames(ACCOUNT_ID)).hasMessage(PsnIntegrationException.RATE_LIMITED);
+        server.verify();
+        server.reset();
+        assertThat(client.isRateLimited()).isTrue();
+
+        // Within the window no request leaves, whatever the call (a lookup at link time too).
+        clock.advance(Duration.ofSeconds(119));
+        assertThatThrownBy(() -> client.findAccount("EstebanK13")).hasMessage(PsnIntegrationException.RATE_LIMITED);
+        server.verify();
+
+        clock.advance(Duration.ofSeconds(2));
+        assertThat(client.isRateLimited()).isFalse();
+        server.expect(requestTo(startsWith(TITLES_URL)))
+                .andRespond(withSuccess("{\"titles\":[],\"totalItemCount\":0}", MediaType.APPLICATION_JSON));
+        assertThat(client.getPlayedGames(ACCOUNT_ID).titles()).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    void rateLimitWithoutRetryAfterPausesFifteenMinutes() {
+        server.expect(requestTo(startsWith(TITLES_URL))).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+        assertThatThrownBy(() -> client.getPlayedGames(ACCOUNT_ID)).hasMessage(PsnIntegrationException.RATE_LIMITED);
+
+        clock.advance(Duration.ofMinutes(14));
+        assertThat(client.isRateLimited()).isTrue();
+        clock.advance(Duration.ofMinutes(2));
+        assertThat(client.isRateLimited()).isFalse();
+    }
+
+    @Test
+    void rateLimitedSignInStartsTheSameCooldown() {
+        when(authenticator.accessToken()).thenThrow(PsnIntegrationException.rateLimited());
+
+        assertThatThrownBy(() -> client.getPlayedGames(ACCOUNT_ID)).hasMessage(PsnIntegrationException.RATE_LIMITED);
+
+        assertThat(client.isRateLimited()).isTrue();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "300, 300",
+            "5, 60",                                   // clamped to 1 min
+            "86400, 3600",                             // clamped to 1 h
+            "'Sat, 17 Oct 2026 12:10:00 GMT', 600",    // HTTP date
+            "garbage, 900",
+            "'', 900"
+    })
+    void parsesRetryAfter(String header, long expectedSeconds) {
+        assertThat(PsnApiClient.retryAfter(header, Instant.parse("2026-10-17T12:00:00Z")).toSeconds())
+                .isEqualTo(expectedSeconds);
+    }
+
+    @Test
     void timeoutIsUnavailable() {
         server.expect(requestTo(startsWith(TITLES_URL))).andRespond(withException(new SocketTimeoutException("boom")));
 
@@ -254,5 +317,32 @@ class PsnApiClientTest {
         assertThat(PsnApiClient.platformOf("pspc_game")).isNull();
         assertThat(PsnApiClient.platformOf("unknown")).isNull();
         assertThat(PsnApiClient.platformOf(null)).isNull();
+    }
+
+    private static final class MutableClock extends Clock {
+        private Instant now;
+
+        MutableClock(Instant now) {
+            this.now = now;
+        }
+
+        void advance(Duration duration) {
+            now = now.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return now;
+        }
     }
 }

@@ -6,18 +6,20 @@ import com.estebanmm13.pytra_api.psnsync.client.PsnApiClient;
 import com.estebanmm13.pytra_api.psnsync.client.PsnAuthenticator;
 import com.estebanmm13.pytra_api.psnsync.model.PsnLink;
 import com.estebanmm13.pytra_api.psnsync.repository.PsnLinkRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class PsnSyncScheduler {
 
     /** During a PSN outage, stop hammering it after this many failures in a row. */
@@ -27,6 +29,21 @@ public class PsnSyncScheduler {
     private final PsnSyncService psnSyncService;
     private final PsnApiClient psnApiClient;
     private final PsnAuthenticator psnAuthenticator;
+    /** Pause between two accounts: spreads the shared service account's requests over the run. */
+    private final Duration pauseBetweenAccounts;
+
+    @Autowired
+    public PsnSyncScheduler(PsnLinkRepository psnLinkRepository,
+                            PsnSyncService psnSyncService,
+                            PsnApiClient psnApiClient,
+                            PsnAuthenticator psnAuthenticator,
+                            @Value("${psn.scheduler.pause-between-accounts:3s}") Duration pauseBetweenAccounts) {
+        this.psnLinkRepository = psnLinkRepository;
+        this.psnSyncService = psnSyncService;
+        this.psnApiClient = psnApiClient;
+        this.psnAuthenticator = psnAuthenticator;
+        this.pauseBetweenAccounts = pauseBetweenAccounts;
+    }
 
     @EventListener(ApplicationReadyEvent.class)
     public void logConfiguration() {
@@ -48,7 +65,16 @@ public class PsnSyncScheduler {
             return;
         }
         int consecutiveUnavailable = 0;
-        for (PsnLink psnLink : psnLinkRepository.findAll()) {
+        List<PsnLink> links = psnLinkRepository.findAllInScheduledSyncOrder();
+        for (int i = 0; i < links.size(); i++) {
+            PsnLink psnLink = links.get(i);
+            if (i > 0 && !pause()) {
+                return;
+            }
+            if (psnApiClient.isRateLimited()) {
+                log.warn("PSN is rate limiting the service account; {} accounts left for the next run", links.size() - i);
+                return;
+            }
             try {
                 psnSyncService.sync(psnLink.getUserId());
                 consecutiveUnavailable = 0;
@@ -71,7 +97,8 @@ public class PsnSyncScheduler {
                 consecutiveUnavailable = 0;
                 log.warn("Scheduled PSN sync failed for userId {}: {}", psnLink.getUserId(), e.getCode());
                 if (PsnIntegrationException.RATE_LIMITED.equals(e.getCode())) {
-                    // Every other account shares the same service account; try again next run.
+                    // Every other account shares the same service account; the least recently synced
+                    // ones go first next run.
                     return;
                 }
             } catch (SteamIntegrationException e) {
@@ -82,6 +109,20 @@ public class PsnSyncScheduler {
                 // Class name only: messages from the HTTP layer may contain the bearer token.
                 log.warn("Scheduled PSN sync failed for userId {}: {}", psnLink.getUserId(), e.getClass().getSimpleName());
             }
+        }
+    }
+
+    /** @return false when the thread was interrupted (shutdown): the run stops. */
+    private boolean pause() {
+        if (pauseBetweenAccounts.isZero() || pauseBetweenAccounts.isNegative()) {
+            return true;
+        }
+        try {
+            Thread.sleep(pauseBetweenAccounts.toMillis());
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
         }
     }
 }

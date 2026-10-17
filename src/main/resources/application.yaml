@@ -42,6 +42,9 @@ steam:
 # PSN service account (NPSSO cookie, 64 chars, valid ~2 months). Empty = PSN sync disabled (status configured=false).
 psn:
   npsso: ${PSN_NPSSO:}
+  scheduler:
+    # Pause between two accounts in the scheduled sync (spreads requests of the shared service account).
+    pause-between-accounts: ${PSN_SCHEDULER_PAUSE:3s}
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:4200}
   public-api-url: ${PUBLIC_API_URL:http://localhost:8080}
