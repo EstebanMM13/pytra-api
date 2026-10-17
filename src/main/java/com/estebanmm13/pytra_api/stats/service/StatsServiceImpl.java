@@ -10,8 +10,10 @@ import com.estebanmm13.pytra_api.experiences.repository.ExperienceTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeTotals;
 import com.estebanmm13.pytra_api.games.model.Game;
-import com.estebanmm13.pytra_api.games.model.Genre;
+import com.estebanmm13.pytra_api.games.repository.GameGenreRow;
+import com.estebanmm13.pytra_api.games.repository.GameLabel;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
+import com.estebanmm13.pytra_api.games.repository.GameSagaRow;
 import com.estebanmm13.pytra_api.games.repository.SagaRepository;
 import com.estebanmm13.pytra_api.error.DuplicateResourceException;
 import com.estebanmm13.pytra_api.error.InvalidRequestException;
@@ -241,7 +243,7 @@ public class StatsServiceImpl implements StatsService {
 
     @Override
     public List<InProgressExperienceDto> getInProgress(Long userId) {
-        Map<Long, Game> games = gamesById(userId);
+        Map<Long, GameLabel> games = gamesById(userId);
 
         List<Experience> experiences = new ArrayList<>(
                 experienceRepository.findAllByUserIdAndStatus(userId, ExperienceStatus.EN_CURSO));
@@ -253,12 +255,12 @@ public class StatsServiceImpl implements StatsService {
 
         List<InProgressExperienceDto> result = new ArrayList<>();
         for (Experience experience : experiences) {
-            Game game = games.get(experience.getGameId());
+            GameLabel game = games.get(experience.getGameId());
             result.add(new InProgressExperienceDto(
                     experience.getId(),
                     experience.getGameId(),
-                    game != null ? game.getName() : "Unknown",
-                    game != null ? game.getCoverImageUrl() : null,
+                    game != null ? game.name() : "Unknown",
+                    game != null ? game.coverImageUrl() : null,
                     experience.getRunLabel(),
                     PlatformMapper.legacyCodeOf(experience.getPlatform()),
                     PlatformMapper.idOf(experience.getPlatform()),
@@ -274,16 +276,17 @@ public class StatsServiceImpl implements StatsService {
 
     @Override
     public List<SagaStatDto> getBySaga(Long userId) {
-        List<Game> games = gameRepository.findAllByUserIdWithSagaAndGenres(userId);
+        // Projection rows (game id + saga), in game id order: no entities nor genres are loaded.
+        List<GameSagaRow> games = gameRepository.findSagaRowsByUserId(userId);
         Map<Long, Double> hoursByGameId = hoursByGameId(userId);
 
         Map<Long, Accumulator> bySaga = new LinkedHashMap<>();
-        for (Game game : games) {
-            Long sagaId = game.getSaga() != null ? game.getSaga().getId() : null;
-            String sagaName = game.getSaga() != null ? game.getSaga().getName() : "Sin saga";
+        for (GameSagaRow game : games) {
+            Long sagaId = game.sagaId();
+            String sagaName = sagaId != null ? game.sagaName() : "Sin saga";
             Accumulator acc = bySaga.computeIfAbsent(sagaId, id -> new Accumulator(sagaName));
             acc.count++;
-            acc.hours += hoursByGameId.getOrDefault(game.getId(), 0.0);
+            acc.hours += hoursByGameId.getOrDefault(game.gameId(), 0.0);
         }
 
         List<SagaStatDto> result = new ArrayList<>();
@@ -297,17 +300,15 @@ public class StatsServiceImpl implements StatsService {
 
     @Override
     public List<GenreStatDto> getByGenre(Long userId) {
-        List<Game> games = gameRepository.findAllByUserIdWithSagaAndGenres(userId);
+        // One projection row per (game, genre) pair, in game id order: no entities are loaded.
+        List<GameGenreRow> gameGenres = gameRepository.findGenreRowsByUserId(userId);
         Map<Long, Double> hoursByGameId = hoursByGameId(userId);
 
         Map<Long, Accumulator> byGenre = new LinkedHashMap<>();
-        for (Game game : games) {
-            double gameHours = hoursByGameId.getOrDefault(game.getId(), 0.0);
-            for (Genre genre : game.getGenres()) {
-                Accumulator acc = byGenre.computeIfAbsent(genre.getId(), id -> new Accumulator(genre.getName()));
-                acc.count++;
-                acc.hours += gameHours;
-            }
+        for (GameGenreRow gameGenre : gameGenres) {
+            Accumulator acc = byGenre.computeIfAbsent(gameGenre.genreId(), id -> new Accumulator(gameGenre.genreName()));
+            acc.count++;
+            acc.hours += hoursByGameId.getOrDefault(gameGenre.gameId(), 0.0);
         }
 
         List<GenreStatDto> result = new ArrayList<>();
@@ -414,18 +415,18 @@ public class StatsServiceImpl implements StatsService {
         return experience.getHours() != null ? experience.getHours() : 0.0;
     }
 
-    private Map<Long, Game> gamesById(Long userId) {
-        Map<Long, Game> map = new HashMap<>();
-        for (Game game : gameRepository.findAllByUserId(userId)) {
-            map.put(game.getId(), game);
+    private Map<Long, GameLabel> gamesById(Long userId) {
+        Map<Long, GameLabel> map = new HashMap<>();
+        for (GameLabel game : gameRepository.findLabelsByUserId(userId)) {
+            map.put(game.id(), game);
         }
         return map;
     }
 
     private Map<Long, String> gameNamesById(Long userId) {
         Map<Long, String> map = new HashMap<>();
-        for (Game game : gameRepository.findAllByUserId(userId)) {
-            map.put(game.getId(), game.getName());
+        for (GameLabel game : gameRepository.findLabelsByUserId(userId)) {
+            map.put(game.id(), game.name());
         }
         return map;
     }

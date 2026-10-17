@@ -6,18 +6,19 @@ import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeTotals;
-import com.estebanmm13.pytra_api.games.model.Game;
-import com.estebanmm13.pytra_api.games.model.Genre;
+import com.estebanmm13.pytra_api.games.repository.GameGenreRow;
+import com.estebanmm13.pytra_api.games.repository.GameLabel;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
+import com.estebanmm13.pytra_api.games.repository.GameSagaRow;
 import com.estebanmm13.pytra_api.games.repository.SagaRepository;
 import com.estebanmm13.pytra_api.stats.dto.GenreStatDto;
+import com.estebanmm13.pytra_api.stats.dto.SagaStatDto;
 import com.estebanmm13.pytra_api.stats.dto.TopRatedExperienceDto;
 import com.estebanmm13.pytra_api.stats.repository.YearNoteRepository;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -36,7 +37,7 @@ class StatsServiceImplOnlineTest {
 
     @Test
     void topRatedMergesRunsAndOnlineEntriesByRating() {
-        when(gameRepository.findAllByUserId(USER_ID)).thenReturn(List.of(game(1L, "Story"), game(2L, "Arena")));
+        when(gameRepository.findLabelsByUserId(USER_ID)).thenReturn(List.of(label(1L, "Story"), label(2L, "Arena")));
         when(experienceRepository.findAllByUserIdAndRatingIsNotNullOrderByRatingDesc(USER_ID)).thenReturn(List.of(
                 Experience.builder().id(10L).gameId(1L).runLabel("First").rating(new BigDecimal("9.00")).build(),
                 Experience.builder().id(11L).gameId(1L).runLabel("Replay").rating(new BigDecimal("7.00")).build()));
@@ -56,7 +57,7 @@ class StatsServiceImplOnlineTest {
 
     @Test
     void topRatedRespectsTheLimitAfterMerging() {
-        when(gameRepository.findAllByUserId(USER_ID)).thenReturn(List.of(game(1L, "Story"), game(2L, "Arena")));
+        when(gameRepository.findLabelsByUserId(USER_ID)).thenReturn(List.of(label(1L, "Story"), label(2L, "Arena")));
         when(experienceRepository.findAllByUserIdAndRatingIsNotNullOrderByRatingDesc(USER_ID)).thenReturn(List.of(
                 Experience.builder().id(10L).gameId(1L).runLabel("First").rating(new BigDecimal("6")).build()));
         when(onlinePlaytimeRepository.findAllByUserIdAndGeneralRatingIsNotNull(USER_ID)).thenReturn(List.of(
@@ -85,10 +86,7 @@ class StatsServiceImplOnlineTest {
 
     @Test
     void genreHoursIncludeOnlineHours() {
-        Genre shooter = Genre.builder().id(1L).name("Shooter").build();
-        Game arena = game(2L, "Arena");
-        arena.setGenres(Set.of(shooter));
-        when(gameRepository.findAllByUserIdWithSagaAndGenres(USER_ID)).thenReturn(List.of(arena));
+        when(gameRepository.findGenreRowsByUserId(USER_ID)).thenReturn(List.of(new GameGenreRow(2L, 1L, "Shooter")));
         when(experienceRepository.sumHoursGroupedByGameId(USER_ID)).thenReturn(List.<Object[]>of(new Object[]{2L, 10.0}));
         when(onlinePlaytimeRepository.sumTotalHoursGroupedByGameId(USER_ID))
                 .thenReturn(List.<Object[]>of(new Object[]{2L, 90.5}));
@@ -115,7 +113,25 @@ class StatsServiceImplOnlineTest {
         when(onlinePlaytimeRepository.totalsByUserId(USER_ID)).thenReturn(totals);
     }
 
-    private static Game game(Long id, String name) {
-        return Game.builder().id(id).userId(USER_ID).name(name).build();
+    @Test
+    void sagaHoursIncludeOnlineHoursAndGroupGamesWithoutSaga() {
+        when(gameRepository.findSagaRowsByUserId(USER_ID)).thenReturn(List.of(
+                new GameSagaRow(1L, 9L, "Souls"), new GameSagaRow(2L, null, null), new GameSagaRow(3L, 9L, "Souls")));
+        when(experienceRepository.sumHoursGroupedByGameId(USER_ID)).thenReturn(List.<Object[]>of(
+                new Object[]{1L, 40.0}, new Object[]{3L, 60.0}));
+        when(onlinePlaytimeRepository.sumTotalHoursGroupedByGameId(USER_ID))
+                .thenReturn(List.<Object[]>of(new Object[]{2L, 5.0}));
+
+        List<SagaStatDto> sagas = service.getBySaga(USER_ID);
+
+        assertThat(sagas).extracting(SagaStatDto::getSagaName).containsExactly("Souls", "Sin saga");
+        assertThat(sagas.get(0).getGameCount()).isEqualTo(2);
+        assertThat(sagas.get(0).getTotalHours()).isEqualTo(100.0);
+        assertThat(sagas.get(1).getSagaId()).isNull();
+        assertThat(sagas.get(1).getTotalHours()).isEqualTo(5.0);
+    }
+
+    private static GameLabel label(Long id, String name) {
+        return new GameLabel(id, name, null);
     }
 }
