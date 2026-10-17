@@ -246,11 +246,11 @@ Highlights (`YearHighlightsCalculator`) use two different attributions:
 | GET | `/login?state=` | Public | Full-page redirect to Steam OpenID; identity travels in `state` |
 | GET | `/callback` | Public | Verifies Steam's response, upserts `SteamLink`, ALWAYS redirects to the client callback: `?code=…&next=steam` or `?error=steam_link_failed\|steam_account_already_linked&next=steam` |
 | GET | `/status` | Required | `{linked, steamId, personaName, lastSyncAt, configured, linkedGamesCount, pendingCount, ignoredCount}` (`linkedGamesCount` = STEAM links, pending placeholders included) |
-| DELETE | `/link` | Required | Unlinks (`204`). Confirmed games keep their hours; pending Steam placeholders and the ignore list are deleted |
+| DELETE | `/link` | Required | Unlinks (`204`). Confirmed games keep their hours; pending Steam placeholders (unless PSN also links them) and the ignore list are deleted |
 | POST | `/sync` | Required | Pulls the Steam library → `{gamesScanned, newGamesPending, linkedExisting, gamesUpdated, ignored, skipped, errored, profilePrivate}` |
 | GET | `/pending` | Required | Steam's slice of the pending queue (games with a Steam link, or with no link at all; games only linked to PSN are listed under PSN): game fields plus `appId`, `steamPlaytimeMinutes` (latest Steam total) and `lastPlayedAt` (Steam `rtime_last_played` as an ISO instant, null if never played) |
 | PUT | `/pending/{gameId}/confirm` | Required | Confirms category/saga/genres and imports the synced total of every link of the game (Steam and PSN) |
-| PUT | `/pending/{gameId}/ignore` | Required | Deletes the placeholder and never re-imports that app (`204`) |
+| PUT | `/pending/{gameId}/ignore` | Required | Deletes the Steam link and the placeholder (kept if PSN also links it) and never re-imports that app (`204`) |
 | GET | `/ignored` | Required | Ignored apps `{appId, name, ignoredAt}` |
 | DELETE | `/ignored/{appId}` | Required | Un-ignores; the app comes back as pending on the next sync (`204`) |
 

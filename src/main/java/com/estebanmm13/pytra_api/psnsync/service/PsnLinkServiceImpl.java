@@ -1,12 +1,9 @@
 package com.estebanmm13.pytra_api.psnsync.service;
 
 import com.estebanmm13.pytra_api.error.PsnIntegrationException;
-import com.estebanmm13.pytra_api.games.model.Game;
-import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
-import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
-import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
+import com.estebanmm13.pytra_api.platformsync.PlatformLinkRemover;
 import com.estebanmm13.pytra_api.psnsync.client.PsnAccount;
 import com.estebanmm13.pytra_api.psnsync.client.PsnApiClient;
 import com.estebanmm13.pytra_api.psnsync.client.PsnOnlineIds;
@@ -22,10 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -34,8 +28,8 @@ public class PsnLinkServiceImpl implements PsnLinkService {
     private final PsnLinkRepository psnLinkRepository;
     private final PsnIgnoredTitleRepository psnIgnoredTitleRepository;
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
-    private final GameRepository gameRepository;
     private final PendingReviewQueue pendingReviewQueue;
+    private final PlatformLinkRemover platformLinkRemover;
     private final PsnApiClient psnApiClient;
     private final SteamSyncGuard syncGuard;
     private final PlatformTransactionManager transactionManager;
@@ -136,22 +130,12 @@ public class PsnLinkServiceImpl implements PsnLinkService {
     }
 
     /**
-     * Deletes the user's PSN links and ignore list. A pending placeholder is deleted with them unless
-     * another platform (Steam) still links it: then it stays in that platform's queue.
+     * Deletes the user's PSN links and ignore list. Pending placeholders Steam also links are kept,
+     * see {@link PlatformLinkRemover}.
      */
     private void resetPsnData(Long userId) {
-        Set<Long> gamesLinkedElsewhere = gamePlatformLinkRepository.findGameIdsByUserIdAndPlatformIn(
-                userId, PsnPlatforms.OTHERS);
-        Map<Long, Game> pendingPsnGames = new LinkedHashMap<>();
-        for (GamePlatformLink link : gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(userId, PsnPlatforms.ALL)) {
-            Game game = link.getGame();
-            gamePlatformLinkRepository.delete(link);
-            if (game.getReviewStatus() == ReviewStatus.PENDING_REVIEW && !gamesLinkedElsewhere.contains(game.getId())) {
-                pendingPsnGames.putIfAbsent(game.getId(), game);
-            }
-        }
-        // Each game once, after its links: a PS4 + PS5 placeholder has two links but is one game.
-        pendingPsnGames.values().forEach(gameRepository::delete);
+        platformLinkRemover.removeLinks(userId, PsnPlatforms.ALL,
+                gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(userId, PsnPlatforms.ALL));
         psnIgnoredTitleRepository.deleteAllByUserId(userId);
     }
 }

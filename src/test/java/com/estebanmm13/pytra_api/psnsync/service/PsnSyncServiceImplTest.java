@@ -11,6 +11,7 @@ import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.PendingGameConfirmer;
 import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
+import com.estebanmm13.pytra_api.platformsync.PlatformLinkRemover;
 import com.estebanmm13.pytra_api.psnsync.client.PsnApiClient;
 import com.estebanmm13.pytra_api.psnsync.dto.PsnPendingGameDto;
 import com.estebanmm13.pytra_api.psnsync.model.PsnIgnoredTitle;
@@ -26,6 +27,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -54,7 +56,8 @@ class PsnSyncServiceImplTest {
     void setUp() {
         service = new PsnSyncServiceImpl(mock(PsnLinkRepository.class), mock(PsnApiClient.class),
                 mock(PsnLibraryImporter.class), new SteamSyncGuard(), mock(PendingGameConfirmer.class),
-                pendingReviewQueue, gameRepository, gamePlatformLinkRepository, psnIgnoredTitleRepository,
+                pendingReviewQueue, new PlatformLinkRemover(gamePlatformLinkRepository, gameRepository),
+                gameRepository, gamePlatformLinkRepository, psnIgnoredTitleRepository,
                 gameMapper, mock(PlatformTransactionManager.class));
         game = Game.builder().id(GAME_ID).userId(USER_ID).name("Ghost of Tsushima")
                 .reviewStatus(ReviewStatus.PENDING_REVIEW).build();
@@ -105,6 +108,8 @@ class PsnSyncServiceImplTest {
         GamePlatformLink steam = link(ExternalPlatform.STEAM, "620", 60, null);
         GamePlatformLink ps5 = link(ExternalPlatform.PSN_PS5, "PPSA01234_00", 120, null);
         when(gamePlatformLinkRepository.findAllByUserIdAndGameId(USER_ID, GAME_ID)).thenReturn(List.of(steam, ps5));
+        when(gamePlatformLinkRepository.findGameIdsByUserIdAndPlatformIn(USER_ID, PsnPlatforms.OTHERS))
+                .thenReturn(Set.of(GAME_ID));
 
         service.ignorePending(GAME_ID, USER_ID);
 

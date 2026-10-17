@@ -13,6 +13,7 @@ import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.PendingGameConfirmer;
 import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
+import com.estebanmm13.pytra_api.platformsync.PlatformLinkRemover;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGamesResult;
 import com.estebanmm13.pytra_api.steamsync.client.SteamWebApiClient;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamIgnoredAppDto;
@@ -49,6 +50,7 @@ public class SteamSyncServiceImpl implements SteamSyncService {
     private final SteamSyncGuard steamSyncGuard;
     private final PendingGameConfirmer pendingGameConfirmer;
     private final PendingReviewQueue pendingReviewQueue;
+    private final PlatformLinkRemover platformLinkRemover;
     private final GameRepository gameRepository;
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
     private final SteamIgnoredAppRepository steamIgnoredAppRepository;
@@ -106,8 +108,9 @@ public class SteamSyncServiceImpl implements SteamSyncService {
     }
 
     /**
-     * Records the appid as ignored and deletes the pending placeholder (and its link), so it
-     * disappears from both the pending list and the games list and the sync never recreates it.
+     * Records the appid as ignored and deletes its link and the pending placeholder, so it disappears
+     * from both the pending list and the games list and the sync never recreates it. A placeholder that
+     * PSN also links is kept (it stays in PSN's queue), see {@link PlatformLinkRemover}.
      * Only Steam placeholders still pending review can be ignored; anything else is a 404.
      * Guarded: deleting a link a running sync is updating would fail that sync.
      */
@@ -135,8 +138,7 @@ public class SteamSyncServiceImpl implements SteamSyncService {
                     .ignoredAt(LocalDateTime.now())
                     .build());
         }
-        gamePlatformLinkRepository.delete(link);
-        gameRepository.delete(game);
+        platformLinkRemover.removeLinks(userId, STEAM_PLATFORMS, List.of(link));
     }
 
     @Override

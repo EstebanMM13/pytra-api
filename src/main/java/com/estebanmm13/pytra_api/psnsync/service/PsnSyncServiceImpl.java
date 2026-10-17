@@ -12,6 +12,7 @@ import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.PendingGameConfirmer;
 import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
+import com.estebanmm13.pytra_api.platformsync.PlatformLinkRemover;
 import com.estebanmm13.pytra_api.psnsync.client.PsnApiClient;
 import com.estebanmm13.pytra_api.psnsync.client.PsnPlayedGamesResult;
 import com.estebanmm13.pytra_api.psnsync.dto.PsnIgnoredTitleDto;
@@ -48,6 +49,7 @@ public class PsnSyncServiceImpl implements PsnSyncService {
     private final SteamSyncGuard syncGuard;
     private final PendingGameConfirmer pendingGameConfirmer;
     private final PendingReviewQueue pendingReviewQueue;
+    private final PlatformLinkRemover platformLinkRemover;
     private final GameRepository gameRepository;
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
     private final PsnIgnoredTitleRepository psnIgnoredTitleRepository;
@@ -151,11 +153,8 @@ public class PsnSyncServiceImpl implements PsnSyncService {
                         .ignoredAt(now)
                         .build());
             }
-            gamePlatformLinkRepository.delete(link);
         }
-        if (links.size() == psnLinks.size()) {
-            gameRepository.delete(game);
-        }
+        platformLinkRemover.removeLinks(userId, PsnPlatforms.ALL, psnLinks);
     }
 
     @Override

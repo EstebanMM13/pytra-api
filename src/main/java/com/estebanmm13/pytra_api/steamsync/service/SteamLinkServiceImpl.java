@@ -4,12 +4,9 @@ import com.estebanmm13.pytra_api.auth.security.TokenGenerator;
 import com.estebanmm13.pytra_api.error.InvalidTokenException;
 import com.estebanmm13.pytra_api.error.SteamIntegrationException;
 import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
-import com.estebanmm13.pytra_api.games.model.Game;
-import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
-import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
-import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
+import com.estebanmm13.pytra_api.platformsync.PlatformLinkRemover;
 import com.estebanmm13.pytra_api.steamsync.client.SteamWebApiClient;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamStatusDto;
 import com.estebanmm13.pytra_api.steamsync.model.SteamLink;
@@ -34,8 +31,8 @@ public class SteamLinkServiceImpl implements SteamLinkService {
     private final SteamLinkRepository steamLinkRepository;
     private final SteamIgnoredAppRepository steamIgnoredAppRepository;
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
-    private final GameRepository gameRepository;
     private final PendingReviewQueue pendingReviewQueue;
+    private final PlatformLinkRemover platformLinkRemover;
     private final SteamWebApiClient steamWebApiClient;
     private final SteamSyncGuard steamSyncGuard;
     private final TokenGenerator tokenGenerator;
@@ -163,14 +160,10 @@ public class SteamLinkServiceImpl implements SteamLinkService {
         return new TransactionTemplate(transactionManager);
     }
 
+    /** Pending placeholders PSN also links are kept, see {@link PlatformLinkRemover}. */
     private void resetSteamData(Long userId) {
-        for (GamePlatformLink link : gamePlatformLinkRepository.findAllByUserIdAndPlatformWithGame(userId, ExternalPlatform.STEAM)) {
-            Game game = link.getGame();
-            gamePlatformLinkRepository.delete(link);
-            if (game.getReviewStatus() == ReviewStatus.PENDING_REVIEW) {
-                gameRepository.delete(game);
-            }
-        }
+        platformLinkRemover.removeLinks(userId, SteamSyncServiceImpl.STEAM_PLATFORMS,
+                gamePlatformLinkRepository.findAllByUserIdAndPlatformWithGame(userId, ExternalPlatform.STEAM));
         steamIgnoredAppRepository.deleteAllByUserId(userId);
     }
 }
