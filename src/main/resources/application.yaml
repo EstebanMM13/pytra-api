@@ -23,6 +23,11 @@ spring:
       # Fail loudly (400) when a decimal is sent to an integer field instead of silently truncating it.
       accept-float-as-int: false
   jpa:
+    # Kept on deliberately (set explicitly to silence the startup warning). Several write paths are not
+    # @Transactional and rely on the request-scoped persistence context: e.g. GameServiceImpl.update maps the
+    # entity it loaded after save(), and only because that instance stays managed does the response carry the
+    # refreshed @UpdateTimestamp. Turning it off needs those services made transactional first.
+    open-in-view: true
     hibernate:
       ddl-auto: validate #compara cada entidad contra la tabla real (nombres de columna, tipos, nulabilidad) y si algo no encaja, falla el arranque con un error explícito
   security:
