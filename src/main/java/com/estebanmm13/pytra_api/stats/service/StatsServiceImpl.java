@@ -6,7 +6,9 @@ import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
+import com.estebanmm13.pytra_api.experiences.repository.ExperienceTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
+import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeTotals;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.Genre;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
@@ -43,28 +45,37 @@ public class StatsServiceImpl implements StatsService {
 
     @Override
     public StatsSummaryDto getSummary(Long userId) {
+        // One aggregate query per table instead of one query per figure.
+        ExperienceTotals runs = experienceRepository.totalsByUserId(userId);
+        OnlinePlaytimeTotals online = onlinePlaytimeRepository.totalsByUserId(userId);
         return new StatsSummaryDto(
                 gameRepository.countByUserId(userId),
                 sagaRepository.countByUserId(userId),
-                experienceRepository.countByUserId(userId),
-                experienceRepository.sumHoursByUserId(userId),
-                onlinePlaytimeRepository.sumTotalHoursByUserId(userId),
-                experienceRepository.countByUserIdAndPlatinumTrue(userId),
-                averageRating(userId),
-                experienceRepository.countByUserIdAndReplayTrue(userId),
-                experienceRepository.countByUserIdAndStatus(userId, ExperienceStatus.COMPLETADO),
-                experienceRepository.countByUserIdAndStatus(userId, ExperienceStatus.ABANDONADO),
-                experienceRepository.countByUserIdAndStatus(userId, ExperienceStatus.EN_CURSO)
+                longOf(runs.getExperienceCount()),
+                doubleOf(runs.getHoursSum()),
+                doubleOf(online.getHoursSum()),
+                longOf(runs.getPlatinumCount()),
+                averageRating(runs, online),
+                longOf(runs.getReplayCount()),
+                longOf(runs.getCompletedCount()),
+                longOf(runs.getAbandonedCount()),
+                longOf(runs.getInProgressCount())
         );
     }
 
     /** Runs and online playtimes weigh the same: each rated one counts once. */
-    private BigDecimal averageRating(Long userId) {
+    private static BigDecimal averageRating(ExperienceTotals runs, OnlinePlaytimeTotals online) {
         return StatsMath.average(
-                StatsMath.sum(experienceRepository.sumRatingByUserId(userId),
-                        onlinePlaytimeRepository.sumGeneralRatingByUserId(userId)),
-                experienceRepository.countByUserIdAndRatingIsNotNull(userId)
-                        + onlinePlaytimeRepository.countByUserIdAndGeneralRatingIsNotNull(userId));
+                StatsMath.sum(runs.getRatingSum(), online.getRatingSum()),
+                longOf(runs.getRatedCount()) + longOf(online.getRatedCount()));
+    }
+
+    private static long longOf(Number value) {
+        return value != null ? value.longValue() : 0L;
+    }
+
+    private static double doubleOf(Number value) {
+        return value != null ? value.doubleValue() : 0.0;
     }
 
     @Override

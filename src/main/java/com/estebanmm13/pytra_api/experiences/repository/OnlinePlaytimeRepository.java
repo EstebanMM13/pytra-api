@@ -7,7 +7,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,15 +19,18 @@ public interface OnlinePlaytimeRepository extends JpaRepository<OnlinePlaytime, 
     @EntityGraph(attributePaths = "platforms")
     List<OnlinePlaytime> findAllByUserId(Long userId);
     List<OnlinePlaytime> findAllByUserIdAndGeneralRatingIsNotNull(Long userId);
-    long countByUserIdAndGeneralRatingIsNotNull(Long userId);
 
-    /** Exact sum (NUMERIC) of the online ratings; null when none is rated. */
-    @Query("SELECT SUM(o.generalRating) FROM OnlinePlaytime o WHERE o.userId = :userId AND o.generalRating IS NOT NULL")
-    BigDecimal sumGeneralRatingByUserId(@Param("userId") Long userId);
+    /** Online aggregates of the stats summary in one round trip; the rating sum is null when none is rated. */
+    @Query("""
+            SELECT COALESCE(SUM(o.totalHours), 0.0) AS hoursSum,
+                   SUM(o.generalRating) AS ratingSum,
+                   COUNT(o.generalRating) AS ratedCount
+            FROM OnlinePlaytime o
+            WHERE o.userId = :userId
+            """)
+    OnlinePlaytimeTotals totalsByUserId(@Param("userId") Long userId);
 
     @Query("SELECT o.gameId, COALESCE(SUM(o.totalHours), 0.0) FROM OnlinePlaytime o WHERE o.userId = :userId GROUP BY o.gameId")
     List<Object[]> sumTotalHoursGroupedByGameId(@Param("userId") Long userId);
 
-    @Query("SELECT COALESCE(SUM(o.totalHours), 0.0) FROM OnlinePlaytime o WHERE o.userId = :userId")
-    Double sumTotalHoursByUserId(@Param("userId") Long userId);
 }
