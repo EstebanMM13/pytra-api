@@ -39,6 +39,9 @@ spring:
             client-secret: ${GOOGLE_CLIENT_SECRET}
 steam:
   api-key: ${STEAM_API_KEY:}
+# PSN service account (NPSSO cookie, 64 chars, valid ~2 months). Empty = PSN sync disabled (status configured=false).
+psn:
+  npsso: ${PSN_NPSSO:}
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:4200}
   public-api-url: ${PUBLIC_API_URL:http://localhost:8080}

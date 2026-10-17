@@ -101,6 +101,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(e.getStatus()).body(apiError);
     }
 
+    @ExceptionHandler(PsnIntegrationException.class)
+    public ResponseEntity<ApiError> handlePsnIntegration(PsnIntegrationException e) {
+        ApiError apiError = new ApiError(e.getStatus().value(), e.getCode(), Map.of(), LocalDateTime.now());
+        return ResponseEntity.status(e.getStatus()).body(apiError);
+    }
+
     @ExceptionHandler(IgdbIntegrationException.class)
     public ResponseEntity<ApiError> handleIgdbIntegration(IgdbIntegrationException e) {
         ApiError apiError = new ApiError(e.getStatus().value(), e.getCode(), Map.of(), LocalDateTime.now());

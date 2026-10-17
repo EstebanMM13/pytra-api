@@ -18,6 +18,9 @@ JWT_EXPIRATION: 3600000
 steam:
   api-key: ""
 
+psn:
+  npsso: ""
+
 app:
   frontend-url: http://localhost:4200
   public-api-url: http://localhost:8080
