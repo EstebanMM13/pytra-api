@@ -101,6 +101,18 @@ class PsnApiClientTest {
                 .hasMessage(PsnIntegrationException.USER_NOT_FOUND);
     }
 
+    @Test
+    void profileHiddenByPrivacyIsProfilePrivate() {
+        server.expect(requestTo(startsWith(PROFILE_URL)))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN).contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"error":{"code":2240526,"message":"Not permitted by access control"}}"""));
+
+        assertThatThrownBy(() -> client.findAccount("EstebanK13"))
+                .isInstanceOf(PsnIntegrationException.class)
+                .hasMessage(PsnIntegrationException.PROFILE_PRIVATE);
+    }
+
     // ---- Game list -------------------------------------------------------------------------
 
     @Test

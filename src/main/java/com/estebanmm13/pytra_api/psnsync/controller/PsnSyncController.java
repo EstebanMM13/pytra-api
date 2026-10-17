@@ -23,7 +23,7 @@ import java.util.List;
  * Pytra's service account. Mirrors the Steam endpoints.
  *
  * <p>Errors use {@code ApiError.message} as a stable code: 400 PSN_INVALID_ONLINE_ID,
- * 404 PSN_USER_NOT_FOUND, 503 PSN_NOT_CONFIGURED, 404 PSN_NOT_LINKED, 409 SYNC_IN_PROGRESS /
+ * 404 PSN_USER_NOT_FOUND, 422 PSN_PROFILE_PRIVATE (link only), 503 PSN_NOT_CONFIGURED, 404 PSN_NOT_LINKED, 409 SYNC_IN_PROGRESS /
  * PSN_LINK_CHANGED, 429 PSN_RATE_LIMITED, 503 PSN_UNAVAILABLE (also when the service account is
  * rejected; admins see the reason in the status).
  */

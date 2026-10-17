@@ -18,6 +18,7 @@ public class PsnIntegrationException extends RuntimeException {
     public static final String LINK_CHANGED = "PSN_LINK_CHANGED";
     public static final String INVALID_ONLINE_ID = "PSN_INVALID_ONLINE_ID";
     public static final String USER_NOT_FOUND = "PSN_USER_NOT_FOUND";
+    public static final String PROFILE_PRIVATE = "PSN_PROFILE_PRIVATE";
     public static final String RATE_LIMITED = "PSN_RATE_LIMITED";
     public static final String UNAVAILABLE = "PSN_UNAVAILABLE";
     /** Status-only code (admins): the service account's NPSSO was rejected; never thrown to clients. */
@@ -50,6 +51,14 @@ public class PsnIntegrationException extends RuntimeException {
 
     public static PsnIntegrationException userNotFound() {
         return new PsnIntegrationException(HttpStatus.NOT_FOUND, USER_NOT_FOUND);
+    }
+
+    /**
+     * The account's privacy settings hide it from the service account at link time. At sync time a
+     * hidden game list is not an error: the result says {@code profilePrivate: true}, like Steam.
+     */
+    public static PsnIntegrationException profilePrivate() {
+        return new PsnIntegrationException(HttpStatus.UNPROCESSABLE_CONTENT, PROFILE_PRIVATE);
     }
 
     public static PsnIntegrationException rateLimited() {

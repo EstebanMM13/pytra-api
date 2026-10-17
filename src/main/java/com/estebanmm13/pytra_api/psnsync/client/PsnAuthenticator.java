@@ -59,6 +59,12 @@ public class PsnAuthenticator {
     /** Tokens are renewed this long before Sony's expiry, so a request never leaves with a dying token. */
     static final Duration EXPIRY_MARGIN = Duration.ofSeconds(60);
 
+    /**
+     * After Sony rejected the NPSSO, requests fail fast for this long instead of signing in again on every
+     * click: an expired NPSSO stays expired, and hammering the sign-in endpoint risks a lock on the account.
+     */
+    static final Duration SIGN_IN_RETRY_COOLDOWN = Duration.ofMinutes(5);
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestClient restClient;
     private final String npsso;
@@ -69,6 +75,7 @@ public class PsnAuthenticator {
     private String refreshToken;
     private Instant refreshTokenExpiresAt;
     private volatile Instant authFailingSince;
+    private Instant lastRejectedSignInAt;
 
     @Autowired
     public PsnAuthenticator(@Value("${psn.npsso:}") String npsso) {
@@ -137,13 +144,18 @@ public class PsnAuthenticator {
             }
         }
 
+        if (lastRejectedSignInAt != null && now.isBefore(lastRejectedSignInAt.plus(SIGN_IN_RETRY_COOLDOWN))) {
+            throw PsnIntegrationException.unavailable();
+        }
         try {
             String code = exchangeNpssoForAccessCode();
             storeTokens(requestTokens(authorizationCodeForm(code), "code exchange"));
         } catch (CredentialsRejected e) {
+            lastRejectedSignInAt = clock.instant();
             reportServiceAuthFailure(e.getMessage());
             throw PsnIntegrationException.unavailable();
         }
+        lastRejectedSignInAt = null;
         return accessToken;
     }
 

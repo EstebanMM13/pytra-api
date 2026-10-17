@@ -128,9 +128,26 @@ class PsnAuthenticatorTest {
         assertThat(authenticator.authFailingSince()).isNotNull();
 
         server.reset();
+        clock.advance(PsnAuthenticator.SIGN_IN_RETRY_COOLDOWN.plusSeconds(1));
         signIn("access-1", "refresh-1");
 
         assertThat(authenticator.authFailingSince()).isNull();
+    }
+
+    @Test
+    void rejectedNpssoIsNotRetriedDuringTheCooldown() {
+        server.expect(requestTo(startsWith(AUTHORIZE_URL))).andRespond(withStatus(HttpStatus.FOUND));
+        assertThatThrownBy(() -> authenticator.accessToken()).isInstanceOf(PsnIntegrationException.class);
+        server.verify();
+        server.reset();
+
+        clock.advance(Duration.ofMinutes(1));
+
+        // No request expected: MockRestServiceServer would fail on an unexpected call.
+        assertThatThrownBy(() -> authenticator.accessToken())
+                .isInstanceOf(PsnIntegrationException.class)
+                .hasMessage(PsnIntegrationException.UNAVAILABLE);
+        server.verify();
     }
 
     @Test

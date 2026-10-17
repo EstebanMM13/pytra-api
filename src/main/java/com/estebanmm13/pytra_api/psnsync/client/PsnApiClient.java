@@ -88,7 +88,8 @@ public class PsnApiClient {
     /**
      * Resolves an online ID to its account.
      *
-     * @throws PsnIntegrationException PSN_USER_NOT_FOUND when no account has that online ID
+     * @throws PsnIntegrationException PSN_USER_NOT_FOUND when no account has that online ID;
+     *                                 PSN_PROFILE_PRIVATE when its privacy settings hide it
      */
     public PsnAccount findAccount(String onlineId) {
         if (!isConfigured()) throw PsnIntegrationException.notConfigured();
@@ -99,6 +100,9 @@ public class PsnApiClient {
         } catch (UpstreamError e) {
             if (e.status == HttpStatus.NOT_FOUND.value() || e.sonyCode == USER_NOT_FOUND_ERROR) {
                 throw PsnIntegrationException.userNotFound();
+            }
+            if (e.status == HttpStatus.FORBIDDEN.value() || e.sonyCode == ACCESS_DENIED_ERROR) {
+                throw PsnIntegrationException.profilePrivate();
             }
             throw e.toIntegrationException("profile");
         }
