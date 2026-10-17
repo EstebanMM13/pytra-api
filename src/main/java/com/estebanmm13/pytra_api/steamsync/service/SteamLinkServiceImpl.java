@@ -9,6 +9,7 @@ import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
+import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
 import com.estebanmm13.pytra_api.steamsync.client.SteamWebApiClient;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamStatusDto;
 import com.estebanmm13.pytra_api.steamsync.model.SteamLink;
@@ -34,6 +35,7 @@ public class SteamLinkServiceImpl implements SteamLinkService {
     private final SteamIgnoredAppRepository steamIgnoredAppRepository;
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
     private final GameRepository gameRepository;
+    private final PendingReviewQueue pendingReviewQueue;
     private final SteamWebApiClient steamWebApiClient;
     private final SteamSyncGuard steamSyncGuard;
     private final TokenGenerator tokenGenerator;
@@ -131,7 +133,7 @@ public class SteamLinkServiceImpl implements SteamLinkService {
         boolean configured = steamWebApiClient.isConfigured();
         // Counted even when unlinked: unlink clears all three, so they read 0 rather than null.
         long linkedGames = gamePlatformLinkRepository.countByUserIdAndPlatform(userId, ExternalPlatform.STEAM);
-        long pending = gameRepository.countByUserIdAndReviewStatus(userId, ReviewStatus.PENDING_REVIEW);
+        long pending = pendingReviewQueue.countPending(userId, SteamSyncServiceImpl.STEAM_PLATFORMS, true);
         long ignored = steamIgnoredAppRepository.countByUserId(userId);
         return steamLinkRepository.findByUserId(userId)
                 .map(link -> new SteamStatusDto(true, link.getSteamId(), link.getPersonaName(), link.getLastSyncAt(),

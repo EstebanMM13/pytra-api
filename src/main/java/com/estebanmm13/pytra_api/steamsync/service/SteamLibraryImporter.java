@@ -8,6 +8,7 @@ import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.metadata.client.SteamCoverImages;
+import com.estebanmm13.pytra_api.platformsync.ExternalPlaytimeWriter;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGame;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGamesResult;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamSyncResultDto;
@@ -23,11 +24,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static com.estebanmm13.pytra_api.platformsync.ImportedGameNames.nameKey;
+import static com.estebanmm13.pytra_api.platformsync.ImportedGameNames.truncate;
 
 /**
  * Applies an already-fetched Steam library to the database. The HTTP call to Steam happens
@@ -48,9 +51,6 @@ import java.util.stream.Collectors;
 @Component
 public class SteamLibraryImporter {
 
-    /** games.name is VARCHAR(255). */
-    private static final int MAX_NAME_LENGTH = 255;
-
     /** Steam store header image; public CDN, no API key needed. */
     private static final String STEAM_HEADER_URL = "https://cdn.cloudflare.steamstatic.com/steam/apps/%s/header.jpg";
 
@@ -58,20 +58,20 @@ public class SteamLibraryImporter {
     private final GameRepository gameRepository;
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
     private final SteamIgnoredAppRepository steamIgnoredAppRepository;
-    private final SteamPlaytimeWriter steamPlaytimeWriter;
+    private final ExternalPlaytimeWriter externalPlaytimeWriter;
     private final TransactionTemplate transactionTemplate;
 
     public SteamLibraryImporter(SteamLinkRepository steamLinkRepository,
                                 GameRepository gameRepository,
                                 GamePlatformLinkRepository gamePlatformLinkRepository,
                                 SteamIgnoredAppRepository steamIgnoredAppRepository,
-                                SteamPlaytimeWriter steamPlaytimeWriter,
+                                ExternalPlaytimeWriter externalPlaytimeWriter,
                                 PlatformTransactionManager transactionManager) {
         this.steamLinkRepository = steamLinkRepository;
         this.gameRepository = gameRepository;
         this.gamePlatformLinkRepository = gamePlatformLinkRepository;
         this.steamIgnoredAppRepository = steamIgnoredAppRepository;
-        this.steamPlaytimeWriter = steamPlaytimeWriter;
+        this.externalPlaytimeWriter = externalPlaytimeWriter;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -138,7 +138,7 @@ public class SteamLibraryImporter {
                 continue;
             }
             refreshLastPlayed(link, app);
-            if (applyPlaytime(link, app.playtimeForeverMinutes(), now)) {
+            if (externalPlaytimeWriter.applySyncedTotal(link, app.playtimeForeverMinutes(), now)) {
                 counters.updated++;
             }
         }
@@ -155,35 +155,6 @@ public class SteamLibraryImporter {
         if (app.lastPlayedAt() != null) {
             link.setLastPlayedAt(app.lastPlayedAt());
         }
-    }
-
-    /**
-     * Moves the link's baseline to Steam's current total. Managed entities are dirty-checked,
-     * so a link whose playtime did not change is not written at all.
-     *
-     * @return true when hours were added to a confirmed game
-     */
-    private boolean applyPlaytime(GamePlatformLink link, long currentMinutes, LocalDateTime now) {
-        long baselineMinutes = link.getLastSyncedPlaytimeMinutes();
-        if (currentMinutes == baselineMinutes) {
-            return false;
-        }
-
-        link.setLastSyncedPlaytimeMinutes(currentMinutes);
-        link.setLastSyncedAt(now);
-
-        // Negative delta (refund, lost family-sharing access, Steam-side reset): only move the
-        // baseline down. Never subtract from the user's data, and never re-add the old hours later.
-        if (currentMinutes < baselineMinutes) {
-            return false;
-        }
-
-        // PENDING_REVIEW games only track the baseline: confirm imports the full total at once.
-        Game game = link.getGame();
-        if (game.getReviewStatus() != ReviewStatus.CONFIRMED) {
-            return false;
-        }
-        return steamPlaytimeWriter.addDelta(link, game, (currentMinutes - baselineMinutes) / 60.0, now);
     }
 
     private void requireStillLinked(Long userId, String steamId) {
@@ -259,22 +230,12 @@ public class SteamLibraryImporter {
         return new Attachment(Outcome.CREATED_PENDING, game.getId(), key);
     }
 
-    private static String truncate(String name) {
-        String safe = (name == null || name.isBlank()) ? "Unknown" : name.strip();
-        return safe.length() <= MAX_NAME_LENGTH ? safe : safe.substring(0, MAX_NAME_LENGTH);
-    }
-
     static String steamCoverUrl(String appId) {
         return SteamCoverImages.portraitCoverUrl(appId);
     }
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
-    }
-
-    /** Mirrors the unique index on (user_id, LOWER(name)). */
-    private static String nameKey(String name) {
-        return name.toLowerCase(Locale.ROOT);
     }
 
     // ---- Bookkeeping ---------------------------------------------------------------------

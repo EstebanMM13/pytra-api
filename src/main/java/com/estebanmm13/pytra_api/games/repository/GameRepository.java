@@ -24,6 +24,9 @@ public interface GameRepository extends JpaRepository<Game, Long> {
     long countByUserIdAndReviewStatus(Long userId, ReviewStatus reviewStatus);
     List<Game> findAllByUserIdAndReviewStatus(Long userId, ReviewStatus reviewStatus);
 
+    @Query("SELECT g.id FROM Game g WHERE g.userId = :userId AND g.reviewStatus = :reviewStatus")
+    List<Long> findIdsByUserIdAndReviewStatus(@Param("userId") Long userId, @Param("reviewStatus") ReviewStatus reviewStatus);
+
     /** Id, name and cover of every game of the user, as a projection (no entity loading). */
     @Query("SELECT new com.estebanmm13.pytra_api.games.repository.GameLabel(g.id, g.name, g.coverImageUrl) "
             + "FROM Game g WHERE g.userId = :userId")

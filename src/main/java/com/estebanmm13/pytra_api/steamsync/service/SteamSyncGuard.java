@@ -8,8 +8,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
- * Prevents Steam operations for the same user from overlapping: manual sync, scheduled sync,
- * unlink, switching to another Steam account, confirming and ignoring pending games.
+ * Prevents platform-sync operations for the same user from overlapping: manual sync, scheduled sync,
+ * unlink, switching to another Steam/PSN account, confirming and ignoring pending games, and account
+ * deletion. Steam and PSN share this one slot per user: both write the same pending games, platform
+ * links and playtime rows.
  * In-memory on purpose: the API runs as a single instance; with several replicas this would
  * need a DB row lock on steam_links instead.
  *
@@ -34,7 +36,7 @@ public class SteamSyncGuard {
     /**
      * Runs {@code work} holding the user's slot.
      *
-     * @throws SteamIntegrationException SYNC_IN_PROGRESS when another Steam operation for the user is running
+     * @throws SteamIntegrationException SYNC_IN_PROGRESS when another sync operation for the user is running
      */
     public <T> T runExclusive(Long userId, Supplier<T> work) {
         if (!tryAcquire(userId)) {

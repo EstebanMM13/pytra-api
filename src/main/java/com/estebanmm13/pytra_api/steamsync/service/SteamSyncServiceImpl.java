@@ -1,6 +1,5 @@
 package com.estebanmm13.pytra_api.steamsync.service;
 
-import com.estebanmm13.pytra_api.error.DuplicateResourceException;
 import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
 import com.estebanmm13.pytra_api.error.SteamIntegrationException;
 import com.estebanmm13.pytra_api.games.dto.game.GameRequestDto;
@@ -9,13 +8,11 @@ import com.estebanmm13.pytra_api.games.mapper.GameMapper;
 import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
-import com.estebanmm13.pytra_api.games.model.Genre;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
-import com.estebanmm13.pytra_api.games.model.Saga;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
-import com.estebanmm13.pytra_api.games.repository.GenreRepository;
-import com.estebanmm13.pytra_api.games.repository.SagaRepository;
+import com.estebanmm13.pytra_api.platformsync.PendingGameConfirmer;
+import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGamesResult;
 import com.estebanmm13.pytra_api.steamsync.client.SteamWebApiClient;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamIgnoredAppDto;
@@ -33,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,16 +41,17 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SteamSyncServiceImpl implements SteamSyncService {
 
+    static final Set<ExternalPlatform> STEAM_PLATFORMS = Set.of(ExternalPlatform.STEAM);
+
     private final SteamLinkRepository steamLinkRepository;
     private final SteamWebApiClient steamWebApiClient;
     private final SteamLibraryImporter steamLibraryImporter;
     private final SteamSyncGuard steamSyncGuard;
-    private final SteamPlaytimeWriter steamPlaytimeWriter;
+    private final PendingGameConfirmer pendingGameConfirmer;
+    private final PendingReviewQueue pendingReviewQueue;
     private final GameRepository gameRepository;
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
     private final SteamIgnoredAppRepository steamIgnoredAppRepository;
-    private final SagaRepository sagaRepository;
-    private final GenreRepository genreRepository;
     private final GameMapper gameMapper;
     private final PlatformTransactionManager transactionManager;
 
@@ -77,13 +74,16 @@ public class SteamSyncServiceImpl implements SteamSyncService {
         });
     }
 
-    /** Two queries in total (pending games + the user's STEAM links), joined in memory. */
+    /**
+     * Steam's slice of the shared pending queue: pending games with a STEAM link, plus pending games
+     * with no link at all (as before PSN existed). Games only linked to PSN belong to the PSN queue.
+     */
     @Override
     public List<SteamPendingGameDto> getPending(Long userId) {
         Map<Long, GamePlatformLink> linksByGameId = gamePlatformLinkRepository
                 .findAllByUserIdAndPlatformWithGame(userId, ExternalPlatform.STEAM).stream()
                 .collect(Collectors.toMap(link -> link.getGame().getId(), Function.identity(), (a, b) -> a));
-        return gameRepository.findAllByUserIdAndReviewStatus(userId, ReviewStatus.PENDING_REVIEW).stream()
+        return pendingReviewQueue.findPending(userId, STEAM_PLATFORMS, true).stream()
                 .map(game -> {
                     GamePlatformLink link = linksByGameId.get(game.getId());
                     return SteamPendingGameDto.of(
@@ -95,44 +95,14 @@ public class SteamSyncServiceImpl implements SteamSyncService {
                 .toList();
     }
 
-    /** Guarded: a sync running at the same time would race on the same link baseline. */
+    /**
+     * Guarded: a sync running at the same time would race on the same link baseline. Imports the
+     * synced total of every link of the game (Steam and PSN), see {@link PendingGameConfirmer}.
+     */
     @Override
     public GameResponseDto confirmPending(Long gameId, GameRequestDto gameRequestDto, Long userId) {
         return steamSyncGuard.runExclusive(userId, () -> transactionTemplate().execute(
-                status -> doConfirmPending(gameId, gameRequestDto, userId)));
-    }
-
-    private GameResponseDto doConfirmPending(Long gameId, GameRequestDto gameRequestDto, Long userId) {
-        Game game = gameRepository.findByIdAndUserId(gameId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Game not found"));
-
-        if (gameRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, gameRequestDto.getName(), gameId)) {
-            throw new DuplicateResourceException("Game already exists");
-        }
-
-        boolean wasPending = game.getReviewStatus() == ReviewStatus.PENDING_REVIEW;
-
-        game.setName(gameRequestDto.getName());
-        game.setDeveloper(gameRequestDto.getDeveloper());
-        game.setPublisher(gameRequestDto.getPublisher());
-        game.setReleaseDate(gameRequestDto.getReleaseDate());
-        game.setCategory(gameRequestDto.getCategory());
-        game.setSaga(resolveSaga(gameRequestDto.getSagaId(), userId));
-        // Keep the cover set at import (Steam header) unless the client sends a new one.
-        String cover = gameRequestDto.getCoverImageUrl();
-        if (cover != null && !cover.isBlank()) {
-            game.setCoverImageUrl(cover);
-        }
-        game.setGenres(resolveGenres(gameRequestDto.getGenreIds()));
-        game.setReviewStatus(ReviewStatus.CONFIRMED);
-        gameRepository.save(game);
-
-        if (wasPending) {
-            gamePlatformLinkRepository.findByUserIdAndGameIdAndPlatform(userId, game.getId(), ExternalPlatform.STEAM)
-                    .ifPresent(link -> steamPlaytimeWriter.importTotalOnConfirm(link, game));
-        }
-
-        return gameMapper.toResponseDto(game);
+                status -> pendingGameConfirmer.confirm(gameId, gameRequestDto, userId)));
     }
 
     /**
@@ -188,20 +158,5 @@ public class SteamSyncServiceImpl implements SteamSyncService {
     /** Guarded work must commit before the guard is released, hence a template, not @Transactional. */
     private TransactionTemplate transactionTemplate() {
         return new TransactionTemplate(transactionManager);
-    }
-
-    private Saga resolveSaga(Long sagaId, Long userId) {
-        if (sagaId == null) return null;
-        return sagaRepository.findByIdAndUserId(sagaId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Saga not found"));
-    }
-
-    private Set<Genre> resolveGenres(Set<Long> genreIds) {
-        if (genreIds == null || genreIds.isEmpty()) return new HashSet<>();
-        List<Genre> foundGenres = genreRepository.findAllById(genreIds);
-        if (foundGenres.size() != genreIds.size()) {
-            throw new ResourceNotFoundException("Genre not found");
-        }
-        return new HashSet<>(foundGenres);
     }
 }
