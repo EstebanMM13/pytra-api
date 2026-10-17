@@ -110,6 +110,8 @@ public class SecurityConfig {
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         // Lets browser clients read the suggested filename of /users/me/export downloads.
         configuration.setExposedHeaders(List.of("Content-Disposition"));
+        // Lets browsers cache preflights (Chrome caps it at 2 h) instead of paying an OPTIONS per request.
+        configuration.setMaxAge(7200L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
