@@ -3,6 +3,10 @@ server:
   # Detrás del proxy de Railway (TLS terminado fuera): respeta X-Forwarded-* para que
   # las URLs generadas (p. ej. el redirect_uri de OAuth2) usen https y el host público.
   forward-headers-strategy: framework
+  # Gzip JSON responses (the library and stats lists); application/json is in the default mime types.
+  compression:
+    enabled: true
+    min-response-size: 1KB
 
 spring:
   application:
