@@ -46,4 +46,6 @@ public class GameResponseDto {
     private List<PlatformRefDto> platformRefs;
     /** Latest endDate/startDate among the game's experiences; null when none has a date. */
     private LocalDate lastPlayedAt;
+    /** Latest of lastPlayedAt and the online playtime's last session date; null when neither is known. */
+    private LocalDate lastActivityAt;
 }

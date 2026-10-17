@@ -90,10 +90,12 @@ class GameLibraryAggregatesTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[0].platformRefs[1].color").value("#E0524C"))
                 // Latest of every endDate/startDate: the replay's startDate.
                 .andExpect(jsonPath("$[0].lastPlayedAt").value("2024-01-01"))
+                .andExpect(jsonPath("$[0].lastActivityAt").value("2024-01-01"))
                 .andExpect(jsonPath("$[1].id").value(untouchedId))
                 .andExpect(jsonPath("$[1].platforms", empty()))
                 .andExpect(jsonPath("$[1].platformRefs", empty()))
-                .andExpect(jsonPath("$[1].lastPlayedAt").value(nullValue()));
+                .andExpect(jsonPath("$[1].lastPlayedAt").value(nullValue()))
+                .andExpect(jsonPath("$[1].lastActivityAt").value(nullValue()));
 
         performAs(auth, get("/api/v1/games/{id}", playedId))
                 .andExpect(jsonPath("$.platforms", contains("PC", "SWITCH")))

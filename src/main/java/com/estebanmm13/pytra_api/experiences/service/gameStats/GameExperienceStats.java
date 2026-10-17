@@ -17,6 +17,7 @@ import java.util.List;
  * @param lastPlayedYear       latest ExperiencePeriod#yearOf among the runs, null when none has a year
  * @param platforms            distinct platforms of the runs and the online playtime, in catalog order
  * @param lastPlayedAt         latest endDate/startDate among the runs, null when none has a date
+ * @param lastActivityAt       latest of lastPlayedAt and the online playtime's last session date, null when neither is known
  */
 public record GameExperienceStats(
         long experienceCount,
@@ -26,8 +27,9 @@ public record GameExperienceStats(
         Integer lastPlayedYear,
         boolean hasPlatinum,
         List<Platform> platforms,
-        LocalDate lastPlayedAt) {
+        LocalDate lastPlayedAt,
+        LocalDate lastActivityAt) {
 
     public static final GameExperienceStats EMPTY =
-            new GameExperienceStats(0, 0.0, null, null, null, false, List.of(), null);
+            new GameExperienceStats(0, 0.0, null, null, null, false, List.of(), null, null);
 }

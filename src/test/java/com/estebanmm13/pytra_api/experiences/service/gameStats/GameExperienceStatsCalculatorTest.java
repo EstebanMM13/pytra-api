@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -127,6 +128,38 @@ class GameExperienceStatsCalculatorTest {
         assertThat(stats.lastPlayedYear()).isNull();
         assertThat(stats.lastPlayedAt()).isNull();
         assertThat(stats.hasPlatinum()).isFalse();
+    }
+
+    @Test
+    void lastActivityAtIsTheLatestOfRunDatesAndTheLastOnlineSession() {
+        OnlinePlaytime recentOnline = online(5.0, null, Set.of());
+        recentOnline.setLastSessionAt(LocalDateTime.of(2025, 4, 2, 22, 15));
+        OnlinePlaytime oldOnline = online(5.0, null, Set.of());
+        oldOnline.setLastSessionAt(LocalDateTime.of(2020, 1, 1, 10, 0));
+        List<Experience> runs = List.of(run(TestPlatforms.PC, LocalDate.of(2024, 3, 10), null));
+
+        GameExperienceStats withRecentOnline = GameExperienceStatsCalculator.of(runs, recentOnline);
+        assertThat(withRecentOnline.lastActivityAt()).isEqualTo(LocalDate.of(2025, 4, 2));
+        // lastPlayedAt stays run-only.
+        assertThat(withRecentOnline.lastPlayedAt()).isEqualTo(LocalDate.of(2024, 3, 10));
+        assertThat(GameExperienceStatsCalculator.of(runs, oldOnline).lastActivityAt()).isEqualTo(LocalDate.of(2024, 3, 10));
+    }
+
+    @Test
+    void lastActivityAtOfAnOnlineOnlyGameIsItsLastSession() {
+        OnlinePlaytime online = online(5.0, null, Set.of());
+        online.setLastSessionAt(LocalDateTime.of(2023, 7, 8, 9, 0));
+
+        assertThat(GameExperienceStatsCalculator.of(List.of(), online).lastActivityAt()).isEqualTo(LocalDate.of(2023, 7, 8));
+        assertThat(GameExperienceStatsCalculator.of(List.of(), online(5.0, null, Set.of())).lastActivityAt()).isNull();
+    }
+
+    @Test
+    void lastActivityAtWithoutOnlinePlaytimeIsLastPlayedAt() {
+        GameExperienceStats stats = GameExperienceStatsCalculator.of(List.of(
+                run(TestPlatforms.PC, LocalDate.of(2021, 1, 1), LocalDate.of(2021, 6, 30))));
+
+        assertThat(stats.lastActivityAt()).isEqualTo(LocalDate.of(2021, 6, 30));
     }
 
     @Test

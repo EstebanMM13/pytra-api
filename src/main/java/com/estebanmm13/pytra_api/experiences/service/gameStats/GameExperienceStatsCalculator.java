@@ -62,7 +62,8 @@ public class GameExperienceStatsCalculator {
     /**
      * Stats over the runs plus the game's online playtime ({@code online} may be null). Online hours add to
      * {@code totalHours}, its rating competes for {@code bestRating} and its platforms join {@code platforms};
-     * run-only aggregates (count, status, year, platinum, last played) ignore it.
+     * run-only aggregates (count, status, year, platinum, last played) ignore it. {@code lastActivityAt} adds the
+     * online playtime's last session to {@code lastPlayedAt}.
      */
     public static GameExperienceStats of(List<Experience> experiences, OnlinePlaytime online) {
         if (experiences.isEmpty() && online == null) {
@@ -75,6 +76,7 @@ public class GameExperienceStatsCalculator {
         Experience latest = null;
         Map<Long, Platform> platformsById = new LinkedHashMap<>();
         LocalDate lastPlayedAt = null;
+        LocalDate lastOnlineSession = null;
 
         for (Experience experience : experiences) {
             totalHours += experience.getHours() != null ? experience.getHours() : 0.0;
@@ -100,6 +102,9 @@ public class GameExperienceStatsCalculator {
             if (onlineRating != null && (bestRating == null || onlineRating.compareTo(bestRating) > 0)) {
                 bestRating = onlineRating;
             }
+            if (online.getLastSessionAt() != null) {
+                lastOnlineSession = online.getLastSessionAt().toLocalDate();
+            }
             if (online.getPlatforms() != null) {
                 for (Platform platform : online.getPlatforms()) {
                     platformsById.putIfAbsent(platform.getId(), platform);
@@ -109,7 +114,8 @@ public class GameExperienceStatsCalculator {
         return new GameExperienceStats(
                 experiences.size(), totalHours, Ratings.normalize(bestRating),
                 latest != null ? latest.getStatus() : null, lastPlayedYear, hasPlatinum,
-                platformsById.values().stream().sorted(PlatformMapper.CATALOG_ORDER).toList(), lastPlayedAt);
+                platformsById.values().stream().sorted(PlatformMapper.CATALOG_ORDER).toList(), lastPlayedAt,
+                latestOf(lastPlayedAt, lastOnlineSession));
     }
 
     private static LocalDate latestOf(LocalDate current, LocalDate candidate) {

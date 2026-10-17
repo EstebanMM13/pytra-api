@@ -44,7 +44,8 @@ public class GameMapper {
                 stats != null ? stats.hasPlatinum() : null,
                 stats != null ? stats.platforms().stream().map(PlatformMapper::legacyCodeOf).distinct().toList() : null,
                 stats != null ? stats.platforms().stream().map(PlatformMapper::toRefDto).toList() : null,
-                stats != null ? stats.lastPlayedAt() : null
+                stats != null ? stats.lastPlayedAt() : null,
+                stats != null ? stats.lastActivityAt() : null
         );
     }
 }
