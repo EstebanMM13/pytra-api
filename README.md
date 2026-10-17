@@ -1,6 +1,6 @@
 # Pytra API
 
-Backend REST API for **Pytra**, a personal video game tracking app: games, sagas, genres, playthroughs, online playtime, aggregated stats and Steam playtime sync.
+Backend REST API for **Pytra**, a personal video game tracking app: games, sagas, genres, playthroughs, online playtime, aggregated stats and Steam / PlayStation Network playtime sync.
 
 | | |
 |---|---|
@@ -40,7 +40,7 @@ Without `BREVO_API_KEY`, verification and password-reset emails are **logged ins
 | Runtime | Java 21, Spring Boot 4.1.0 (Web MVC) |
 | Persistence | Spring Data JPA, PostgreSQL 16, Flyway (`ddl-auto: validate`) |
 | Security | Spring Security, stateless JWT (jjwt 0.12.6), OAuth2/OIDC login with Google |
-| Integrations | Steam OpenID 2.0 (hand-written, no client library), Steam Web API, Brevo transactional email (HTTP API) |
+| Integrations | Steam OpenID 2.0 (hand-written, no client library), Steam Web API, PlayStation Network (unofficial mobile API, one service account), Brevo transactional email (HTTP API) |
 | Validation / docs | Jakarta Bean Validation, springdoc-openapi 3.1.1 (Swagger UI, non-prod only) |
 | Tests | JUnit 5, MockMvc, Testcontainers (PostgreSQL), GitHub Actions CI |
 
@@ -61,6 +61,7 @@ Only variable names are listed here. Never commit real values.
 | `JWT_EXPIRATION` | Yes | none | Token lifetime in **milliseconds** (`2592000000` = 30 days) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Yes | none | Google OAuth2 client |
 | `STEAM_API_KEY` | No | empty | Steam Web API key; without it linking still works but sync answers `503 STEAM_NOT_CONFIGURED` |
+| `PSN_NPSSO` | No | empty | NPSSO cookie (64 chars) of Pytra's PSN service account, used to read users' public game lists; empty disables PSN (`configured: false`, link/sync answer `503 PSN_NOT_CONFIGURED`). Expires after about 2 months: see [Renewing `PSN_NPSSO`](#renewing-psn_npsso) |
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | No | empty | Twitch app credentials for IGDB metadata autofill (`app.igdb.*`); if either is blank IGDB is disabled: `/metadata/providers` reports `igdb: false` and `/metadata/igdb/**` answers `404 IGDB_DISABLED` |
 | `FRONTEND_URL` | Prod | `http://localhost:4200` | Web app origin; used for email links and the web OAuth callback |
 | `PUBLIC_API_URL` | Prod | `http://localhost:8080` | Public API origin; used to build the Steam OpenID `return_to` |
@@ -89,7 +90,7 @@ Only variable names are listed here. Never commit real values.
 | Exchange code | Google and Steam flows end with a one-time code (valid 1 min) that the client exchanges at `POST /api/v1/auth/exchange-code` for a JWT |
 | Rate limit | Max 5 POSTs per IP per minute on `register`, `login`, `resend-verification`, `forgot-password`, `demo`; extra requests get `429`. In-memory, per instance. Client IP = right-most `X-Forwarded-For` entry (the one Railway's proxy appends); paths are matched on the normalized servlet path, so `X-Forwarded-Prefix` or encoded URIs do not bypass it |
 | Platform creation | `POST /api/v1/platforms` (create-if-missing on the global catalog) is limited per user to `PLATFORMS_CREATE_MAX_PER_WINDOW` new entries per `PLATFORMS_CREATE_WINDOW` (`429 PLATFORM_RATE_LIMITED`, in-memory, per instance) and the catalog is capped at `PLATFORMS_MAX_TOTAL` entries (`409 PLATFORM_CATALOG_FULL`). Requests that resolve to an existing entry (case-insensitive name match) count toward neither |
-| Demo | `POST /api/v1/auth/demo` returns a JWT for the `DEMO_USER_ID` account with a `demo: true` claim, valid 2 h and never refreshed (the client asks again). `DemoReadOnlyFilter` answers `403 DEMO_READ_ONLY` to any non-GET/HEAD/OPTIONS request made with it (except the public `/api/v1/auth/*` endpoints, exact paths, which ignore the caller) and to `GET /users/me/export/**`. Demo sessions get a placeholder email in `GET /users/me` and no Steam id/persona in the Steam status. While enabled, the demo account is demo-only: password login, Google login, resend-verification, forgot-password and reset-password treat it as an unknown account. Unsetting `DEMO_USER_ID` also invalidates outstanding demo tokens |
+| Demo | `POST /api/v1/auth/demo` returns a JWT for the `DEMO_USER_ID` account with a `demo: true` claim, valid 2 h and never refreshed (the client asks again). `DemoReadOnlyFilter` answers `403 DEMO_READ_ONLY` to any non-GET/HEAD/OPTIONS request made with it (except the public `/api/v1/auth/*` endpoints, exact paths, which ignore the caller) and to `GET /users/me/export/**`. Demo sessions get a placeholder email in `GET /users/me`, no Steam id/persona in the Steam status and no PSN account id/online ID in the PSN status. While enabled, the demo account is demo-only: password login, Google login, resend-verification, forgot-password and reset-password treat it as an unknown account. Unsetting `DEMO_USER_ID` also invalidates outstanding demo tokens |
 
 Emails go through the Brevo transactional HTTP API (`api.brevo.com/v3`) rather than SMTP, because Railway blocks outbound SMTP on non-Pro plans. Email links point to `{FRONTEND_URL}/verify-email?token=...` and `{FRONTEND_URL}/reset-password?token=...`.
 
@@ -115,6 +116,8 @@ com.estebanmm13.pytra_api/
 ├── experiences/  # Experience (playthroughs), OnlinePlaytime
 ├── platforms/    # Platform catalog (global, editable)
 ├── steamsync/    # Steam OpenID linking, Steam Web API client, library sync
+├── psnsync/      # PSN online-ID linking, service-account auth, PS4/PS5 game list sync
+├── platformsync/ # Shared by both syncs: playtime writer, pending queue, pending confirm
 ├── stats/        # Aggregated stats across games/sagas/genres/experiences
 ├── mail/         # EmailSender: Brevo HTTP sender or logging fallback
 ├── config/       # SecurityConfig, URL normalization
@@ -159,7 +162,7 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 | GET | `/me` | Profile: username, display name, email, whether a password is set, whether Google is linked, `createdAt` |
 | PATCH | `/me` | Change username |
 | GET | `/me/export?format=csv\|markdown` | Download all the user's data. CSV: one row per experience with the game columns repeated (games without runs get one row), UTF-8 with BOM, formula-like text (first non-blank character `= + - @`, or a leading control character) prefixed with `'`. Markdown (Obsidian-friendly): front matter (quoted YAML values), one `##` section per game with its `###` runs, then the yearly notes. Unknown format: `400 INVALID_EXPORT_FORMAT`. Max 5 exports per user per minute (in-memory): `429 EXPORT_RATE_LIMITED` |
-| DELETE | `/me` | Body `{"confirm": "<username>", "password": "..."}`. `confirm` must match the username (case-insensitive, else `400 CONFIRMATION_MISMATCH`). Accounts with a password must send it (`400 INVALID_PASSWORD` if missing or wrong; never 401 so clients don't log out); Google-only accounts need a token issued in the last 10 minutes, else `403 REAUTH_REQUIRED` (log in with Google again). Deletes the user and everything they own in one transaction (all user tables cascade from `users`); `204`. Blocked with `409 SYNC_IN_PROGRESS` while a Steam sync runs |
+| DELETE | `/me` | Body `{"confirm": "<username>", "password": "..."}`. `confirm` must match the username (case-insensitive, else `400 CONFIRMATION_MISMATCH`). Accounts with a password must send it (`400 INVALID_PASSWORD` if missing or wrong; never 401 so clients don't log out); Google-only accounts need a token issued in the last 10 minutes, else `403 REAUTH_REQUIRED` (log in with Google again). Deletes the user and everything they own in one transaction (all user tables cascade from `users`); `204`. Blocked with `409 SYNC_IN_PROGRESS` while a Steam or PSN sync runs |
 
 ### Genres (`/api/v1/genres`, global catalog)
 | Method | Endpoint | Description |
@@ -245,8 +248,8 @@ Highlights (`YearHighlightsCalculator`) use two different attributions:
 | GET | `/status` | Required | `{linked, steamId, personaName, lastSyncAt, configured, linkedGamesCount, pendingCount, ignoredCount}` (`linkedGamesCount` = STEAM links, pending placeholders included) |
 | DELETE | `/link` | Required | Unlinks (`204`). Confirmed games keep their hours; pending Steam placeholders and the ignore list are deleted |
 | POST | `/sync` | Required | Pulls the Steam library → `{gamesScanned, newGamesPending, linkedExisting, gamesUpdated, ignored, skipped, errored, profilePrivate}` |
-| GET | `/pending` | Required | Games discovered by sync awaiting review: game fields plus `appId`, `steamPlaytimeMinutes` (latest Steam total) and `lastPlayedAt` (Steam `rtime_last_played` as an ISO instant, null if never played) |
-| PUT | `/pending/{gameId}/confirm` | Required | Confirms category/saga/genres and imports the Steam total |
+| GET | `/pending` | Required | Steam's slice of the pending queue (games with a Steam link, or with no link at all; games only linked to PSN are listed under PSN): game fields plus `appId`, `steamPlaytimeMinutes` (latest Steam total) and `lastPlayedAt` (Steam `rtime_last_played` as an ISO instant, null if never played) |
+| PUT | `/pending/{gameId}/confirm` | Required | Confirms category/saga/genres and imports the synced total of every link of the game (Steam and PSN) |
 | PUT | `/pending/{gameId}/ignore` | Required | Deletes the placeholder and never re-imports that app (`204`) |
 | GET | `/ignored` | Required | Ignored apps `{appId, name, ignoredAt}` |
 | DELETE | `/ignored/{appId}` | Required | Un-ignores; the app comes back as pending on the next sync (`204`) |
@@ -259,6 +262,41 @@ Sync rules:
 - Confirming an `ONLINE`/`HYBRID` game sets `OnlinePlaytime` to `max(existing, steamTotal)`; later syncs add deltas. A negative delta (refund, reset) only lowers the baseline.
 - One Steam account per Pytra user (`steam_links.steam_id` is unique). Re-linking a different account resets all Steam baselines.
 - `SteamSyncScheduler` re-syncs every linked account every 6 hours (first run 10 min after startup) and is skipped when `STEAM_API_KEY` is blank (linking still works). A run aborts after 3 consecutive `STEAM_UNAVAILABLE`. A per-user in-memory guard (single-instance deployment), held until commit, serializes sync, unlink, account switch, confirm and ignore (`409 SYNC_IN_PROGRESS`; a blocked account switch redirects with `error=steam_sync_in_progress`). `last_sync_at` is written with a conditional UPDATE on the expected `steam_id`, so a relink during the Steam call yields `STEAM_LINK_CHANGED` instead of being reverted.
+
+### PlayStation Network (`/api/v1/integrations/psn`)
+Users never sign in to PSN. They type their **online ID** and Pytra reads that account's **public** game list with one Pytra-owned service account (`PSN_NPSSO`). The user's PSN privacy setting for "Gaming | Media" (games and trophies) must be visible to **Anyone**, the same way Steam needs a public profile. PSN only reports PS4 and PS5 titles (older consoles have no playtime data).
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/status` | Required | `{linked, accountId, onlineId, lastSyncAt, configured, linkedGamesCount, pendingCount, ignoredCount, serviceAuthError, serviceAuthFailingSince}`. The last two are only filled for `ADMIN` tokens: `serviceAuthError = "PSN_SERVICE_AUTH_FAILED"` while Sony rejects the service account (renew `PSN_NPSSO`), null otherwise |
+| PUT | `/link` | Required | Body `{"onlineId": "EstebanK13"}` (3 to 16 letters, digits, `-`, `_`; trimmed). Resolves the ID on PSN and stores it; answers the status. Re-linking the same account (renamed ID) keeps everything; another account resets all PSN baselines |
+| DELETE | `/link` | Required | Unlinks (`204`). Confirmed games keep their hours; PSN-only pending placeholders and the ignore list are deleted |
+| POST | `/sync` | Required | Pulls the PS4/PS5 game list → `{gamesScanned, newGamesPending, linkedExisting, gamesUpdated, ignored, skipped, errored, profilePrivate}` (same shape as Steam). `profilePrivate: true` means the user's privacy settings hide the game list; nothing was changed |
+| GET | `/pending` | Required | Pending games with a PSN link: game fields plus `titleId`, `psnPlatform` (`"PS5"`/`"PS4"`, the console of the run that confirm will create), `psnPlaytimeMinutes` and `lastPlayedAt` (ISO instant, nullable). A game played on both consoles shows its PS5 title, the summed playtime and the latest date |
+| PUT | `/pending/{gameId}/confirm` | Required | Same body and behavior as Steam's confirm |
+| PUT | `/pending/{gameId}/ignore` | Required | Ignores the game's PSN titles (`204`); the placeholder is deleted unless Steam also links it |
+| GET | `/ignored` | Required | Ignored titles `{titleId, platform, name, ignoredAt}` (`platform` is `"PS5"`/`"PS4"`) |
+| DELETE | `/ignored/{titleId}` | Required | Un-ignores; the title comes back as pending on the next sync (`204`) |
+
+Errors carry a stable code in `message`: `400 PSN_INVALID_ONLINE_ID`, `404 PSN_USER_NOT_FOUND` (no account with that online ID), `404 PSN_NOT_LINKED`, `409 SYNC_IN_PROGRESS`, `409 PSN_LINK_CHANGED`, `429 PSN_RATE_LIMITED`, `503 PSN_NOT_CONFIGURED` (blank `PSN_NPSSO`), `503 PSN_UNAVAILABLE` (Sony down **or** the service account rejected; users never see auth details).
+
+Sync rules (same as Steam unless stated):
+- PSN reports the PS4 and PS5 versions of a game as two titles with separate playtime. Both link to the same Pytra game (`game_platform_links.platform` = `PSN_PS4` / `PSN_PS5`, `external_id` = title id). Confirming a `SINGLEPLAYER` game creates one canonical run per console ("Importado de PlayStation", catalog platform `PS4` or `PS5`); `ONLINE`/`HYBRID` games get `max(existing, sum of the linked totals)`. A second title of the same console with the same name (regional versions) is `skipped`.
+- `playDuration` (ISO-8601, e.g. `PT228H56M33S`) is stored in minutes, rounded to the nearest minute. `lastPlayedDateTime` becomes the link's `lastPlayedAt`. The title artwork (`imageUrl`) is the cover of new placeholders and of existing games without one.
+- The pending queue is shared with Steam (`games.review_status`); each integration lists the games linked to it. The per-user sync guard is shared too, so Steam and PSN operations of one user never overlap.
+- Ownership of an online ID is not proven (there is no PSN login), so several Pytra users may link the same PSN account; only public data is read.
+- `PsnSyncScheduler` re-syncs every linked account every 12 hours (first run 20 min after startup) and is skipped without `PSN_NPSSO`. A run aborts at once when the service account is rejected, on `PSN_RATE_LIMITED`, or after 3 consecutive `PSN_UNAVAILABLE`. Calls use 5 s connect / 15 s read timeouts.
+
+How the service account authenticates (the PlayStation App flow, as implemented by the open-source [psn-api](https://github.com/achievements-app/psn-api) and [psnawp](https://github.com/isFakeAccount/psnawp) libraries): the NPSSO cookie is exchanged at `ca.account.sony.com/api/authz/v3/oauth/authorize` for a one-time code (read from the `Location` header of the 302), and the code at `/token` for an access token (about 1 h) and a refresh token (about 2 months). Expired access tokens are refreshed with the refresh token; if Sony rejects it, the API signs in again from the NPSSO. Tokens live in memory only (single instance) and are never logged; a restart signs in again. Online IDs are resolved with `us-prof.np.community.playstation.net/userProfile/v1/users/{onlineId}/profile2` and game lists come from `m.np.playstation.com/api/gamelist/v2/users/{accountId}/titles?categories=ps4_game,ps5_native_game` (pages of 200).
+
+#### Renewing `PSN_NPSSO`
+The NPSSO lasts about **2 months**. When it expires, PSN syncs answer `503 PSN_UNAVAILABLE`, the logs show `WARN PSN service account authentication failed ... Renew PSN_NPSSO`, and `GET /api/v1/integrations/psn/status` with an `ADMIN` token reports `serviceAuthError: "PSN_SERVICE_AUTH_FAILED"`. To renew it:
+1. In a browser, sign in at https://www.playstation.com with the **service account** (a dedicated PSN account owned by Pytra, not a personal one).
+2. In the same browser, open https://ca.account.sony.com/api/v1/ssocookie. It answers `{"npsso":"<64 characters>"}`.
+3. Set that value as `PSN_NPSSO` on the `pytra-api` Railway service and restart it. Never commit it or paste it in logs or issues.
+4. As admin, check `GET /api/v1/integrations/psn/status`: `serviceAuthError` is null again after the next PSN call.
+
+Signing out of that browser session or changing the account's password can invalidate the NPSSO early.
 
 ### Game metadata autofill (`/api/v1/metadata`)
 Read-only proxies used to prefill the game form; nothing is persisted. Results are cached in memory (searches 10 min, details 6 h); upstream calls use 3 s connect / 5 s read timeouts.
@@ -279,12 +317,13 @@ Read-only proxies used to prefill the game form; nothing is persisted. Results a
 | Command | Needs Docker | What runs |
 |---|---|---|
 | `./mvnw test` | Yes | Everything, including the integration tests below |
-| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest,SteamWebApiClientTest,SteamSyncSchedulerTest,ExperiencePeriodTest,StatsMathTest,YearHighlightsCalculatorTest,AccountExportWriterTest,ExportRateLimiterTest,DemoReadOnlyFilterTest"` | No | Unit tests only |
+| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest,SteamWebApiClientTest,SteamSyncSchedulerTest,Psn*Test,ExternalPlaytimeWriterTest,PendingReviewQueueTest,ExperiencePeriodTest,StatsMathTest,YearHighlightsCalculatorTest,AccountExportWriterTest,ExportRateLimiterTest,DemoReadOnlyFilterTest"` | No | Unit tests only |
 
 Integration tests extend `AbstractIntegrationTest`: full Spring context, MockMvc, the `test` profile (`src/test/resources/application-test.yaml`, which supplies dummy JWT/Google/mail settings so no environment variable is needed) and one shared PostgreSQL Testcontainer via `@ServiceConnection`.
 
 - `TenantIsolationTests` proves that one user can never read, modify or delete another user's games, sagas, experiences, online playtime, stats, profile or Steam pending queue (cross-user access is always `404`), and that every protected endpoint answers `401` without a valid token.
 - `SteamIntegrationTests` covers the Steam sync with the HTTP client mocked: pending creation, same-name linking, per-app failure isolation, private profiles, negative deltas, ignore/unignore, status, unlink/relink and cross-user isolation.
+- `PsnIntegrationTests` covers the PSN sync with the HTTP client mocked: online-ID linking and validation, PS4 + PS5 titles sharing one game, one run per console on confirm, same-name linking, private profiles, ignore/unignore, unlink and cross-user isolation.
 - `StatsIntegrationTests`, `GameLibraryAggregatesTests` and `AccountIntegrationTests` cover averages and status counts, year/month attribution, highlights, yearly notes, in-progress runs, library aggregates, both export formats and account deletion (every user-owned table emptied, other users untouched).
 - `DemoModeIntegrationTests` covers the read-only demo: `404` when disabled, demo token reads the demo account, every write method gets `403 DEMO_READ_ONLY`, normal tokens unaffected.
 - `ApiDocsTests` checks that `/v3/api-docs` is served outside `prod`.
@@ -312,6 +351,7 @@ There is no Dockerfile in this repo; Railway builds the Maven project directly. 
 - [x] Genres, Sagas, Games, Experiences, OnlinePlaytime
 - [x] Aggregated stats
 - [x] Steam account linking, library sync and pending-review queue
+- [x] PlayStation Network sync of PS4/PS5 playtime by online ID (trophies: next phase)
 - [x] Frontend ([pytra-web](https://github.com/EstebanMM13/pytra-web)) and production deployment on Railway
 - [ ] Broader automated test suite (integration and multi-tenancy isolation tests)
 - [ ] CI/CD
