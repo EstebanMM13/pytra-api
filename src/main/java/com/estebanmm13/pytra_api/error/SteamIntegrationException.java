@@ -20,6 +20,9 @@ public class SteamIntegrationException extends RuntimeException {
     public static final String ACCOUNT_ALREADY_LINKED = "STEAM_ACCOUNT_ALREADY_LINKED";
     public static final String APP_NOT_FOUND = "STEAM_APP_NOT_FOUND";
     public static final String APP_NOT_A_GAME = "STEAM_APP_NOT_A_GAME";
+    /** Used as a {@link ResourceNotFoundException} message by the cover thumbnail proxy. */
+    public static final String COVER_NOT_FOUND = "COVER_NOT_FOUND";
+    public static final String COVER_UNAVAILABLE = "COVER_UNAVAILABLE";
 
     private final HttpStatus status;
     private final String code;
@@ -69,5 +72,10 @@ public class SteamIntegrationException extends RuntimeException {
     /** The app exists but is a DLC, soundtrack, demo... (appdetails {@code type != "game"}). */
     public static SteamIntegrationException appNotAGame() {
         return new SteamIntegrationException(HttpStatus.UNPROCESSABLE_CONTENT, APP_NOT_A_GAME);
+    }
+
+    /** A Steam cover couldn't be fetched or turned into a thumbnail (upstream error, not an image, too big...). */
+    public static SteamIntegrationException coverUnavailable() {
+        return new SteamIntegrationException(HttpStatus.BAD_GATEWAY, COVER_UNAVAILABLE);
     }
 }

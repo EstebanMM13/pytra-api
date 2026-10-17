@@ -12,6 +12,8 @@ public class InvalidRequestException extends RuntimeException {
     public static final String INVALID_STEAM_APP_ID = "INVALID_STEAM_APP_ID";
     public static final String INVALID_IGDB_ID = "INVALID_IGDB_ID";
     public static final String INVALID_PLATFORM = "INVALID_PLATFORM";
+    public static final String INVALID_COVER_URL = "INVALID_COVER_URL";
+    public static final String INVALID_COVER_WIDTH = "INVALID_COVER_WIDTH";
 
     public InvalidRequestException(String code) {
         super(code);
