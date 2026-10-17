@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.games.repository;
 
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,6 +15,9 @@ import java.util.Optional;
 public interface GameRepository extends JpaRepository<Game, Long> {
     List<Game> findAllByUserId(Long userId);
     Optional<Game> findByIdAndUserId(Long id, Long userId);
+    /** The game with its saga and genres in the same query: the detail response renders both. */
+    @EntityGraph(attributePaths = {"saga", "genres"})
+    Optional<Game> findWithSagaAndGenresByIdAndUserId(Long id, Long userId);
     boolean existsByUserIdAndNameIgnoreCase(Long userId, String name);
     boolean existsByUserIdAndNameIgnoreCaseAndIdNot(Long userId, String name, Long id);
     long countByUserId(Long userId);

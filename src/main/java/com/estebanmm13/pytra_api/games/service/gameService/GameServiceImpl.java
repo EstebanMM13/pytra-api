@@ -49,7 +49,8 @@ public class GameServiceImpl implements GameService {
 
     @Override
     public GameResponseDto findById(Long id, Long userId) {
-        Optional<Game> game = gameRepository.findByIdAndUserId(id, userId);
+        // Saga and genres in the same query instead of two lazy loads while mapping.
+        Optional<Game> game = gameRepository.findWithSagaAndGenresByIdAndUserId(id, userId);
         if (game.isPresent()) {
             return gameMapper.toResponseDto(game.get(), gameExperienceStatsCalculator.forGame(id, userId));
         } else {
