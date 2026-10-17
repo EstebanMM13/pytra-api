@@ -80,6 +80,11 @@ public class PsnApiClient {
         return authenticator.isConfigured();
     }
 
+    /** When Sony started rejecting the service account (expired NPSSO); null while healthy. */
+    public Instant serviceAuthFailingSince() {
+        return authenticator.authFailingSince();
+    }
+
     /**
      * Resolves an online ID to its account.
      *

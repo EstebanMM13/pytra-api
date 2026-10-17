@@ -42,7 +42,7 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
             "email_verification_tokens", "password_reset_tokens", "exchange_code_tokens",
             "sagas", "games", "experiences", "online_playtimes",
             "game_platform_links", "steam_links", "steam_link_states", "steam_ignored_apps",
-            "year_notes");
+            "psn_links", "psn_ignored_titles", "year_notes");
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -331,6 +331,11 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
                 userId, UUID.randomUUID().toString(), later);
         jdbcTemplate.update("INSERT INTO steam_ignored_apps (user_id, app_id, name, ignored_at) VALUES (?, ?, ?, ?)",
                 userId, "620", "Portal 2", LocalDateTime.now());
+        jdbcTemplate.update("INSERT INTO psn_links (user_id, account_id, online_id, linked_at) VALUES (?, ?, ?, ?)",
+                userId, "9621578959" + userId, "player" + userId, LocalDateTime.now());
+        jdbcTemplate.update("INSERT INTO psn_ignored_titles (user_id, title_id, platform, name, ignored_at) "
+                        + "VALUES (?, ?, 'PSN_PS4', ?, ?)",
+                userId, "CUSA00900_00", "Bloodborne", LocalDateTime.now());
         jdbcTemplate.update("INSERT INTO game_platform_links (user_id, game_id, platform, external_id, "
                         + "last_synced_playtime_minutes, last_synced_at, experience_id) VALUES (?, ?, 'STEAM', '1', 60, ?, ?)",
                 userId, gameId, LocalDateTime.now(), experienceId);
