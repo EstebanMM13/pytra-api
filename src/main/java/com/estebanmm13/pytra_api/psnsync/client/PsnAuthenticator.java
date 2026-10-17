@@ -25,6 +25,8 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Keeps an access token for Pytra's PSN service account, the same way the PlayStation App does
@@ -36,7 +38,9 @@ import java.time.Instant;
  *       token, sign in again from the NPSSO</li>
  * </ol>
  * Tokens live in memory only (single API instance): a restart simply signs in again from the NPSSO.
- * All token state is guarded by this object's monitor.
+ * All token state is guarded by {@link #tokenLock}: one sign-in/refresh at a time (single flight), and
+ * callers queue for it at most {@link #DEFAULT_LOCK_WAIT} before failing with PSN_UNAVAILABLE, so a slow
+ * Sony never pins request threads indefinitely.
  *
  * <p>The NPSSO and the tokens are never logged nor put in exception messages. When Sony rejects the
  * NPSSO itself (expired after ~2 months), {@link #authFailingSince()} becomes non-null and a WARN is
@@ -65,6 +69,14 @@ public class PsnAuthenticator {
      */
     static final Duration SIGN_IN_RETRY_COOLDOWN = Duration.ofMinutes(5);
 
+    /**
+     * Longest wait for the token lock. The holder's work is itself bounded by the HTTP timeouts (at most a
+     * refresh plus a sign-in: three calls of 5 s connect / 15 s read).
+     */
+    static final Duration DEFAULT_LOCK_WAIT = Duration.ofSeconds(30);
+
+    final ReentrantLock tokenLock = new ReentrantLock();
+    private final Duration lockWait;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestClient restClient;
     private final String npsso;
@@ -83,9 +95,14 @@ public class PsnAuthenticator {
     }
 
     PsnAuthenticator(RestClient restClient, String npsso, Clock clock) {
+        this(restClient, npsso, clock, DEFAULT_LOCK_WAIT);
+    }
+
+    PsnAuthenticator(RestClient restClient, String npsso, Clock clock, Duration lockWait) {
         this.restClient = restClient;
         this.npsso = npsso == null ? "" : npsso.strip();
         this.clock = clock;
+        this.lockWait = lockWait;
     }
 
     /**
@@ -126,9 +143,17 @@ public class PsnAuthenticator {
      * @throws PsnIntegrationException PSN_NOT_CONFIGURED without NPSSO; PSN_UNAVAILABLE when Sony is down
      *                                 or rejects the service account; PSN_RATE_LIMITED on HTTP 429
      */
-    public synchronized String accessToken() {
+    public String accessToken() {
         if (!isConfigured()) throw PsnIntegrationException.notConfigured();
+        acquireTokenLock();
+        try {
+            return currentOrRenewedAccessToken();
+        } finally {
+            tokenLock.unlock();
+        }
+    }
 
+    private String currentOrRenewedAccessToken() {
         Instant now = clock.instant();
         if (accessToken != null && now.isBefore(accessTokenExpiresAt.minus(EXPIRY_MARGIN))) {
             return accessToken;
@@ -160,16 +185,41 @@ public class PsnAuthenticator {
     }
 
     /** Forgets {@code rejectedToken} (if it is still the current one) so the next call renews it. */
-    public synchronized void invalidate(String rejectedToken) {
-        if (rejectedToken != null && rejectedToken.equals(accessToken)) {
-            accessToken = null;
+    public void invalidate(String rejectedToken) {
+        acquireTokenLock();
+        try {
+            if (rejectedToken != null && rejectedToken.equals(accessToken)) {
+                accessToken = null;
+            }
+        } finally {
+            tokenLock.unlock();
         }
     }
 
     /** Sony refused a freshly issued access token: the service account itself is not usable. */
-    public synchronized void reportRejectedAccessToken() {
-        clearTokens();
-        reportServiceAuthFailure("API rejected a fresh access token");
+    public void reportRejectedAccessToken() {
+        acquireTokenLock();
+        try {
+            clearTokens();
+            reportServiceAuthFailure("API rejected a fresh access token");
+        } finally {
+            tokenLock.unlock();
+        }
+    }
+
+    /** @throws PsnIntegrationException PSN_UNAVAILABLE when another sign-in holds the lock too long */
+    private void acquireTokenLock() {
+        boolean acquired;
+        try {
+            acquired = tokenLock.tryLock(lockWait.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw PsnIntegrationException.unavailable();
+        }
+        if (!acquired) {
+            log.warn("PSN token renewal is taking longer than {} s; request not served", lockWait.toSeconds());
+            throw PsnIntegrationException.unavailable();
+        }
     }
 
     // ---- Steps ------------------------------------------------------------------------------

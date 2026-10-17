@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.concurrent.CountDownLatch;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -191,6 +192,34 @@ class PsnAuthenticatorTest {
         assertThatThrownBy(unconfigured::accessToken)
                 .isInstanceOf(PsnIntegrationException.class)
                 .hasMessage(PsnIntegrationException.NOT_CONFIGURED);
+    }
+
+    @Test
+    void callersWaitingTooLongForAnotherSignInGetUnavailable() throws Exception {
+        PsnAuthenticator impatient = new PsnAuthenticator(RestClient.create(), NPSSO, clock, Duration.ofMillis(50));
+        CountDownLatch held = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread holder = new Thread(() -> {
+            impatient.tokenLock.lock();
+            held.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            } finally {
+                impatient.tokenLock.unlock();
+            }
+        });
+        holder.start();
+        held.await();
+        try {
+            assertThatThrownBy(impatient::accessToken)
+                    .isInstanceOf(PsnIntegrationException.class)
+                    .hasMessage(PsnIntegrationException.UNAVAILABLE);
+        } finally {
+            release.countDown();
+            holder.join();
+        }
     }
 
     @Test

@@ -59,6 +59,11 @@ public class PsnSyncServiceImpl implements PsnSyncService {
     /**
      * Deliberately NOT transactional: the PSN HTTP calls run first, with no DB transaction open, and
      * only then {@link PsnLibraryImporter} applies the result in short transactions.
+     *
+     * <p>The game list is fetched BEFORE taking the per-user guard, so confirm/ignore/unlink/account
+     * deletion are not blocked (409) for the whole Sony round trip; the guard only covers the DB apply.
+     * If the link was removed or switched meanwhile, the importer's conditional update answers
+     * PSN_LINK_CHANGED and nothing is applied.
      */
     @Override
     public PsnSyncResultDto sync(Long userId) {
@@ -69,10 +74,8 @@ public class PsnSyncServiceImpl implements PsnSyncService {
         }
 
         String accountId = psnLink.getAccountId();
-        return syncGuard.runExclusive(userId, () -> {
-            PsnPlayedGamesResult library = psnApiClient.getPlayedGames(accountId);
-            return psnLibraryImporter.importLibrary(userId, accountId, library);
-        });
+        PsnPlayedGamesResult library = psnApiClient.getPlayedGames(accountId);
+        return syncGuard.runExclusive(userId, () -> psnLibraryImporter.importLibrary(userId, accountId, library));
     }
 
     /**

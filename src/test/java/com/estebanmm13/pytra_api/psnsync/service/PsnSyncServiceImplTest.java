@@ -1,6 +1,7 @@
 package com.estebanmm13.pytra_api.psnsync.service;
 
 import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
+import com.estebanmm13.pytra_api.error.SteamIntegrationException;
 import com.estebanmm13.pytra_api.games.dto.game.GameResponseDto;
 import com.estebanmm13.pytra_api.games.mapper.GameMapper;
 import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
@@ -13,7 +14,10 @@ import com.estebanmm13.pytra_api.platformsync.PendingGameConfirmer;
 import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
 import com.estebanmm13.pytra_api.platformsync.PlatformLinkRemover;
 import com.estebanmm13.pytra_api.psnsync.client.PsnApiClient;
+import com.estebanmm13.pytra_api.psnsync.client.PsnPlayedGamesResult;
 import com.estebanmm13.pytra_api.psnsync.dto.PsnPendingGameDto;
+import com.estebanmm13.pytra_api.psnsync.dto.PsnSyncResultDto;
+import com.estebanmm13.pytra_api.psnsync.model.PsnLink;
 import com.estebanmm13.pytra_api.psnsync.model.PsnIgnoredTitle;
 import com.estebanmm13.pytra_api.psnsync.repository.PsnIgnoredTitleRepository;
 import com.estebanmm13.pytra_api.psnsync.repository.PsnLinkRepository;
@@ -49,19 +53,62 @@ class PsnSyncServiceImplTest {
     private final PendingReviewQueue pendingReviewQueue = mock(PendingReviewQueue.class);
     private final GameMapper gameMapper = mock(GameMapper.class);
 
+    private final PsnLinkRepository psnLinkRepository = mock(PsnLinkRepository.class);
+    private final PsnApiClient psnApiClient = mock(PsnApiClient.class);
+    private final PsnLibraryImporter psnLibraryImporter = mock(PsnLibraryImporter.class);
+    private final SteamSyncGuard syncGuard = new SteamSyncGuard();
+
     private PsnSyncServiceImpl service;
     private Game game;
 
     @BeforeEach
     void setUp() {
-        service = new PsnSyncServiceImpl(mock(PsnLinkRepository.class), mock(PsnApiClient.class),
-                mock(PsnLibraryImporter.class), new SteamSyncGuard(), mock(PendingGameConfirmer.class),
+        service = new PsnSyncServiceImpl(psnLinkRepository, psnApiClient,
+                psnLibraryImporter, syncGuard, mock(PendingGameConfirmer.class),
                 pendingReviewQueue, new PlatformLinkRemover(gamePlatformLinkRepository, gameRepository),
                 gameRepository, gamePlatformLinkRepository, psnIgnoredTitleRepository,
                 gameMapper, mock(PlatformTransactionManager.class));
         game = Game.builder().id(GAME_ID).userId(USER_ID).name("Ghost of Tsushima")
                 .reviewStatus(ReviewStatus.PENDING_REVIEW).build();
         when(gameRepository.findByIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(game));
+    }
+
+    @Test
+    void gameListIsFetchedBeforeTakingTheSyncGuard() {
+        linked();
+        PsnPlayedGamesResult library = new PsnPlayedGamesResult(false, List.of());
+        when(psnApiClient.getPlayedGames("acc")).thenAnswer(inv -> {
+            // Another operation of the user (confirm, ignore...) can still take the guard during the Sony call.
+            assertThat(syncGuard.tryAcquire(USER_ID)).isTrue();
+            syncGuard.release(USER_ID);
+            return library;
+        });
+        when(psnLibraryImporter.importLibrary(USER_ID, "acc", library)).thenAnswer(inv -> {
+            assertThat(syncGuard.tryAcquire(USER_ID)).isFalse();
+            return PsnSyncResultDto.privateProfile();
+        });
+
+        assertThat(service.sync(USER_ID).profilePrivate()).isTrue();
+    }
+
+    @Test
+    void applyingTheListWaitsForNoOtherOperation() {
+        linked();
+        when(psnApiClient.getPlayedGames("acc")).thenAnswer(inv -> {
+            syncGuard.tryAcquire(USER_ID);   // e.g. an unlink starts meanwhile
+            return new PsnPlayedGamesResult(false, List.of());
+        });
+
+        assertThatThrownBy(() -> service.sync(USER_ID))
+                .isInstanceOf(SteamIntegrationException.class)
+                .hasMessage(SteamIntegrationException.SYNC_IN_PROGRESS);
+        verify(psnLibraryImporter, never()).importLibrary(any(), any(), any());
+    }
+
+    private void linked() {
+        when(psnApiClient.isConfigured()).thenReturn(true);
+        when(psnLinkRepository.findByUserId(USER_ID)).thenReturn(Optional.of(
+                PsnLink.builder().userId(USER_ID).accountId("acc").onlineId("EstebanK13").build()));
     }
 
     @Test
