@@ -12,6 +12,12 @@ public final class ImportedGameNames {
 
     /** Trademark marks store names carry (PSN: "Marvel's Spider-Man™") that users never type. */
     private static final Pattern TRADEMARKS = Pattern.compile("[™®©]");
+    /**
+     * A mark followed by a space, punctuation or the end is simply dropped ("Tsushima™: Director's Cut"
+     * must not become "Tsushima : ..."); one glued to the next word becomes a space ("PlayStation®5").
+     */
+    private static final Pattern TRADEMARK_BEFORE_BREAK =
+            Pattern.compile("[™®©]+(?=[\\s\\p{Punct}‘’“”]|$)");
     /** Typographic apostrophes, primes, acute accents and backticks, matched as a plain apostrophe. */
     private static final Pattern APOSTROPHES = Pattern.compile("[‘’‚‛′´`]");
     /** Typographic double quotes and double primes, matched as a plain double quote. */
@@ -42,7 +48,8 @@ public final class ImportedGameNames {
      */
     public static String cleanName(String name) {
         // Marks first: NFKC would turn "™" into the letters "TM".
-        String plain = TRADEMARKS.matcher(name).replaceAll(" ");
+        String plain = TRADEMARK_BEFORE_BREAK.matcher(name).replaceAll("");
+        plain = TRADEMARKS.matcher(plain).replaceAll(" ");
         plain = Normalizer.normalize(plain, Normalizer.Form.NFKC);
         plain = APOSTROPHES.matcher(plain).replaceAll("'");
         plain = QUOTES.matcher(plain).replaceAll("\"");

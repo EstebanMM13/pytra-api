@@ -44,6 +44,25 @@ class ImportedGameNamesTest {
         assertThat(ImportedGameNames.nameKey("Spider-Man™")).isEqualTo("spider-man");
     }
 
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "Ghost of Tsushima™: Director’s Cut | Ghost of Tsushima: Director's Cut",
+            "Uncharted™, Legacy                  | Uncharted, Legacy",
+            "Sackboy™! A Big Adventure           | Sackboy! A Big Adventure",
+            "Marvel’s Spider-Man™’s Pack | Marvel's Spider-Man's Pack",
+            "Foo™Bar                             | Foo Bar",
+            "Foo™®.                         | Foo.",
+    })
+    void markFollowedByPunctuationLeavesNoSpaceBehind(String storeName, String expected) {
+        assertThat(ImportedGameNames.cleanName(storeName)).isEqualTo(expected);
+    }
+
+    @Test
+    void markBeforePunctuationMatchesTheNameWithoutIt() {
+        assertThat(ImportedGameNames.nameKey("Ghost of Tsushima™: Director's Cut"))
+                .isEqualTo(ImportedGameNames.nameKey("Ghost of Tsushima: Director's Cut"));
+    }
+
     @Test
     void consoleNamesThatAreNotASuffixAreKept() {
         assertThat(ImportedGameNames.nameKey("PS4 Party Pack")).isEqualTo("ps4 party pack");
