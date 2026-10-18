@@ -78,7 +78,7 @@ Only variable names are listed here. Never commit real values.
 | `PLATFORMS_MAX_TOTAL` | No | `200` | Cap on the global platform catalog (seeded entries included); new entries beyond it get `409 PLATFORM_CATALOG_FULL` |
 | `PLATFORMS_CREATE_MAX_PER_WINDOW` | No | `20` | New platforms each user may create per window; extra creations get `429 PLATFORM_RATE_LIMITED` |
 | `PLATFORMS_CREATE_WINDOW` | No | `1h` | Window of that per-user limit (Spring duration syntax: `1h`, `30m`, ...) |
-| `JAVA_TOOL_OPTIONS` | No | none | JVM flags set at the Railway service level; not read by the app itself. Recommended: `-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k -XX:+ExitOnOutOfMemoryError`. See [Runtime sizing](#runtime-sizing) |
+| `JAVA_TOOL_OPTIONS` | No | none | JVM flags set at the Railway service level; not read by the app itself. Recommended: `-Xmx256m -Xss512k -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -XX:TieredStopAtLevel=1`. See [Runtime sizing](#runtime-sizing) |
 
 **Google Cloud Console:** the authorized redirect URI must be `{PUBLIC_API_URL}/login/oauth2/code/google`.
 
@@ -96,7 +96,7 @@ The service runs in a small single-CPU container next to a shared Postgres, so `
 Recommended `JAVA_TOOL_OPTIONS` on the Railway service:
 
 ```
--XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k -XX:+ExitOnOutOfMemoryError
+-Xmx256m -Xss512k -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -XX:TieredStopAtLevel=1
 ```
 
 Heap sized from the container limit, a low-overhead GC for one CPU, smaller thread stacks, and exit on OOM so Railway restarts the service instead of leaving it half-alive.
