@@ -1,6 +1,7 @@
 package com.estebanmm13.pytra_api.metadata.client;
 
 import com.estebanmm13.pytra_api.error.IgdbIntegrationException;
+import com.estebanmm13.pytra_api.metadata.dto.IgdbGameCandidateDto;
 import com.estebanmm13.pytra_api.metadata.dto.IgdbGameMetadataDto;
 import com.estebanmm13.pytra_api.metadata.dto.IgdbSearchResultDto;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,6 +21,7 @@ import java.net.http.HttpClient;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Client for the IGDB API (owned by Twitch), used to prefill the game form. Unlike the Steam store
@@ -28,8 +30,8 @@ import java.util.List;
  * <p>Needs {@code app.igdb.client-id} / {@code app.igdb.client-secret} (TWITCH_CLIENT_ID /
  * TWITCH_CLIENT_SECRET); with either blank the client is {@link #isEnabled() disabled} and never
  * calls out. IGDB allows 4 requests/s: each lookup is a single request (plus a token request every
- * ~60 days) and the service caches results, so no throttling is done here; a 429 is just
- * IGDB_UNAVAILABLE, like every other failure.
+ * ~60 days) and the service caches results, so no throttling is done here; the background enrichment
+ * of pending games paces its own calls. A 429 is just IGDB_UNAVAILABLE, like every other failure.
  */
 @Slf4j
 @Component
@@ -77,6 +79,14 @@ public class IgdbClient {
     /** @param limit maximum results returned; a few extra rows are requested to make up for filtered bundles/packs */
     public List<IgdbSearchResultDto> search(String term, int limit) {
         return IgdbParser.parseSearch(query(IgdbQueries.search(term, limit * 2)), limit);
+    }
+
+    /**
+     * Search limited to games released on one of {@code platformIds} (IGDB platform ids), each hit with
+     * its full details. Used to enrich synced pending games; not cached.
+     */
+    public List<IgdbGameCandidateDto> searchCandidates(String term, Set<Integer> platformIds, int limit) {
+        return IgdbParser.parseCandidates(query(IgdbQueries.searchOnPlatforms(term, platformIds, limit)), limit);
     }
 
     public IgdbGameMetadataDto getDetails(long igdbId) {

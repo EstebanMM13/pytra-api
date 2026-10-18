@@ -1,6 +1,7 @@
 package com.estebanmm13.pytra_api.metadata.client;
 
 import com.estebanmm13.pytra_api.error.IgdbIntegrationException;
+import com.estebanmm13.pytra_api.metadata.dto.IgdbGameCandidateDto;
 import com.estebanmm13.pytra_api.metadata.dto.IgdbGameMetadataDto;
 import com.estebanmm13.pytra_api.metadata.dto.IgdbSearchResultDto;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -121,5 +122,41 @@ class IgdbParserTest {
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    @Test
+    void candidatesCarryDetailsPlatformIdsAndGameModesAndDropBundles() throws IOException {
+        JsonNode root = MAPPER.readTree("""
+                [
+                  {"id": 1074, "name": "Marvel's Spider-Man", "first_release_date": 1536278400,
+                   "cover": {"id": 1, "image_id": "co1r77"},
+                   "genres": [{"id": 31, "name": "Adventure"}],
+                   "involved_companies": [
+                     {"id": 1, "company": {"id": 9, "name": "Insomniac Games"}, "developer": true, "publisher": false},
+                     {"id": 2, "company": {"id": 8, "name": "Sony Interactive Entertainment"}, "developer": false, "publisher": true}
+                   ],
+                   "platforms": [{"id": 48, "name": "PlayStation 4"}], "game_modes": [1]},
+                  {"id": 2, "name": "Spider-Man Bundle", "game_type": 3, "platforms": [{"id": 48, "name": "PlayStation 4"}]},
+                  {"id": 3, "platforms": [{"id": 48, "name": "PlayStation 4"}]}
+                ]
+                """);
+
+        List<IgdbGameCandidateDto> candidates = IgdbParser.parseCandidates(root, 10);
+
+        assertThat(candidates).hasSize(1);
+        IgdbGameCandidateDto spiderMan = candidates.getFirst();
+        assertThat(spiderMan.platformIds()).containsExactly(48);
+        assertThat(spiderMan.gameModeIds()).containsExactly(1);
+        assertThat(spiderMan.metadata().developer()).isEqualTo("Insomniac Games");
+        assertThat(spiderMan.metadata().publisher()).isEqualTo("Sony Interactive Entertainment");
+        assertThat(spiderMan.metadata().releaseDate()).isEqualTo(LocalDate.of(2018, 9, 7));
+        assertThat(spiderMan.metadata().genres()).containsExactly("Adventure");
+        assertThat(spiderMan.metadata().coverImageUrl())
+                .isEqualTo("https://images.igdb.com/igdb/image/upload/t_cover_big/co1r77.jpg");
+    }
+
+    @Test
+    void candidatesOfANonArrayAreEmpty() throws IOException {
+        assertThat(IgdbParser.parseCandidates(MAPPER.readTree("{}"), 10)).isEmpty();
     }
 }

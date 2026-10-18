@@ -1,5 +1,8 @@
 package com.estebanmm13.pytra_api.metadata.client;
 
+import java.util.Collection;
+import java.util.stream.Collectors;
+
 /**
  * Apicalypse bodies for the IGDB {@code /games} endpoint. The only user input is the search term,
  * which always ends up inside a double-quoted string literal, escaped.
@@ -14,6 +17,9 @@ final class IgdbQueries {
             + "genres.name,involved_companies.company.name,involved_companies.developer,"
             + "involved_companies.publisher,platforms.name,game_type";
 
+    /** Everything a details query reads, plus the game modes (ids) a category is suggested from. */
+    private static final String CANDIDATE_FIELDS = DETAILS_FIELDS + ",game_modes";
+
     private IgdbQueries() {
     }
 
@@ -26,6 +32,16 @@ final class IgdbQueries {
     static String search(String term, int limit) {
         return "search \"" + escape(term) + "\"; fields " + SEARCH_FIELDS
                 + "; where version_parent = null; limit " + limit + ";";
+    }
+
+    /**
+     * Search restricted to games released on at least one of {@code platformIds}, returning the full
+     * details of every hit so a match needs no second request. Same edition filter as {@link #search}.
+     */
+    static String searchOnPlatforms(String term, Collection<Integer> platformIds, int limit) {
+        String platforms = platformIds.stream().sorted().map(String::valueOf).collect(Collectors.joining(","));
+        return "search \"" + escape(term) + "\"; fields " + CANDIDATE_FIELDS
+                + "; where version_parent = null & platforms = (" + platforms + "); limit " + limit + ";";
     }
 
     static String details(long igdbId) {

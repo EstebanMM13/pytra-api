@@ -31,4 +31,13 @@ class IgdbQueriesTest {
         assertThat(IgdbQueries.details(284715)).endsWith("; where id = 284715; limit 1;")
                 .contains("artworks.image_id", "involved_companies.developer", "genres.name");
     }
+
+    @Test
+    void platformSearchFiltersByAnyOfThePlatformsAndAsksForGameModes() {
+        String query = IgdbQueries.searchOnPlatforms("Spider\"Man", java.util.Set.of(167, 48), 10);
+
+        assertThat(query).startsWith("search \"Spider\\\"Man\"; fields ")
+                .contains("game_modes", "genres.name", "involved_companies.developer", "cover.image_id")
+                .endsWith("; where version_parent = null & platforms = (48,167); limit 10;");
+    }
 }

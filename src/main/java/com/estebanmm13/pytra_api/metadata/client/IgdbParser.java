@@ -1,6 +1,7 @@
 package com.estebanmm13.pytra_api.metadata.client;
 
 import com.estebanmm13.pytra_api.error.IgdbIntegrationException;
+import com.estebanmm13.pytra_api.metadata.dto.IgdbGameCandidateDto;
 import com.estebanmm13.pytra_api.metadata.dto.IgdbGameMetadataDto;
 import com.estebanmm13.pytra_api.metadata.dto.IgdbSearchResultDto;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -9,6 +10,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
@@ -74,8 +76,35 @@ public final class IgdbParser {
     public static IgdbGameMetadataDto parseDetails(JsonNode root, long igdbId) {
         JsonNode game = root.isArray() && !root.isEmpty() ? root.get(0) : null;
         if (game == null || game.path("id").asLong(0) != igdbId) throw IgdbIntegrationException.gameNotFound();
+        IgdbGameMetadataDto metadata = metadata(game, igdbId);
+        if (metadata == null) throw IgdbIntegrationException.gameNotFound();
+        return metadata;
+    }
+
+    /**
+     * Normalizes the games of a platform-filtered search (see {@code IgdbQueries.searchOnPlatforms}):
+     * the same details as {@link #parseDetails} plus platform and game mode ids. Bundles, packs and
+     * mods are dropped like in {@link #parseSearch}.
+     */
+    public static List<IgdbGameCandidateDto> parseCandidates(JsonNode root, int limit) {
+        List<IgdbGameCandidateDto> candidates = new ArrayList<>();
+        if (!root.isArray()) return candidates;
+
+        for (JsonNode game : root) {
+            if (candidates.size() >= limit) break;
+            long id = game.path("id").asLong(0);
+            if (id <= 0 || isExcluded(game)) continue;
+            IgdbGameMetadataDto metadata = metadata(game, id);
+            if (metadata == null) continue;
+            candidates.add(new IgdbGameCandidateDto(metadata, ids(game.path("platforms")), ids(game.path("game_modes"))));
+        }
+        return candidates;
+    }
+
+    /** Details of one game node; null when it has no usable name. */
+    private static IgdbGameMetadataDto metadata(JsonNode game, long igdbId) {
         String name = text(game.path("name"));
-        if (name == null) throw IgdbIntegrationException.gameNotFound();
+        if (name == null) return null;
 
         LocalDate releaseDate = firstReleaseDate(game);
         // Announced games often carry a placeholder target date; autofill leaves it blank (users may type one).
@@ -146,6 +175,17 @@ public final class IgdbParser {
             if (value != null && !names.contains(value)) names.add(value);
         }
         return names;
+    }
+
+    /** Ids of an array of plain ids or of expanded objects ({@code {"id": 48, "name": ...}}). */
+    private static Set<Integer> ids(JsonNode array) {
+        Set<Integer> ids = new HashSet<>();
+        if (!array.isArray()) return ids;
+        for (JsonNode item : array) {
+            JsonNode id = item.isObject() ? item.path("id") : item;
+            if (id.isIntegralNumber()) ids.add(id.asInt());
+        }
+        return ids;
     }
 
     private static String text(JsonNode node) {
