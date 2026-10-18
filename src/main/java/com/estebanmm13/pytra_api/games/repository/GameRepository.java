@@ -23,8 +23,16 @@ public interface GameRepository extends JpaRepository<Game, Long> {
     /** The game with its saga and genres in the same query: the detail response renders both. */
     @EntityGraph(attributePaths = {"saga", "genres"})
     Optional<Game> findWithSagaAndGenresByIdAndUserId(Long id, Long userId);
-    boolean existsByUserIdAndNameIgnoreCase(Long userId, String name);
-    boolean existsByUserIdAndNameIgnoreCaseAndIdNot(Long userId, String name, Long id);
+    /*
+     * Name checks fold with LOWER() on both sides, exactly like the unique index ux_games_user_id_name_lower:
+     * a derived IgnoreCase query uses UPPER(), which misses that index and folds some Unicode characters
+     * differently, so a pre-check could pass and the insert then hit the index.
+     */
+    @Query("SELECT COUNT(g) > 0 FROM Game g WHERE g.userId = :userId AND LOWER(g.name) = LOWER(:name)")
+    boolean existsByUserIdAndNameIgnoreCase(@Param("userId") Long userId, @Param("name") String name);
+    @Query("SELECT COUNT(g) > 0 FROM Game g WHERE g.userId = :userId AND LOWER(g.name) = LOWER(:name) AND g.id <> :id")
+    boolean existsByUserIdAndNameIgnoreCaseAndIdNot(@Param("userId") Long userId, @Param("name") String name,
+                                                    @Param("id") Long id);
     long countByUserId(Long userId);
     long countByUserIdAndReviewStatus(Long userId, ReviewStatus reviewStatus);
     /** With saga and genres in the same query: the pending queues render both. */
