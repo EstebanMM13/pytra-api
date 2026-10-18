@@ -1,6 +1,6 @@
 # Pytra API
 
-Backend REST API for **Pytra**, a personal video game tracking app: games, sagas, genres, playthroughs, online playtime, aggregated stats and Steam / PlayStation Network playtime sync.
+Backend REST API for **Pytra** ("Play, Track, Remember"), a personal video game tracker: games, sagas, genres, playthroughs (runs), online playtime, aggregated stats and a year in review, Steam and PlayStation Network library sync with automatic IGDB enrichment of imported games, and a read-only demo account.
 
 | | |
 |---|---|
@@ -10,7 +10,7 @@ Backend REST API for **Pytra**, a personal video game tracking app: games, sagas
 
 ## Quick start (local)
 
-1. Start PostgreSQL 16 with Docker:
+1. Start PostgreSQL with Docker (the bundled `docker-compose.yml` runs `postgres:16-alpine`):
    ```bash
    cp .env.example .env      # then set POSTGRES_PASSWORD
    docker compose up -d
@@ -31,17 +31,17 @@ Backend REST API for **Pytra**, a personal video game tracking app: games, sagas
 
 > `PGHOST` defaults to a LAN address (`192.168.1.55`), not `localhost`, so set it explicitly when using the bundled `docker-compose.yml`.
 
-Without `BREVO_API_KEY`, verification and password-reset emails are **logged instead of sent**, so you can copy the links from the console.
+Without `BREVO_API_KEY`, verification and password-reset emails are **logged instead of sent**, so you can copy the links from the console. Steam, PSN and IGDB are optional: leave their keys empty and those features report themselves as not configured.
 
 ## Tech stack
 
 | Area | Choice |
 |---|---|
 | Runtime | Java 21, Spring Boot 4.1.0 (Web MVC) |
-| Persistence | Spring Data JPA, PostgreSQL 16, Flyway (`ddl-auto: validate`) |
+| Persistence | Spring Data JPA, PostgreSQL 18 (Railway), Flyway migrations `V1`–`V28` (`ddl-auto: validate`) |
 | Security | Spring Security, stateless JWT (jjwt 0.12.6), OAuth2/OIDC login with Google |
-| Integrations | Steam OpenID 2.0 (hand-written, no client library), Steam Web API, PlayStation Network (unofficial mobile API, one service account), Brevo transactional email (HTTP API) |
-| Validation / docs | Jakarta Bean Validation, springdoc-openapi 3.1.1 (Swagger UI, non-prod only) |
+| Integrations | Steam OpenID 2.0 (hand-written, no client library), Steam Web API and store, PlayStation Network (unofficial mobile API, one service account), IGDB (Twitch app credentials), Brevo transactional email (HTTP API) |
+| Validation / docs | Jakarta Bean Validation, springdoc-openapi 3.1.1 (Swagger UI in dev, disabled in `prod`) |
 | Tests | JUnit 5, MockMvc, Testcontainers (PostgreSQL), GitHub Actions CI |
 
 ## Configuration
@@ -72,19 +72,51 @@ Only variable names are listed here. Never commit real values.
 | `BREVO_API_KEY` | Prod | empty | Brevo API key; blank means emails are logged (blank is rejected in `prod`) |
 | `MAIL_FROM_EMAIL` | Prod | empty | Sender address; required whenever `BREVO_API_KEY` is set |
 | `MAIL_FROM_NAME` | No | `Pytra` | Sender display name |
+| `ALLOWED_EMAILS` | No | empty | Invite-only registration: comma-separated emails allowed to create an account (password or Google). Empty = open registration. Existing users can always sign in |
+| `EXCLUSIVE_AVATAR_OWNERS` | No | empty | Single-owner avatar presets as `key:userId` pairs (bound by id, since usernames can change). Empty = nobody may pick them |
 | `DEMO_USER_ID` | No | empty | Id of the account exposed as the public read-only demo (`POST /api/v1/auth/demo`); empty disables the demo (`404`) |
 | `PLATFORMS_MAX_TOTAL` | No | `200` | Cap on the global platform catalog (seeded entries included); new entries beyond it get `409 PLATFORM_CATALOG_FULL` |
 | `PLATFORMS_CREATE_MAX_PER_WINDOW` | No | `20` | New platforms each user may create per window; extra creations get `429 PLATFORM_RATE_LIMITED` |
 | `PLATFORMS_CREATE_WINDOW` | No | `1h` | Window of that per-user limit (Spring duration syntax: `1h`, `30m`, ...) |
-| `JAVA_TOOL_OPTIONS` | No | none | JVM flags set at the Railway service level; not read by the app itself. Recommended: `-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k -XX:+ExitOnOutOfMemoryError` (heap sized from the container limit, low-overhead GC for a small single-CPU container, smaller thread stacks, and exit on OOM so Railway restarts the service instead of leaving it half-alive). The app itself keeps a 5-connection Hikari pool and at most 30 Tomcat threads (`application.yaml`) |
+| `JAVA_TOOL_OPTIONS` | No | none | JVM flags set at the Railway service level; not read by the app itself. Recommended: `-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k -XX:+ExitOnOutOfMemoryError`. See [Runtime sizing](#runtime-sizing) |
 
 **Google Cloud Console:** the authorized redirect URI must be `{PUBLIC_API_URL}/login/oauth2/code/google`.
+
+### Runtime sizing
+
+The service runs in a small single-CPU container next to a shared Postgres, so `application.yaml` sizes it down on purpose:
+
+| Setting | Value | Why |
+|---|---|---|
+| Hikari `maximum-pool-size` / `minimum-idle` | `5` / `1` | Hikari's default keeps 10 connections open |
+| Hikari `idle-timeout` / `max-lifetime` | 2 min / 15 min | Release idle connections; recycle them before any proxy idle cut |
+| Tomcat `threads.max` | `30` | More threads than pool connections would only queue on the pool |
+| Response compression | On, from 1 KB | Library and stats lists are JSON-heavy |
+
+Recommended `JAVA_TOOL_OPTIONS` on the Railway service:
+
+```
+-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k -XX:+ExitOnOutOfMemoryError
+```
+
+Heap sized from the container limit, a low-overhead GC for one CPU, smaller thread stacks, and exit on OOM so Railway restarts the service instead of leaving it half-alive.
+
+### Scheduled jobs
+
+| Job | Schedule | Skipped when |
+|---|---|---|
+| `SteamSyncScheduler` | Every 6 h (first run 10 min after startup) | `STEAM_API_KEY` is blank |
+| `PsnSyncScheduler` | Every 12 h (first run 20 min after startup) | `PSN_NPSSO` is blank |
+| `ExpiredTokenPurgeScheduler` | Daily (first run 30 min after startup): deletes expired or consumed email-verification, password-reset and exchange-code tokens, each table in its own transaction | Never |
+| IGDB pending enrichment | Queued after every Steam/PSN import (not a timer) | IGDB disabled, or `IGDB_PENDING_ENRICHMENT_ENABLED=false` |
+
+All jobs run in memory and assume a single instance.
 
 ## Auth and email
 
 | Flow | Behavior |
 |---|---|
-| Register | Username 3 to 30 chars (letters, digits, `.`, `_`, `-`), stored lowercase. A verification email is sent; the link is valid for 24 h |
+| Register | Username 3 to 30 chars (letters, digits, `.`, `_`, `-`), stored lowercase. A verification email is sent; the link is valid for 24 h. When `ALLOWED_EMAILS` is set, only those emails can create an account (Google sign-up too) |
 | Login | Identifier is an email (contains `@`) or a username. Login is refused until the email is verified |
 | Resend verification | Re-sends the verification email, with a 60 s cooldown |
 | Forgot / reset password | Reset link valid for 1 h |
@@ -113,13 +145,16 @@ Code is organized by **module (bounded context)**, not by technical layer:
 
 ```
 com.estebanmm13.pytra_api/
-├── auth/         # Users, registration, login, email verification, password reset, Google OIDC, JWT, rate limiting
+├── auth/         # Users, registration, login, email verification, password reset, Google OIDC, JWT, rate limiting, demo, token purge
+├── account/      # Data export (CSV / Markdown) and account deletion
 ├── games/        # Genres (catalog), Sagas, Games, GamePlatformLink
 ├── experiences/  # Experience (playthroughs), OnlinePlaytime
 ├── platforms/    # Platform catalog (global, editable)
 ├── steamsync/    # Steam OpenID linking, Steam Web API client, library sync
 ├── psnsync/      # PSN online-ID linking, service-account auth, PS4/PS5 game list sync
 ├── platformsync/ # Shared by both syncs: playtime writer, pending queue, pending confirm
+├── metadata/     # IGDB and Steam store lookups: form autofill and pending-game enrichment
+├── covers/       # Downscaled Steam cover thumbnails for list views
 ├── stats/        # Aggregated stats across games/sagas/genres/experiences
 ├── mail/         # EmailSender: Brevo HTTP sender or logging fallback
 ├── config/       # SecurityConfig, URL normalization
@@ -133,15 +168,15 @@ Each module uses the same internal layout: `model/`, `dto/`, `mapper/`, `reposit
 - Cross-module references use a plain scalar id (e.g. `Saga.userId: Long`, `Experience.gameId: Long`), never a JPA `@ManyToOne`, to keep bounded contexts decoupled at the object-graph level. Relationships inside a module (`Game → Saga`, `Game ↔ Genre`, `GamePlatformLink → Game`) use real JPA associations. Consequence: cross-module aggregates (e.g. Stats grouping Games by hours logged in Experience) are computed by fetching both sides and combining them in the service layer, not with a single JPQL join.
 - Controllers resolve the authenticated user via `CurrentUserResolver` and pass `userId` explicitly into services. Services never depend on Spring Security directly, which keeps them easy to test.
 - Mappers only convert `Entity → ResponseDto` (pure, no side effects). `RequestDto → Entity` construction stays in the service layer, since it usually carries business logic (password hashing, defaults, normalization).
-- Every user-scoped query (e.g. `findByIdAndUserId`) filters by owner at the query level, so accessing another user's resource returns `404`, not `403`. This avoids confirming that a resource exists.
+- **Tenant isolation:** every user-scoped query (e.g. `findByIdAndUserId`) filters by owner at the query level, so accessing another user's resource returns `404`, not `403`. This avoids confirming that a resource exists.
 - Uniqueness that must hold under concurrent writes is enforced with database constraints (including case-insensitive functional indexes). The application-level pre-check only exists for a friendly error message.
 - **Steam is account linking, not an alternative login.** `SteamLink` requires an already-authenticated Pytra user, like "Connect Steam" in account settings. `openid4java` was rejected (unmaintained since 2015); Steam's OpenID 2.0 verification is a single `check_authentication` POST, so no library is needed.
 - **Steam-synced hours never guess which playthrough they belong to.** Steam reports one cumulative total per game. For `SINGLEPLAYER` games, sync maintains exactly one canonical `Experience` per game (tracked via `GamePlatformLink.experienceId`), separate from manually logged ones. For `ONLINE`/`HYBRID` games, synced hours accumulate into `OnlinePlaytime`.
-- A freshly synced game starts with `category = null` and `reviewStatus = PENDING_REVIEW` until the user confirms it through the pending-review queue. Classification is manual for now.
+- A freshly synced game starts with `reviewStatus = PENDING_REVIEW` until the user confirms it through the pending-review queue (the web app opens the full game form for this). IGDB enrichment may suggest a category, but only confirmation moves the game into the library.
 
 ## API overview
 
-All endpoints except auth, the Google OAuth2 endpoints, Steam `login`/`callback` and the OpenAPI/Swagger paths require `Authorization: Bearer <jwt>`. A validly signed token whose user no longer exists (deleted account) is treated as anonymous (`401`).
+All endpoints except auth, the Google OAuth2 endpoints, Steam `login`/`callback`, `GET /api/v1/covers/thumb` and the OpenAPI/Swagger paths require `Authorization: Bearer <jwt>`. A validly signed token whose user no longer exists (deleted account) is treated as anonymous (`401`).
 
 Outside the `prod` profile, the OpenAPI spec is served at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`. Both are disabled in `prod` (`springdoc.api-docs.enabled=false`, `springdoc.swagger-ui.enabled=false` in `application-prod.yaml`).
 
@@ -155,14 +190,15 @@ Outside the `prod` profile, the OpenAPI spec is served at `/v3/api-docs` and Swa
 | POST | `/forgot-password` | Request a password reset |
 | POST | `/reset-password` | Reset password with token |
 | POST | `/exchange-code` | Exchange a one-time code (Google or Steam redirect) for a JWT |
+| POST | `/demo` | JWT for the read-only demo account (see [Auth and email](#auth-and-email)) |
 
 Google login starts at `GET /oauth2/authorization/google` and returns through `/login/oauth2/code/google`.
 
 ### Current user (`/api/v1/users`)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/me` | Profile: username, display name, email, whether a password is set, whether Google is linked, `createdAt` |
-| PATCH | `/me` | Change username |
+| GET | `/me` | Profile: username, display name, email, avatar, whether a password is set, whether Google is linked, `createdAt` |
+| PATCH | `/me` | Partial update: `username` and/or `avatar` (preset key; explicit `null` clears it) |
 | GET | `/me/export?format=csv\|markdown` | Download all the user's data. CSV: one row per experience with the game columns repeated (games without runs get one row), UTF-8 with BOM, formula-like text (first non-blank character `= + - @`, or a leading control character) prefixed with `'`. Markdown (Obsidian-friendly): front matter (quoted YAML values), one `##` section per game with its `###` runs, then the yearly notes. Unknown format: `400 INVALID_EXPORT_FORMAT`. Max 5 exports per user per minute (in-memory): `429 EXPORT_RATE_LIMITED` |
 | DELETE | `/me` | Body `{"confirm": "<username>", "password": "..."}`. `confirm` must match the username (case-insensitive, else `400 CONFIRMATION_MISMATCH`). Accounts with a password must send it (`400 INVALID_PASSWORD` if missing or wrong; never 401 so clients don't log out); Google-only accounts need a token issued in the last 10 minutes, else `403 REAUTH_REQUIRED` (log in with Google again). Deletes the user and everything they own in one transaction (all user tables cascade from `users`); `204`. Blocked with `409 SYNC_IN_PROGRESS` while a Steam or PSN sync runs |
 
@@ -316,12 +352,25 @@ Read-only proxies used to prefill the game form; nothing is persisted. Results a
 - IGDB: the Twitch app token (client credentials) is kept in memory, renewed 5 min before it expires and once more if IGDB answers `401`. The search term is escaped inside the Apicalypse string literal. `coverImageUrl` is the official portrait box art (`t_cover_big`, Pytra shows covers as 2:3 posters), with a landscape artwork (`t_screenshot_big`) only as a fallback. Future release dates become `null`.
 - Errors (`message` code): `400 INVALID_SEARCH_QUERY` (2 to 100 chars), `400 INVALID_IGDB_ID` / `INVALID_STEAM_APP_ID`, `404 IGDB_DISABLED`, `404 IGDB_GAME_NOT_FOUND`, `503 IGDB_UNAVAILABLE`, `404 STEAM_APP_NOT_FOUND`, `422 STEAM_APP_NOT_A_GAME`, `503 STEAM_UNAVAILABLE`.
 
+### Cover thumbnails (`/api/v1/covers`, public)
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/thumb?url=&w=` | Downscaled JPEG of a Steam cover for list views, cached in memory and served with a 1-year immutable `Cache-Control`. Public because `<img>` tags can't send the token; a URL allowlist limits it to Steam's image CDNs. Errors: `400 INVALID_COVER_URL` / `INVALID_COVER_WIDTH`, `404 COVER_NOT_FOUND`, `502 COVER_UNAVAILABLE` |
+
 ## Tests
 
-| Command | Needs Docker | What runs |
+The class suffix tells the two kinds apart:
+
+| Suffix | Kind | Needs Docker |
 |---|---|---|
-| `./mvnw test` | Yes | Everything, including the integration tests below |
-| `./mvnw test -Dtest="RegistrationPolicyTest,UsernamePolicyTest,AuthRateLimitFilterTest,AuthEmailServiceTest,BrevoEmailSenderTest,SteamWebApiClientTest,SteamSyncSchedulerTest,Psn*Test,ExternalPlaytimeWriterTest,PendingReviewQueueTest,ExperiencePeriodTest,StatsMathTest,YearHighlightsCalculatorTest,AccountExportWriterTest,ExportRateLimiterTest,DemoReadOnlyFilterTest"` | No | Unit tests only |
+| `*Test` | Unit test (plain JUnit with mocks) | No |
+| `*Tests` | Integration test (extends `AbstractIntegrationTest`) | Yes |
+
+| Command | What runs |
+|---|---|
+| `./mvnw test` | Everything (Surefire picks up both suffixes) |
+| `./mvnw test -Dtest='*Test'` | Unit tests only, no Docker needed |
+| `./mvnw test -Dtest=SteamIntegrationTests` | One class |
 
 Integration tests extend `AbstractIntegrationTest`: full Spring context, MockMvc, the `test` profile (`src/test/resources/application-test.yaml`, which supplies dummy JWT/Google/mail settings so no environment variable is needed) and one shared PostgreSQL Testcontainer via `@ServiceConnection`.
 
@@ -331,6 +380,7 @@ Integration tests extend `AbstractIntegrationTest`: full Spring context, MockMvc
 - `StatsIntegrationTests`, `GameLibraryAggregatesTests` and `AccountIntegrationTests` cover averages and status counts, year/month attribution, highlights, yearly notes, in-progress runs, library aggregates, both export formats and account deletion (every user-owned table emptied, other users untouched).
 - `DemoModeIntegrationTests` covers the read-only demo: `404` when disabled, demo token reads the demo account, every write method gets `403 DEMO_READ_ONLY`, normal tokens unaffected.
 - `ApiDocsTests` checks that `/v3/api-docs` is served outside `prod`.
+- `IgdbMetadataIntegrationTests`, `GameMetadataIntegrationTests` and `PendingGameNameMigrationTests` cover the autofill endpoints and the pending-name cleanup migration. The enrichment worker and name normalization are unit-tested (`PendingGameEnricherTest`, `IgdbPendingMatchTest`, `ImportedGameNamesTest`).
 - `PytraApiApplicationTests` is the context-load smoke test.
 
 **CI:** `.github/workflows/ci.yml` runs `./mvnw -B verify` (JDK 21 Temurin, Maven cache) on every push and pull request to `master`. GitHub's `ubuntu-latest` runners have Docker, so the Testcontainers tests run there even when they can't run locally.
@@ -347,15 +397,14 @@ There is no Dockerfile in this repo; Railway builds the Maven project directly. 
 
 ## Roadmap
 
-- [x] Auth: register, login, email verification, resend verification, password reset
-- [x] Auth: Google OAuth2/OIDC login (web and Android)
-- [x] Transactional email via Brevo
-- [x] Per-IP rate limiting on public auth endpoints
-- [x] Current-user profile and username change
-- [x] Genres, Sagas, Games, Experiences, OnlinePlaytime
-- [x] Aggregated stats
-- [x] Steam account linking, library sync and pending-review queue
-- [x] PlayStation Network sync of PS4/PS5 playtime by online ID (trophies: next phase)
+- [x] Auth: register, login, email verification, password reset, Google OAuth2/OIDC (web and Android), invite-only mode
+- [x] Transactional email via Brevo, per-IP rate limiting on public auth endpoints
+- [x] Genres, sagas, games, runs, online playtime, platform catalog, decimal ratings
+- [x] Aggregated stats and year in review (GOTY, highlights, yearly notes)
+- [x] Steam and PlayStation Network library sync with a shared pending-review queue
+- [x] IGDB autofill and automatic IGDB enrichment of pending games
+- [x] Read-only demo, data export, account deletion
+- [x] Integration and tenant-isolation tests on Testcontainers, CI on GitHub Actions
 - [x] Frontend ([pytra-web](https://github.com/EstebanMM13/pytra-web)) and production deployment on Railway
-- [ ] Broader automated test suite (integration and multi-tenancy isolation tests)
-- [ ] CI/CD
+- [ ] PSN trophies
+- [ ] Automatic deploys (manual today)
