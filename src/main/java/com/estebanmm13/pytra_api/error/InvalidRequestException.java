@@ -14,6 +14,8 @@ public class InvalidRequestException extends RuntimeException {
     public static final String INVALID_PLATFORM = "INVALID_PLATFORM";
     public static final String INVALID_COVER_URL = "INVALID_COVER_URL";
     public static final String INVALID_COVER_WIDTH = "INVALID_COVER_WIDTH";
+    /** ONLINE games are tracked through online playtime only: new runs are refused. */
+    public static final String ONLINE_GAME_RUN = "ONLINE_GAME_RUN";
 
     public InvalidRequestException(String code) {
         super(code);

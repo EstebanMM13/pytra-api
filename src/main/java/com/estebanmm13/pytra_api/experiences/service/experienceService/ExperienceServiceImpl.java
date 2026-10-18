@@ -1,11 +1,14 @@
 package com.estebanmm13.pytra_api.experiences.service.experienceService;
 
+import com.estebanmm13.pytra_api.error.InvalidRequestException;
 import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceRequestDto;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceResponseDto;
 import com.estebanmm13.pytra_api.experiences.mapper.ExperienceMapper;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
+import com.estebanmm13.pytra_api.games.model.Game;
+import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platforms.service.PlatformService;
 import lombok.RequiredArgsConstructor;
@@ -45,7 +48,11 @@ public class ExperienceServiceImpl implements ExperienceService {
 
     @Override
     public ExperienceResponseDto create(Long gameId, ExperienceRequestDto experienceRequestDto, Long userId) {
-        requireOwnedGame(gameId, userId);
+        Game game = requireOwnedGame(gameId, userId);
+        // Only new runs are refused: existing runs of a game later recategorised as ONLINE stay editable.
+        if (game.getCategory() == GameCategory.ONLINE) {
+            throw new InvalidRequestException(InvalidRequestException.ONLINE_GAME_RUN);
+        }
 
         Experience experience = Experience.builder()
                 .userId(userId)
@@ -103,9 +110,8 @@ public class ExperienceServiceImpl implements ExperienceService {
         experienceRepository.delete(experience);
     }
 
-    private void requireOwnedGame(Long gameId, Long userId) {
-        if (!gameRepository.findByIdAndUserId(gameId, userId).isPresent()) {
-            throw new ResourceNotFoundException("Game not found");
-        }
+    private Game requireOwnedGame(Long gameId, Long userId) {
+        return gameRepository.findByIdAndUserId(gameId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Game not found"));
     }
 }
