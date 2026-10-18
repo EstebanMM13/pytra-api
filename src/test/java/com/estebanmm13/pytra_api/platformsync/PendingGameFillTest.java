@@ -104,6 +104,16 @@ class PendingGameFillTest {
     }
 
     @Test
+    void igdbNameLongerThanTheColumnIsNotUsed() {
+        Game game = pending(null);
+        game.setImportedName(game.getName());
+        IgdbGameMetadataDto longName = new IgdbGameMetadataDto(1, "x".repeat(256), null, null, null,
+                List.of(), null, List.of());
+
+        assertThat(PendingGameFill.importedNameToReplace(game, longName)).isNull();
+    }
+
+    @Test
     void coverWithoutImportRecordIsKeptWhileTheOtherEmptyFieldsAreFilled() {
         Game game = pending("https://image.api.playstation.com/cdn/psn-art.png");
 

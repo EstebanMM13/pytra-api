@@ -7,7 +7,10 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -130,9 +133,11 @@ public class PendingGameEnricher {
         queuedUsers.remove(userId);
         RunState state = new RunState();
         List<Long> gameIds;
+        boolean capped;
         try {
             gameIds = writer.findGamesWithoutLookup(userId);
-            if (gameIds.size() > MAX_GAMES_PER_RUN) gameIds = gameIds.subList(0, MAX_GAMES_PER_RUN);
+            capped = gameIds.size() > MAX_GAMES_PER_RUN;
+            if (capped) gameIds = gameIds.subList(0, MAX_GAMES_PER_RUN);
             for (int from = 0; from < gameIds.size() && !state.aborted && !stopping(); from += BATCH_SIZE) {
                 enrichBatch(userId, gameIds.subList(from, Math.min(from + BATCH_SIZE, gameIds.size())), state);
             }
@@ -147,6 +152,9 @@ public class PendingGameEnricher {
             log.info("IGDB enrichment for userId {}: {} of {} pending games filled, {} lookups failed",
                     userId, state.filled, gameIds.size(), state.failed);
         }
+        // A backlog bigger than one run drains without waiting for the next sync, as long as the run made
+        // progress (stamped games drop out of the next run's list, so it cannot loop on the same ones).
+        if (capped && !state.aborted && !stopping() && state.stamped > 0) enqueue(userId);
     }
 
     private void enrichBatch(Long userId, List<Long> batch, RunState state) throws InterruptedException {
@@ -190,23 +198,57 @@ public class PendingGameEnricher {
                     done.add(lookup.gameId());
                     continue;
                 }
-                try {
-                    // apply() stamps the lookup itself, in the same transaction as the fill.
-                    if (writer.apply(userId, lookup.gameId(), match.get(), genres)) state.filled++;
-                } catch (RuntimeException e) {
-                    // Not marked: retried on a later sync.
-                    log.warn("IGDB enrichment of pending game {} of userId {} could not be saved: {}",
-                            lookup.gameId(), userId, e.getClass().getSimpleName());
-                }
+                applyMatch(userId, lookup.gameId(), match.get(), genres, state, done);
             }
         } finally {
-            markLookedUp(userId, done);
+            markLookedUp(userId, done, state);
         }
     }
 
-    private void markLookedUp(Long userId, Set<Long> gameIds) {
+    /**
+     * Fills the game, then renames it in a separate transaction. A deterministic failure (bad data, a
+     * constraint, a bug) stamps the game anyway, so it is not retried on every sync, blocking the games
+     * behind it; only a transient database failure leaves it for a later sync.
+     */
+    private void applyMatch(Long userId, Long gameId, IgdbGameCandidateDto match, List<Genre> genres,
+                            RunState state, Set<Long> done) {
+        PendingGameEnrichmentWriter.Applied applied;
+        try {
+            // apply() stamps the lookup itself, in the same transaction as the fill.
+            applied = writer.apply(userId, gameId, match, genres);
+            state.stamped++;
+        } catch (RuntimeException e) {
+            boolean transientFailure = isTransient(e);
+            if (!transientFailure) done.add(gameId);
+            log.warn("IGDB enrichment of pending game {} of userId {} could not be saved ({}): {}",
+                    gameId, userId, transientFailure ? "retried later" : "skipped", e.getClass().getSimpleName());
+            return;
+        }
+
+        boolean renamed = false;
+        if (applied.renameTo() != null) {
+            try {
+                renamed = writer.renameIfUntouched(userId, gameId, applied.currentName(), applied.renameTo());
+            } catch (RuntimeException e) {
+                // Name taken by a concurrent edit, or any other failure: only the rename is lost.
+                log.info("IGDB name of pending game {} of userId {} not applied: {}",
+                        gameId, userId, e.getClass().getSimpleName());
+            }
+        }
+        if (applied.filled() || renamed) state.filled++;
+    }
+
+    /** Failures worth retrying on a later sync: the database or the connection was momentarily unavailable. */
+    static boolean isTransient(Throwable e) {
+        return e instanceof TransientDataAccessException
+                || e instanceof RecoverableDataAccessException
+                || e instanceof CannotCreateTransactionException;
+    }
+
+    private void markLookedUp(Long userId, Set<Long> gameIds, RunState state) {
         try {
             writer.markLookedUp(userId, new ArrayList<>(gameIds));
+            state.stamped += gameIds.size();
         } catch (RuntimeException e) {
             log.warn("IGDB lookups of userId {} could not be recorded: {}", userId, e.getClass().getSimpleName());
         }
@@ -229,6 +271,8 @@ public class PendingGameEnricher {
     private static final class RunState {
         int filled;
         int failed;
+        /** Games stamped in this run (looked up, whatever the outcome). */
+        int stamped;
         int consecutiveFailures;
         boolean aborted;
     }

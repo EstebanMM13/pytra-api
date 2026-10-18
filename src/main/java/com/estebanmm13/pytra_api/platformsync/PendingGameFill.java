@@ -16,7 +16,8 @@ import java.util.List;
  *   <li>Developer, publisher, release date, category and genres: filled only when empty.</li>
  *   <li>Cover: filled when empty, or replaced when it is still the platform image the import set
  *       ({@link Game#getImportedCoverUrl()}); a cover the user set is kept.</li>
- *   <li>Name: see {@link #importedNameToReplace}; the caller checks the unique name index first.</li>
+ *   <li>Name: see {@link #importedNameToReplace}; renamed in a separate step, see
+ *       {@link PendingGameEnrichmentWriter#renameIfUntouched}.</li>
  * </ul>
  */
 public final class PendingGameFill {
@@ -70,7 +71,10 @@ public final class PendingGameFill {
      */
     public static String importedNameToReplace(Game game, IgdbGameMetadataDto metadata) {
         String igdbName = metadata.name();
-        if (igdbName == null || game.getImportedName() == null) return null;
+        if (igdbName == null || igdbName.isBlank() || igdbName.length() > ImportedGameNames.MAX_NAME_LENGTH
+                || game.getImportedName() == null) {
+            return null;
+        }
         if (!game.getImportedName().equals(game.getName()) || igdbName.equals(game.getName())) return null;
         return igdbName;
     }

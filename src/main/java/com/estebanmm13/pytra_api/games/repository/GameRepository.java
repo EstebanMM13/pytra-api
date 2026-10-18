@@ -31,20 +31,32 @@ public interface GameRepository extends JpaRepository<Game, Long> {
     @EntityGraph(attributePaths = {"saga", "genres"})
     List<Game> findAllByUserIdAndReviewStatus(Long userId, ReviewStatus reviewStatus);
 
-    /**
-     * The game, row-locked until the transaction ends (SELECT ... FOR UPDATE), so a background write
-     * never interleaves with a concurrent edit of the same game.
-     */
     /** Pending games IGDB was never asked about, oldest first. */
     @Query("SELECT g.id FROM Game g WHERE g.userId = :userId AND g.reviewStatus = :reviewStatus "
             + "AND g.igdbLookupAt IS NULL ORDER BY g.id")
     List<Long> findIdsWithoutIgdbLookup(@Param("userId") Long userId, @Param("reviewStatus") ReviewStatus reviewStatus);
+
+    /**
+     * Renames a pending game only while it still has its imported, never edited name ({@code expected}).
+     * A single conditional UPDATE, so a concurrent edit or confirm is never overwritten; 0 when the game
+     * changed meanwhile. A name taken by another game of the user fails on the unique index.
+     */
+    @Modifying
+    @Query("UPDATE Game g SET g.name = :newName, g.updatedAt = :now WHERE g.id = :id AND g.userId = :userId "
+            + "AND g.reviewStatus = :reviewStatus AND g.name = :expected AND g.importedName = :expected")
+    int renameImported(@Param("userId") Long userId, @Param("id") Long id, @Param("expected") String expected,
+                       @Param("newName") String newName, @Param("reviewStatus") ReviewStatus reviewStatus,
+                       @Param("now") LocalDateTime now);
 
     /** Bulk stamp (does not touch updated_at): IGDB was asked about these games. */
     @Modifying
     @Query("UPDATE Game g SET g.igdbLookupAt = :at WHERE g.userId = :userId AND g.id IN :ids")
     int markIgdbLookup(@Param("userId") Long userId, @Param("ids") Collection<Long> ids, @Param("at") LocalDateTime at);
 
+    /**
+     * The game, row-locked until the transaction ends (SELECT ... FOR UPDATE), so a background write
+     * never interleaves with a concurrent edit of the same game.
+     */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT g FROM Game g WHERE g.id = :id AND g.userId = :userId")
     Optional<Game> findForUpdateByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);

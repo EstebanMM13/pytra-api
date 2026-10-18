@@ -20,7 +20,11 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PendingGameEnrichmentWriterTest {
@@ -71,9 +75,12 @@ class PendingGameEnrichmentWriterTest {
         when(gameRepository.findForUpdateByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(game));
         when(genreRepository.getReferenceById(2L)).thenReturn(aventura);
 
-        boolean changed = writer.apply(USER_ID, 5L, spiderMan, List.of(aventura));
+        PendingGameEnrichmentWriter.Applied applied = writer.apply(USER_ID, 5L, spiderMan, List.of(aventura));
 
-        assertThat(changed).isTrue();
+        assertThat(applied.filled()).isTrue();
+        // Not an imported name (created by hand): never renamed.
+        assertThat(applied.renameTo()).isNull();
+        assertThat(game.getIgdbLookupAt()).isNotNull();
         assertThat(game.getDeveloper()).isEqualTo("Typed by the user");
         assertThat(game.getPublisher()).isEqualTo("Sony");
         assertThat(game.getCategory()).isEqualTo(GameCategory.SINGLEPLAYER);
@@ -88,9 +95,9 @@ class PendingGameEnrichmentWriterTest {
         when(gameRepository.findForUpdateByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(confirmed));
         when(gameRepository.findForUpdateByIdAndUserId(6L, USER_ID)).thenReturn(Optional.of(renamed));
 
-        assertThat(writer.apply(USER_ID, 5L, spiderMan, List.of(aventura))).isFalse();
-        assertThat(writer.apply(USER_ID, 6L, spiderMan, List.of(aventura))).isFalse();
-        assertThat(writer.apply(USER_ID, 7L, spiderMan, List.of(aventura))).isFalse();
+        assertThat(writer.apply(USER_ID, 5L, spiderMan, List.of(aventura)).filled()).isFalse();
+        assertThat(writer.apply(USER_ID, 6L, spiderMan, List.of(aventura)).filled()).isFalse();
+        assertThat(writer.apply(USER_ID, 7L, spiderMan, List.of(aventura)).filled()).isFalse();
         assertThat(confirmed.getDeveloper()).isNull();
         assertThat(renamed.getDeveloper()).isNull();
     }
@@ -101,13 +108,16 @@ class PendingGameEnrichmentWriterTest {
         Game game = imported(5L, "Marvel’s Spider-Man™", psnArt);
         when(gameRepository.findForUpdateByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(game));
 
-        assertThat(writer.apply(USER_ID, 5L, spiderMan, List.of())).isTrue();
+        PendingGameEnrichmentWriter.Applied applied = writer.apply(USER_ID, 5L, spiderMan, List.of());
 
-        assertThat(game.getName()).isEqualTo("Marvel's Spider-Man");
+        assertThat(applied.filled()).isTrue();
         assertThat(game.getCoverImageUrl()).isEqualTo(spiderMan.metadata().coverImageUrl());
-        assertThat(game.getIgdbLookupAt()).isNotNull();
+        // The rename is a separate step, so a name conflict cannot roll back the fill.
+        assertThat(game.getName()).isEqualTo("Marvel’s Spider-Man™");
+        assertThat(applied.renameTo()).isEqualTo("Marvel's Spider-Man");
+        assertThat(applied.currentName()).isEqualTo("Marvel’s Spider-Man™");
         // Later syncs find the renamed game by the same key as the store name.
-        assertThat(ImportedGameNames.nameKey(game.getName()))
+        assertThat(ImportedGameNames.nameKey(applied.renameTo()))
                 .isEqualTo(ImportedGameNames.nameKey("Marvel’s Spider-Man™"));
     }
 
@@ -118,7 +128,7 @@ class PendingGameEnrichmentWriterTest {
         game.setCoverImageUrl("https://example.com/mine.png");
         when(gameRepository.findForUpdateByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(game));
 
-        writer.apply(USER_ID, 5L, spiderMan, List.of());
+        assertThat(writer.apply(USER_ID, 5L, spiderMan, List.of()).renameTo()).isNull();
 
         assertThat(game.getName()).isEqualTo("MARVEL'S SPIDER-MAN");
         assertThat(game.getCoverImageUrl()).isEqualTo("https://example.com/mine.png");
@@ -126,16 +136,32 @@ class PendingGameEnrichmentWriterTest {
     }
 
     @Test
-    void applySkipsTheRenameWhenAnotherGameHasTheNameButFillsTheRest() {
-        Game game = imported(5L, "Marvel’s Spider-Man™", null);
-        when(gameRepository.findForUpdateByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(game));
+    void renameIsSkippedWhenAnotherGameHasTheName() {
         when(gameRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(USER_ID, "Marvel's Spider-Man", 5L)).thenReturn(true);
 
-        assertThat(writer.apply(USER_ID, 5L, spiderMan, List.of())).isTrue();
+        assertThat(writer.renameIfUntouched(USER_ID, 5L, "Marvel’s Spider-Man™", "Marvel's Spider-Man")).isFalse();
 
-        assertThat(game.getName()).isEqualTo("Marvel’s Spider-Man™");
-        assertThat(game.getDeveloper()).isEqualTo("Insomniac Games");
-        assertThat(game.getCoverImageUrl()).isEqualTo(spiderMan.metadata().coverImageUrl());
+        verify(gameRepository, never()).renameImported(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void renameOnlyAppliesWhileTheNameIsStillTheImportedOne() {
+        when(gameRepository.renameImported(eq(USER_ID), eq(5L), eq("Marvel’s Spider-Man™"), eq("Marvel's Spider-Man"),
+                eq(ReviewStatus.PENDING_REVIEW), any())).thenReturn(1, 0);
+
+        assertThat(writer.renameIfUntouched(USER_ID, 5L, "Marvel’s Spider-Man™", "Marvel's Spider-Man")).isTrue();
+        // Edited or confirmed meanwhile: the conditional UPDATE matches nothing.
+        assertThat(writer.renameIfUntouched(USER_ID, 5L, "Marvel’s Spider-Man™", "Marvel's Spider-Man")).isFalse();
+    }
+
+    @Test
+    void applyStampsAGameRenamedMeanwhileSoItIsNotRetried() {
+        Game renamed = pending(6L, "Spider-Man Remastered");
+        when(gameRepository.findForUpdateByIdAndUserId(6L, USER_ID)).thenReturn(Optional.of(renamed));
+
+        writer.apply(USER_ID, 6L, spiderMan, List.of());
+
+        assertThat(renamed.getIgdbLookupAt()).isNotNull();
     }
 
     @Test

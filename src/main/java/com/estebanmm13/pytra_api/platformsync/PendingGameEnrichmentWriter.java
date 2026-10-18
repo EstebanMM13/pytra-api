@@ -72,42 +72,62 @@ public class PendingGameEnrichmentWriter {
     }
 
     /**
-     * Applies a confident IGDB match to one game (see {@link PendingGameFill}). The row is locked and re-read
-     * first: a game confirmed, edited or deleted since {@link #findLookups} is respected as it is now.
+     * Outcome of {@link #apply}.
      *
-     * <p>The name is replaced only while it is still the imported one and no other game of the user has
-     * IGDB's name (unique index on user + lower(name)); otherwise the other fields are still applied. A
-     * confident match has the same {@link ImportedGameNames#nameKey name key} as the imported name, so later
-     * syncs still find the renamed game by name.
+     * @param filled   whether any field was written
+     * @param renameTo    IGDB's name to give the game with {@link #renameIfUntouched}; null when the name stays
+     * @param currentName the game's name when it was filled (the imported one when {@code renameTo} is set)
+     */
+    public record Applied(boolean filled, String renameTo, String currentName) {
+        static final Applied NOTHING = new Applied(false, null, null);
+    }
+
+    /**
+     * Applies a confident IGDB match to one game (see {@link PendingGameFill}) and stamps its lookup. The
+     * row is locked and re-read first: a game confirmed, edited or deleted since {@link #findLookups} is
+     * respected as it is now. The name is NOT changed here: a rename can hit the unique name index, and
+     * that must not roll back the other fields, so it is a separate step ({@link #renameIfUntouched}).
      *
      * @param genres every existing genre (loaded once per batch), to map IGDB's genre names onto
-     * @return whether anything was written
      */
     @Transactional
-    public boolean apply(Long userId, Long gameId, IgdbGameCandidateDto match, List<Genre> genres) {
+    public Applied apply(Long userId, Long gameId, IgdbGameCandidateDto match, List<Genre> genres) {
         Game game = gameRepository.findForUpdateByIdAndUserId(gameId, userId).orElse(null);
-        if (game == null || game.getReviewStatus() != ReviewStatus.PENDING_REVIEW) return false;
+        if (game == null || game.getReviewStatus() != ReviewStatus.PENDING_REVIEW) return Applied.NOTHING;
         // Re-checked: a pending game renamed meanwhile no longer matches what was looked up.
         String key = ImportedGameNames.nameKey(game.getName());
-        if (key.isEmpty() || !key.equals(ImportedGameNames.nameKey(match.metadata().name()))) return false;
+        if (key.isEmpty() || !key.equals(ImportedGameNames.nameKey(match.metadata().name()))) {
+            game.setIgdbLookupAt(LocalDateTime.now());
+            return Applied.NOTHING;
+        }
 
         List<Genre> matched = IgdbGenreMatcher.match(match.metadata().genres(), genres).stream()
                 .map(genre -> genreRepository.getReferenceById(genre.getId()))
                 .toList();
-        boolean changed = PendingGameFill.fillEmptyFields(game, match.metadata(),
+        boolean filled = PendingGameFill.fillEmptyFields(game, match.metadata(),
                 IgdbPendingMatch.suggestCategory(match.gameModeIds()), matched);
-
-        String newName = PendingGameFill.importedNameToReplace(game, match.metadata());
-        if (newName != null) {
-            if (gameRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, newName, gameId)) {
-                log.info("IGDB name of pending game {} of userId {} not applied: another game has it", gameId, userId);
-            } else {
-                game.setName(newName);
-                changed = true;
-            }
-        }
         game.setIgdbLookupAt(LocalDateTime.now());
-        return changed;
+        return new Applied(filled, PendingGameFill.importedNameToReplace(game, match.metadata()), game.getName());
+    }
+
+    /**
+     * Gives a pending game IGDB's canonical name, only while it still has the imported name the user never
+     * edited (checked atomically by the UPDATE itself) and no other game of the user has the new one.
+     * Runs in its own transaction: a unique violation from a concurrent edit only loses the rename. A
+     * confident match has the same {@link ImportedGameNames#nameKey name key} as the imported name, so
+     * later syncs still find the renamed game by name.
+     *
+     * @return whether the game was renamed
+     * @throws org.springframework.dao.DataIntegrityViolationException when the name was taken meanwhile
+     */
+    @Transactional
+    public boolean renameIfUntouched(Long userId, Long gameId, String expectedName, String newName) {
+        if (gameRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, newName, gameId)) {
+            log.info("IGDB name of pending game {} of userId {} not applied: another game has it", gameId, userId);
+            return false;
+        }
+        return gameRepository.renameImported(userId, gameId, expectedName, newName,
+                ReviewStatus.PENDING_REVIEW, LocalDateTime.now()) == 1;
     }
 
     @Transactional(readOnly = true)
