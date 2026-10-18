@@ -9,6 +9,7 @@ import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.ExternalPlaytimeWriter;
+import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.psnsync.client.PsnPlayedGamesResult;
 import com.estebanmm13.pytra_api.psnsync.client.PsnPlayedTitle;
 import com.estebanmm13.pytra_api.psnsync.dto.PsnSyncResultDto;
@@ -61,6 +62,7 @@ public class PsnLibraryImporter {
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
     private final PsnIgnoredTitleRepository psnIgnoredTitleRepository;
     private final ExternalPlaytimeWriter externalPlaytimeWriter;
+    private final PendingGameEnricher pendingGameEnricher;
     private final TransactionTemplate transactionTemplate;
 
     public PsnLibraryImporter(PsnLinkRepository psnLinkRepository,
@@ -68,12 +70,14 @@ public class PsnLibraryImporter {
                               GamePlatformLinkRepository gamePlatformLinkRepository,
                               PsnIgnoredTitleRepository psnIgnoredTitleRepository,
                               ExternalPlaytimeWriter externalPlaytimeWriter,
+                              PendingGameEnricher pendingGameEnricher,
                               PlatformTransactionManager transactionManager) {
         this.psnLinkRepository = psnLinkRepository;
         this.gameRepository = gameRepository;
         this.gamePlatformLinkRepository = gamePlatformLinkRepository;
         this.psnIgnoredTitleRepository = psnIgnoredTitleRepository;
         this.externalPlaytimeWriter = externalPlaytimeWriter;
+        this.pendingGameEnricher = pendingGameEnricher;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -98,7 +102,7 @@ public class PsnLibraryImporter {
                 });
                 // Index updated only after the commit, so a rolled-back title leaves no trace in it.
                 linkedPhase.index().remember(attachment);
-                counters.record(attachment.outcome());
+                counters.record(attachment);
             } catch (PsnIntegrationException | SteamIntegrationException e) {
                 throw e;
             } catch (RuntimeException e) {
@@ -109,6 +113,8 @@ public class PsnLibraryImporter {
             }
         }
 
+        // Background IGDB fill of the new placeholders; returns at once and never fails the sync.
+        pendingGameEnricher.enqueue(userId, counters.createdPendingIds);
         return counters.toDto();
     }
 
@@ -260,10 +266,14 @@ public class PsnLibraryImporter {
         int ignored;
         int skipped;
         int errored;
+        final List<Long> createdPendingIds = new ArrayList<>();
 
-        void record(Outcome outcome) {
-            switch (outcome) {
-                case CREATED_PENDING -> newPending++;
+        void record(Attachment attachment) {
+            switch (attachment.outcome()) {
+                case CREATED_PENDING -> {
+                    newPending++;
+                    createdPendingIds.add(attachment.gameId());
+                }
                 case LINKED_EXISTING -> linkedExisting++;
                 case SKIPPED -> skipped++;
             }

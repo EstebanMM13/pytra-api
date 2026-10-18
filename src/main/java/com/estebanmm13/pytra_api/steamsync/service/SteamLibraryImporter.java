@@ -9,6 +9,7 @@ import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.metadata.client.SteamCoverImages;
 import com.estebanmm13.pytra_api.platformsync.ExternalPlaytimeWriter;
+import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGame;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGamesResult;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamSyncResultDto;
@@ -59,6 +60,7 @@ public class SteamLibraryImporter {
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
     private final SteamIgnoredAppRepository steamIgnoredAppRepository;
     private final ExternalPlaytimeWriter externalPlaytimeWriter;
+    private final PendingGameEnricher pendingGameEnricher;
     private final TransactionTemplate transactionTemplate;
 
     public SteamLibraryImporter(SteamLinkRepository steamLinkRepository,
@@ -66,12 +68,14 @@ public class SteamLibraryImporter {
                                 GamePlatformLinkRepository gamePlatformLinkRepository,
                                 SteamIgnoredAppRepository steamIgnoredAppRepository,
                                 ExternalPlaytimeWriter externalPlaytimeWriter,
+                                PendingGameEnricher pendingGameEnricher,
                                 PlatformTransactionManager transactionManager) {
         this.steamLinkRepository = steamLinkRepository;
         this.gameRepository = gameRepository;
         this.gamePlatformLinkRepository = gamePlatformLinkRepository;
         this.steamIgnoredAppRepository = steamIgnoredAppRepository;
         this.externalPlaytimeWriter = externalPlaytimeWriter;
+        this.pendingGameEnricher = pendingGameEnricher;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -96,7 +100,7 @@ public class SteamLibraryImporter {
                 });
                 // Index updated only after the commit, so a rolled-back app leaves no trace in it.
                 linkedPhase.index().remember(attachment);
-                counters.record(attachment.outcome());
+                counters.record(attachment);
             } catch (SteamIntegrationException e) {
                 throw e;
             } catch (RuntimeException e) {
@@ -107,6 +111,8 @@ public class SteamLibraryImporter {
             }
         }
 
+        // Background IGDB fill of the new placeholders; returns at once and never fails the sync.
+        pendingGameEnricher.enqueue(userId, counters.createdPendingIds);
         return counters.toDto();
     }
 
@@ -264,10 +270,14 @@ public class SteamLibraryImporter {
         int ignored;
         int skipped;
         int errored;
+        final List<Long> createdPendingIds = new ArrayList<>();
 
-        void record(Outcome outcome) {
-            switch (outcome) {
-                case CREATED_PENDING -> newPending++;
+        void record(Attachment attachment) {
+            switch (attachment.outcome()) {
+                case CREATED_PENDING -> {
+                    newPending++;
+                    createdPendingIds.add(attachment.gameId());
+                }
                 case LINKED_EXISTING -> linkedExisting++;
                 case SKIPPED -> skipped++;
             }

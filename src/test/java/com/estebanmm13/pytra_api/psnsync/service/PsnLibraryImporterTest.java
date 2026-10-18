@@ -8,6 +8,7 @@ import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.ExternalPlaytimeWriter;
+import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.psnsync.client.PsnPlayedGamesResult;
 import com.estebanmm13.pytra_api.psnsync.client.PsnPlayedTitle;
 import com.estebanmm13.pytra_api.psnsync.dto.PsnSyncResultDto;
@@ -52,6 +53,7 @@ class PsnLibraryImporterTest {
     private final GamePlatformLinkRepository gamePlatformLinkRepository = mock(GamePlatformLinkRepository.class);
     private final PsnIgnoredTitleRepository psnIgnoredTitleRepository = mock(PsnIgnoredTitleRepository.class);
     private final ExternalPlaytimeWriter externalPlaytimeWriter = mock(ExternalPlaytimeWriter.class);
+    private final PendingGameEnricher pendingGameEnricher = mock(PendingGameEnricher.class);
     private final List<Game> userGames = new ArrayList<>();
     private final List<GamePlatformLink> savedLinks = new ArrayList<>();
     private final AtomicLong ids = new AtomicLong(100);
@@ -62,7 +64,8 @@ class PsnLibraryImporterTest {
     @BeforeEach
     void setUp() {
         importer = new PsnLibraryImporter(psnLinkRepository, gameRepository, gamePlatformLinkRepository,
-                psnIgnoredTitleRepository, externalPlaytimeWriter, mock(PlatformTransactionManager.class));
+                psnIgnoredTitleRepository, externalPlaytimeWriter, pendingGameEnricher,
+                mock(PlatformTransactionManager.class));
         when(psnLinkRepository.markSynced(eq(USER_ID), eq(ACCOUNT_ID), any())).thenReturn(1);
         when(psnLinkRepository.isLinkedTo(USER_ID, ACCOUNT_ID)).thenReturn(true);
         when(gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(USER_ID, PsnPlatforms.ALL))
@@ -113,6 +116,22 @@ class PsnLibraryImporterTest {
         assertThat(savedLinks).extracting(GamePlatformLink::getPlatform)
                 .containsExactly(ExternalPlatform.PSN_PS5, ExternalPlatform.PSN_PS4);
         assertThat(savedLinks).extracting(link -> link.getGame().getId()).containsOnly(101L);
+        verify(pendingGameEnricher).enqueue(USER_ID, List.of(101L));
+    }
+
+    @Test
+    void storeNameWithTrademarksAndConsoleSuffixIsLinkedToTheSameGame() {
+        existingGame(10L, "Marvel's Spider-Man", "https://example.com/mine.png");
+        existingGame(11L, "Grand Theft Auto V", "https://example.com/gta.png");
+
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("CUSA02299_00", "Marvel’s Spider-Man™", ExternalPlatform.PSN_PS4, 60),
+                title("PPSA03420_00", "Grand Theft Auto V (PlayStation®5)", ExternalPlatform.PSN_PS5, 90)));
+
+        assertThat(result.newGamesPending()).isZero();
+        assertThat(result.linkedExisting()).isEqualTo(2);
+        verify(gameRepository, never()).save(any(Game.class));
+        verify(pendingGameEnricher).enqueue(USER_ID, List.of());
     }
 
     @Test

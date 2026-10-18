@@ -6,6 +6,7 @@ import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.ExternalPlaytimeWriter;
+import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGame;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGamesResult;
 import com.estebanmm13.pytra_api.steamsync.repository.SteamIgnoredAppRepository;
@@ -45,7 +46,8 @@ class SteamLibraryImporterTest {
     @BeforeEach
     void setUp() {
         importer = new SteamLibraryImporter(steamLinkRepository, gameRepository, gamePlatformLinkRepository,
-                steamIgnoredAppRepository, mock(ExternalPlaytimeWriter.class), mock(PlatformTransactionManager.class));
+                steamIgnoredAppRepository, mock(ExternalPlaytimeWriter.class), mock(PendingGameEnricher.class),
+                mock(PlatformTransactionManager.class));
         when(steamLinkRepository.markSynced(eq(USER_ID), eq(STEAM_ID), any())).thenReturn(1);
         when(steamLinkRepository.isLinkedTo(USER_ID, STEAM_ID)).thenReturn(true);
         when(gamePlatformLinkRepository.findAllByUserIdAndPlatformWithGame(USER_ID, ExternalPlatform.STEAM))

@@ -67,6 +67,9 @@ app:
   igdb:
     client-id: ${TWITCH_CLIENT_ID:}
     client-secret: ${TWITCH_CLIENT_SECRET:}
+    # Background fill of the pending games Steam/PSN syncs create; only runs when IGDB is enabled.
+    pending-enrichment:
+      enabled: ${IGDB_PENDING_ENRICHMENT_ENABLED:true}
   # Abuse protection for the global platform catalog (POST /api/v1/platforms). Only real creations count;
   # create-if-missing hits on an existing entry are free. Window uses Spring duration syntax (1h, 30m, ...).
   platforms:

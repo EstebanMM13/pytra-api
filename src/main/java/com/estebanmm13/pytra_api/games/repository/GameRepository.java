@@ -2,8 +2,10 @@ package com.estebanmm13.pytra_api.games.repository;
 
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -22,7 +24,17 @@ public interface GameRepository extends JpaRepository<Game, Long> {
     boolean existsByUserIdAndNameIgnoreCaseAndIdNot(Long userId, String name, Long id);
     long countByUserId(Long userId);
     long countByUserIdAndReviewStatus(Long userId, ReviewStatus reviewStatus);
+    /** With saga and genres in the same query: the pending queues render both. */
+    @EntityGraph(attributePaths = {"saga", "genres"})
     List<Game> findAllByUserIdAndReviewStatus(Long userId, ReviewStatus reviewStatus);
+
+    /**
+     * The game, row-locked until the transaction ends (SELECT ... FOR UPDATE), so a background write
+     * never interleaves with a concurrent edit of the same game.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT g FROM Game g WHERE g.id = :id AND g.userId = :userId")
+    Optional<Game> findForUpdateByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
     @Query("SELECT g.id FROM Game g WHERE g.userId = :userId AND g.reviewStatus = :reviewStatus")
     List<Long> findIdsByUserIdAndReviewStatus(@Param("userId") Long userId, @Param("reviewStatus") ReviewStatus reviewStatus);
