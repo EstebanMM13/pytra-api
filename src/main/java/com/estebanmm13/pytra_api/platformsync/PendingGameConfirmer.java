@@ -47,6 +47,10 @@ public class PendingGameConfirmer {
 
         boolean wasPending = game.getReviewStatus() == ReviewStatus.PENDING_REVIEW;
 
+        // Confirm keeps the current cover when the client sends none.
+        String requestCover = gameRequestDto.getCoverImageUrl();
+        game.forgetEditedImportedValues(gameRequestDto.getName(),
+                requestCover == null || requestCover.isBlank() ? game.getCoverImageUrl() : requestCover);
         game.setName(gameRequestDto.getName());
         game.setDeveloper(gameRequestDto.getDeveloper());
         game.setPublisher(gameRequestDto.getPublisher());

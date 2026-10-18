@@ -100,6 +100,7 @@ public class GameServiceImpl implements GameService {
         Set<Genre> genres = resolveGenres(gameRequestDto.getGenreIds());
 
         Game game = gameOptional.get();
+        game.forgetEditedImportedValues(gameRequestDto.getName(), gameRequestDto.getCoverImageUrl());
         game.setName(gameRequestDto.getName());
         game.setDeveloper(gameRequestDto.getDeveloper());
         game.setPublisher(gameRequestDto.getPublisher());
