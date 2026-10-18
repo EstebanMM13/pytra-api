@@ -7,6 +7,11 @@ server:
   compression:
     enabled: true
     min-response-size: 1KB
+  # Sized for a small container: 30 request threads (default 200) is plenty for this traffic and
+  # caps thread-stack memory; more threads than pool connections would only queue on the pool anyway.
+  tomcat:
+    threads:
+      max: 30
 
 spring:
   application:
@@ -18,6 +23,13 @@ spring:
     username: ${POSTGRES_USER:pytra}
     password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    # Small pool for a small container and a shared Postgres (Hikari's default keeps 10 open).
+    # Hikari setters take milliseconds, so the timeouts are plain numbers, not Spring durations.
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      idle-timeout: 120000 # 2 min: release idle connections above minimum-idle
+      max-lifetime: 900000 # 15 min: recycle connections before any proxy/server idle cut
   jackson:
     deserialization:
       # Fail loudly (400) when a decimal is sent to an integer field instead of silently truncating it.
