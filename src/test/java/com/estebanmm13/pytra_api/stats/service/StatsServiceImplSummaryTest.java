@@ -4,6 +4,7 @@ import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeTotals;
+import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.games.repository.SagaRepository;
 import com.estebanmm13.pytra_api.stats.dto.StatsSummaryDto;
@@ -30,7 +31,9 @@ class StatsServiceImplSummaryTest {
 
     @Test
     void mapsEveryAggregateToItsField() {
-        when(gameRepository.countByUserId(USER_ID)).thenReturn(12L);
+        // 15 games, 3 of them still pending review: only the 12 confirmed ones are in the library.
+        when(gameRepository.countByUserId(USER_ID)).thenReturn(15L);
+        when(gameRepository.countByUserIdAndReviewStatus(USER_ID, ReviewStatus.CONFIRMED)).thenReturn(12L);
         when(sagaRepository.countByUserId(USER_ID)).thenReturn(3L);
         ExperienceTotals runs = mock(ExperienceTotals.class);
         when(runs.getExperienceCount()).thenReturn(20L);

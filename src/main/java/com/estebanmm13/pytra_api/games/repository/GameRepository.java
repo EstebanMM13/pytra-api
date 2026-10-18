@@ -69,15 +69,18 @@ public interface GameRepository extends JpaRepository<Game, Long> {
             + "FROM Game g WHERE g.userId = :userId")
     List<GameLabel> findLabelsByUserId(@Param("userId") Long userId);
 
-    /** Every game of the user with its saga, ordered by game id. */
+    /** Every game of the user in that review status with its saga, ordered by game id. */
     @Query("SELECT new com.estebanmm13.pytra_api.games.repository.GameSagaRow(g.id, s.id, s.name) "
-            + "FROM Game g LEFT JOIN g.saga s WHERE g.userId = :userId ORDER BY g.id")
-    List<GameSagaRow> findSagaRowsByUserId(@Param("userId") Long userId);
+            + "FROM Game g LEFT JOIN g.saga s WHERE g.userId = :userId AND g.reviewStatus = :reviewStatus ORDER BY g.id")
+    List<GameSagaRow> findSagaRowsByUserIdAndReviewStatus(@Param("userId") Long userId,
+                                                          @Param("reviewStatus") ReviewStatus reviewStatus);
 
-    /** Every (game, genre) pair of the user, ordered by game id then genre id. */
+    /** Every (game, genre) pair of the user's games in that review status, ordered by game id then genre id. */
     @Query("SELECT new com.estebanmm13.pytra_api.games.repository.GameGenreRow(g.id, ge.id, ge.name) "
-            + "FROM Game g JOIN g.genres ge WHERE g.userId = :userId ORDER BY g.id, ge.id")
-    List<GameGenreRow> findGenreRowsByUserId(@Param("userId") Long userId);
+            + "FROM Game g JOIN g.genres ge WHERE g.userId = :userId AND g.reviewStatus = :reviewStatus "
+            + "ORDER BY g.id, ge.id")
+    List<GameGenreRow> findGenreRowsByUserIdAndReviewStatus(@Param("userId") Long userId,
+                                                            @Param("reviewStatus") ReviewStatus reviewStatus);
 
     @Query("SELECT DISTINCT g FROM Game g LEFT JOIN FETCH g.saga LEFT JOIN FETCH g.genres WHERE g.userId = :userId ORDER BY g.id")
     List<Game> findAllByUserIdWithSagaAndGenres(@Param("userId") Long userId);

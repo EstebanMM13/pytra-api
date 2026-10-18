@@ -10,6 +10,7 @@ import com.estebanmm13.pytra_api.experiences.repository.ExperienceTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeTotals;
 import com.estebanmm13.pytra_api.games.model.Game;
+import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GameGenreRow;
 import com.estebanmm13.pytra_api.games.repository.GameLabel;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
@@ -51,7 +52,8 @@ public class StatsServiceImpl implements StatsService {
         ExperienceTotals runs = experienceRepository.totalsByUserId(userId);
         OnlinePlaytimeTotals online = onlinePlaytimeRepository.totalsByUserId(userId);
         return new StatsSummaryDto(
-                gameRepository.countByUserId(userId),
+                // Pending games (imported, not reviewed yet) are not in the library.
+                gameRepository.countByUserIdAndReviewStatus(userId, ReviewStatus.CONFIRMED),
                 sagaRepository.countByUserId(userId),
                 longOf(runs.getExperienceCount()),
                 doubleOf(runs.getHoursSum()),
@@ -277,7 +279,7 @@ public class StatsServiceImpl implements StatsService {
     @Override
     public List<SagaStatDto> getBySaga(Long userId) {
         // Projection rows (game id + saga), in game id order: no entities nor genres are loaded.
-        List<GameSagaRow> games = gameRepository.findSagaRowsByUserId(userId);
+        List<GameSagaRow> games = gameRepository.findSagaRowsByUserIdAndReviewStatus(userId, ReviewStatus.CONFIRMED);
         Map<Long, Double> hoursByGameId = hoursByGameId(userId);
 
         Map<Long, Accumulator> bySaga = new LinkedHashMap<>();
@@ -301,7 +303,7 @@ public class StatsServiceImpl implements StatsService {
     @Override
     public List<GenreStatDto> getByGenre(Long userId) {
         // One projection row per (game, genre) pair, in game id order: no entities are loaded.
-        List<GameGenreRow> gameGenres = gameRepository.findGenreRowsByUserId(userId);
+        List<GameGenreRow> gameGenres = gameRepository.findGenreRowsByUserIdAndReviewStatus(userId, ReviewStatus.CONFIRMED);
         Map<Long, Double> hoursByGameId = hoursByGameId(userId);
 
         Map<Long, Accumulator> byGenre = new LinkedHashMap<>();

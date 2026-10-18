@@ -6,6 +6,7 @@ import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeTotals;
+import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GameGenreRow;
 import com.estebanmm13.pytra_api.games.repository.GameLabel;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
@@ -86,7 +87,7 @@ class StatsServiceImplOnlineTest {
 
     @Test
     void genreHoursIncludeOnlineHours() {
-        when(gameRepository.findGenreRowsByUserId(USER_ID)).thenReturn(List.of(new GameGenreRow(2L, 1L, "Shooter")));
+        when(gameRepository.findGenreRowsByUserIdAndReviewStatus(USER_ID, ReviewStatus.CONFIRMED)).thenReturn(List.of(new GameGenreRow(2L, 1L, "Shooter")));
         when(experienceRepository.sumHoursGroupedByGameId(USER_ID)).thenReturn(List.<Object[]>of(new Object[]{2L, 10.0}));
         when(onlinePlaytimeRepository.sumTotalHoursGroupedByGameId(USER_ID))
                 .thenReturn(List.<Object[]>of(new Object[]{2L, 90.5}));
@@ -115,7 +116,7 @@ class StatsServiceImplOnlineTest {
 
     @Test
     void sagaHoursIncludeOnlineHoursAndGroupGamesWithoutSaga() {
-        when(gameRepository.findSagaRowsByUserId(USER_ID)).thenReturn(List.of(
+        when(gameRepository.findSagaRowsByUserIdAndReviewStatus(USER_ID, ReviewStatus.CONFIRMED)).thenReturn(List.of(
                 new GameSagaRow(1L, 9L, "Souls"), new GameSagaRow(2L, null, null), new GameSagaRow(3L, 9L, "Souls")));
         when(experienceRepository.sumHoursGroupedByGameId(USER_ID)).thenReturn(List.<Object[]>of(
                 new Object[]{1L, 40.0}, new Object[]{3L, 60.0}));
