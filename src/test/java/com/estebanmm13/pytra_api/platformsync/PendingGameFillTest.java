@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class PendingGameFillTest {
 
+    private static final String PSN_ART = "https://image.api.playstation.com/cdn/psn-art.png";
     private static final String IGDB_COVER = "https://images.igdb.com/igdb/image/upload/t_cover_big/co1r77.jpg";
     private static final IgdbGameMetadataDto METADATA = new IgdbGameMetadataDto(1074, "Marvel's Spider-Man",
             "Insomniac Games", "Sony Interactive Entertainment", LocalDate.of(2018, 9, 7),
@@ -57,11 +58,53 @@ class PendingGameFillTest {
         assertThat(game.getCategory()).isEqualTo(GameCategory.ONLINE);
         assertThat(game.getCoverImageUrl()).isEqualTo("https://image.api.playstation.com/cdn/psn-art.png");
         assertThat(game.getGenres()).containsExactly(mine);
-        assertThat(PendingGameFill.hasEmptyFields(game)).isFalse();
     }
 
     @Test
-    void importedCoverIsKeptWhileTheOtherEmptyFieldsAreFilled() {
+    void untouchedImportedCoverIsReplacedByTheIgdbPortraitCover() {
+        Game game = pending(PSN_ART);
+        game.setImportedCoverUrl(PSN_ART);
+
+        assertThat(PendingGameFill.fillEmptyFields(game, METADATA, null, List.of())).isTrue();
+
+        assertThat(game.getCoverImageUrl()).isEqualTo(IGDB_COVER);
+    }
+
+    @Test
+    void coverTheUserChangedIsKept() {
+        Game game = pending("https://example.com/my-cover.png");
+        game.setImportedCoverUrl(PSN_ART);
+
+        PendingGameFill.fillEmptyFields(game, METADATA, null, List.of());
+
+        assertThat(game.getCoverImageUrl()).isEqualTo("https://example.com/my-cover.png");
+    }
+
+    @Test
+    void untouchedImportedNameIsReplacedByTheIgdbName() {
+        Game game = pending(null);
+        game.setName("Marvel’s Spider-Man™");
+        game.setImportedName("Marvel’s Spider-Man™");
+
+        assertThat(PendingGameFill.importedNameToReplace(game, METADATA)).isEqualTo("Marvel's Spider-Man");
+    }
+
+    @Test
+    void nameTheUserEditedOrAGameCreatedByHandIsKept() {
+        Game edited = pending(null);
+        edited.setName("Spider-Man (my copy)");
+        edited.setImportedName("Marvel’s Spider-Man™");
+        Game byHand = pending(null);
+        Game sameName = pending(null);
+        sameName.setImportedName("Marvel's Spider-Man");
+
+        assertThat(PendingGameFill.importedNameToReplace(edited, METADATA)).isNull();
+        assertThat(PendingGameFill.importedNameToReplace(byHand, METADATA)).isNull();
+        assertThat(PendingGameFill.importedNameToReplace(sameName, METADATA)).isNull();
+    }
+
+    @Test
+    void coverWithoutImportRecordIsKeptWhileTheOtherEmptyFieldsAreFilled() {
         Game game = pending("https://image.api.playstation.com/cdn/psn-art.png");
 
         assertThat(PendingGameFill.fillEmptyFields(game, METADATA, GameCategory.HYBRID, List.of())).isTrue();

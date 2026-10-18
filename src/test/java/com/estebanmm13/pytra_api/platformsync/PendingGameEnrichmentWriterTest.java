@@ -95,6 +95,73 @@ class PendingGameEnrichmentWriterTest {
         assertThat(renamed.getDeveloper()).isNull();
     }
 
+    @Test
+    void applyReplacesAnUntouchedImportedNameAndCover() {
+        String psnArt = "https://image.api.playstation.com/cdn/psn-art.png";
+        Game game = imported(5L, "Marvel’s Spider-Man™", psnArt);
+        when(gameRepository.findForUpdateByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(game));
+
+        assertThat(writer.apply(USER_ID, 5L, spiderMan, List.of())).isTrue();
+
+        assertThat(game.getName()).isEqualTo("Marvel's Spider-Man");
+        assertThat(game.getCoverImageUrl()).isEqualTo(spiderMan.metadata().coverImageUrl());
+        assertThat(game.getIgdbLookupAt()).isNotNull();
+        // Later syncs find the renamed game by the same key as the store name.
+        assertThat(ImportedGameNames.nameKey(game.getName()))
+                .isEqualTo(ImportedGameNames.nameKey("Marvel’s Spider-Man™"));
+    }
+
+    @Test
+    void applyKeepsANameAndCoverTheUserEdited() {
+        Game game = imported(5L, "Marvel’s Spider-Man™", "https://image.api.playstation.com/cdn/psn-art.png");
+        game.setName("MARVEL'S SPIDER-MAN");
+        game.setCoverImageUrl("https://example.com/mine.png");
+        when(gameRepository.findForUpdateByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(game));
+
+        writer.apply(USER_ID, 5L, spiderMan, List.of());
+
+        assertThat(game.getName()).isEqualTo("MARVEL'S SPIDER-MAN");
+        assertThat(game.getCoverImageUrl()).isEqualTo("https://example.com/mine.png");
+        assertThat(game.getDeveloper()).isEqualTo("Insomniac Games");
+    }
+
+    @Test
+    void applySkipsTheRenameWhenAnotherGameHasTheNameButFillsTheRest() {
+        Game game = imported(5L, "Marvel’s Spider-Man™", null);
+        when(gameRepository.findForUpdateByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(game));
+        when(gameRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(USER_ID, "Marvel's Spider-Man", 5L)).thenReturn(true);
+
+        assertThat(writer.apply(USER_ID, 5L, spiderMan, List.of())).isTrue();
+
+        assertThat(game.getName()).isEqualTo("Marvel’s Spider-Man™");
+        assertThat(game.getDeveloper()).isEqualTo("Insomniac Games");
+        assertThat(game.getCoverImageUrl()).isEqualTo(spiderMan.metadata().coverImageUrl());
+    }
+
+    @Test
+    void gamesAlreadyLookedUpAreNotLookedUpAgain() {
+        Game game = pending(5L, "A");
+        game.setIgdbLookupAt(java.time.LocalDateTime.now());
+        when(gameRepository.findByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(game));
+
+        assertThat(writer.findLookups(USER_ID, List.of(5L))).isEmpty();
+    }
+
+    @Test
+    void markingNothingDoesNotTouchTheDatabase() {
+        writer.markLookedUp(USER_ID, List.of());
+
+        org.mockito.Mockito.verifyNoInteractions(gameRepository);
+    }
+
+    private static Game imported(Long id, String name, String cover) {
+        Game game = pending(id, name);
+        game.setImportedName(name);
+        game.setCoverImageUrl(cover);
+        game.setImportedCoverUrl(cover);
+        return game;
+    }
+
     private static Game pending(Long id, String name) {
         return Game.builder().id(id).userId(USER_ID).name(name).reviewStatus(ReviewStatus.PENDING_REVIEW)
                 .genres(new HashSet<>()).build();

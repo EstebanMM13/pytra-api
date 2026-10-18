@@ -6,10 +6,13 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,6 +35,16 @@ public interface GameRepository extends JpaRepository<Game, Long> {
      * The game, row-locked until the transaction ends (SELECT ... FOR UPDATE), so a background write
      * never interleaves with a concurrent edit of the same game.
      */
+    /** Pending games IGDB was never asked about, oldest first. */
+    @Query("SELECT g.id FROM Game g WHERE g.userId = :userId AND g.reviewStatus = :reviewStatus "
+            + "AND g.igdbLookupAt IS NULL ORDER BY g.id")
+    List<Long> findIdsWithoutIgdbLookup(@Param("userId") Long userId, @Param("reviewStatus") ReviewStatus reviewStatus);
+
+    /** Bulk stamp (does not touch updated_at): IGDB was asked about these games. */
+    @Modifying
+    @Query("UPDATE Game g SET g.igdbLookupAt = :at WHERE g.userId = :userId AND g.id IN :ids")
+    int markIgdbLookup(@Param("userId") Long userId, @Param("ids") Collection<Long> ids, @Param("at") LocalDateTime at);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT g FROM Game g WHERE g.id = :id AND g.userId = :userId")
     Optional<Game> findForUpdateByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);

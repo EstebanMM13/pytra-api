@@ -116,7 +116,7 @@ class PsnLibraryImporterTest {
         assertThat(savedLinks).extracting(GamePlatformLink::getPlatform)
                 .containsExactly(ExternalPlatform.PSN_PS5, ExternalPlatform.PSN_PS4);
         assertThat(savedLinks).extracting(link -> link.getGame().getId()).containsOnly(101L);
-        verify(pendingGameEnricher).enqueue(USER_ID, List.of(101L));
+        verify(pendingGameEnricher).enqueue(USER_ID);
     }
 
     @Test
@@ -131,7 +131,32 @@ class PsnLibraryImporterTest {
         assertThat(result.newGamesPending()).isZero();
         assertThat(result.linkedExisting()).isEqualTo(2);
         verify(gameRepository, never()).save(any(Game.class));
-        verify(pendingGameEnricher).enqueue(USER_ID, List.of());
+        verify(pendingGameEnricher).enqueue(USER_ID);
+    }
+
+    @Test
+    void enrichmentIsQueuedEvenWhenTheImportStopsHalfway() {
+        when(psnLinkRepository.isLinkedTo(USER_ID, ACCOUNT_ID)).thenReturn(true, false);
+
+        assertThatThrownBy(() -> importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("CUSA00001_00", "Bloodborne", ExternalPlatform.PSN_PS4, 60),
+                title("CUSA00002_00", "Dreams", ExternalPlatform.PSN_PS4, 60))))
+                .isInstanceOf(PsnIntegrationException.class);
+
+        assertThat(createdGames).hasSize(1);
+        verify(pendingGameEnricher).enqueue(USER_ID);
+    }
+
+    @Test
+    void aNameWithoutKeyNeverLinksToAnotherGame() {
+        existingGame(10L, "™", null);
+
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID,
+                library(title("CUSA00003_00", "®", ExternalPlatform.PSN_PS4, 60)));
+
+        assertThat(result.linkedExisting()).isZero();
+        assertThat(result.newGamesPending()).isEqualTo(1);
+        assertThat(savedLinks).extracting(link -> link.getGame().getId()).doesNotContain(10L);
     }
 
     @Test

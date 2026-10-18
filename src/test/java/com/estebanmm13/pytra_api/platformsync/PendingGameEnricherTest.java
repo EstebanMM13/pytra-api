@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -50,6 +51,7 @@ class PendingGameEnricherTest {
     void setUp() {
         when(igdbClient.isEnabled()).thenReturn(true);
         when(writer.findAllGenres()).thenReturn(genres);
+        when(writer.findGamesWithoutLookup(USER_ID)).thenReturn(List.of(5L));
         enricher = enricher(true);
     }
 
@@ -61,9 +63,11 @@ class PendingGameEnricherTest {
         when(igdbClient.searchCandidates("Grand Theft Auto V", PS5, PendingGameEnricher.SEARCH_LIMIT))
                 .thenReturn(List.of(gta));
 
-        enricher.enqueue(USER_ID, List.of(5L));
+        enricher.enqueue(USER_ID);
 
         verify(writer).apply(USER_ID, 5L, gta, genres);
+        // apply() stamps the lookup itself; nothing else to mark.
+        verify(writer).markLookedUp(USER_ID, List.of());
     }
 
     @Test
@@ -72,35 +76,91 @@ class PendingGameEnricherTest {
         when(igdbClient.searchCandidates(anyString(), anySet(), anyInt()))
                 .thenReturn(List.of(candidate(1, "DOOM"), candidate(2, "Doom")));
 
-        enricher.enqueue(USER_ID, List.of(5L));
+        enricher.enqueue(USER_ID);
 
         verify(writer, never()).apply(anyLong(), anyLong(), any(), anyList());
+        // Asked once: no confident match is still an answer, so no later sync asks again.
+        verify(writer).markLookedUp(USER_ID, List.of(5L));
     }
 
     @Test
     void disabledIgdbOrToggleSkipsSilently() {
         when(igdbClient.isEnabled()).thenReturn(false);
-        enricher.enqueue(USER_ID, List.of(5L));
+        enricher.enqueue(USER_ID);
 
         when(igdbClient.isEnabled()).thenReturn(true);
-        enricher(false).enqueue(USER_ID, List.of(5L));
+        enricher(false).enqueue(USER_ID);
 
         verifyNoInteractions(writer);
         verify(igdbClient, never()).searchCandidates(anyString(), anySet(), anyInt());
     }
 
     @Test
-    void nothingCreatedQueuesNothing() {
-        enricher.enqueue(USER_ID, List.of());
+    void gamesWithNothingToLookUpAreMarkedWithoutCallingIgdb() {
+        when(writer.findGamesWithoutLookup(USER_ID)).thenReturn(List.of(5L, 6L));
+        when(writer.findLookups(USER_ID, List.of(5L, 6L))).thenReturn(List.of());
 
-        verifyNoInteractions(writer);
+        enricher.enqueue(USER_ID);
+
+        verify(igdbClient, never()).searchCandidates(anyString(), anySet(), anyInt());
+        verify(writer).markLookedUp(eq(USER_ID), argThat(ids -> Set.copyOf(ids).equals(Set.of(5L, 6L))));
+    }
+
+    @Test
+    void oneRunPerUserWaitsInTheQueue() {
+        List<Runnable> queued = new ArrayList<>();
+        ExecutorService holding = new InlineExecutor() {
+            @Override
+            public void execute(Runnable command) {
+                queued.add(command);
+            }
+        };
+        PendingGameEnricher deferred = new PendingGameEnricher(igdbClient, writer, true, holding, sleeps::add);
+
+        deferred.enqueue(USER_ID);
+        deferred.enqueue(USER_ID);
+        deferred.enqueue(2L);
+        assertThat(queued).hasSize(2);
+
+        queued.getFirst().run();
+        deferred.enqueue(USER_ID);
+        assertThat(queued).hasSize(3);
+    }
+
+    @Test
+    void runsAreCappedAndTheRestWaitsForTheNextSync() {
+        List<Long> ids = LongStream.rangeClosed(1, 250).boxed().toList();
+        when(writer.findGamesWithoutLookup(USER_ID)).thenReturn(ids);
+
+        enricher.enqueue(USER_ID);
+
+        verify(writer, times(PendingGameEnricher.MAX_GAMES_PER_RUN / PendingGameEnricher.BATCH_SIZE))
+                .findLookups(eq(USER_ID), anyList());
+        verify(writer, never()).findLookups(USER_ID, ids.subList(200, 220));
+    }
+
+    @Test
+    void stopsBetweenBatchesOnceTheWorkerIsShutDown() {
+        List<Long> ids = LongStream.rangeClosed(1, 45).boxed().toList();
+        when(writer.findGamesWithoutLookup(USER_ID)).thenReturn(ids);
+        InlineExecutor executor = new InlineExecutor();
+        PendingGameEnricher stopping = new PendingGameEnricher(igdbClient, writer, true, executor, sleeps::add);
+        when(writer.findLookups(USER_ID, ids.subList(0, 20))).thenAnswer(inv -> {
+            executor.shutdown();
+            return List.of();
+        });
+
+        stopping.run(USER_ID);
+
+        verify(writer).findLookups(eq(USER_ID), anyList());
     }
 
     @Test
     void gamesAreProcessedInBatches() {
         List<Long> ids = LongStream.rangeClosed(1, 45).boxed().toList();
+        when(writer.findGamesWithoutLookup(USER_ID)).thenReturn(ids);
 
-        enricher.enqueue(USER_ID, ids);
+        enricher.enqueue(USER_ID);
 
         verify(writer).findLookups(USER_ID, ids.subList(0, 20));
         verify(writer).findLookups(USER_ID, ids.subList(20, 40));
@@ -113,7 +173,7 @@ class PendingGameEnricherTest {
                 new Lookup(1L, "A", PS5), new Lookup(2L, "B", PS5), new Lookup(3L, "C", PS5)));
         when(igdbClient.searchCandidates(anyString(), anySet(), anyInt())).thenReturn(List.of());
 
-        enricher.enqueue(USER_ID, List.of(1L, 2L, 3L));
+        enricher.enqueue(USER_ID);
 
         verify(igdbClient, times(3)).searchCandidates(anyString(), anySet(), anyInt());
         // No wait before the first request; the next two wait for (almost) the whole spacing.
@@ -123,17 +183,20 @@ class PendingGameEnricherTest {
 
     @Test
     void igdbFailuresAreLoggedAndTheRunStopsAfterSeveralInARow() {
+        when(writer.findGamesWithoutLookup(USER_ID)).thenReturn(List.of(1L, 2L, 3L, 4L));
         when(writer.findLookups(eq(USER_ID), anyList())).thenReturn(List.of(
                 new Lookup(1L, "A", PS5), new Lookup(2L, "B", PS5), new Lookup(3L, "C", PS5),
                 new Lookup(4L, "D", PS5)));
         when(igdbClient.searchCandidates(anyString(), anySet(), anyInt()))
                 .thenThrow(IgdbIntegrationException.unavailable());
 
-        assertThatCode(() -> enricher.enqueue(USER_ID, List.of(1L, 2L, 3L, 4L))).doesNotThrowAnyException();
+        assertThatCode(() -> enricher.enqueue(USER_ID)).doesNotThrowAnyException();
 
         verify(igdbClient, times(PendingGameEnricher.MAX_CONSECUTIVE_FAILURES))
                 .searchCandidates(anyString(), anySet(), anyInt());
         verify(writer, never()).apply(anyLong(), anyLong(), any(), anyList());
+        // Failed lookups stay unmarked, so the next sync retries them.
+        verify(writer).markLookedUp(USER_ID, List.of());
     }
 
     @Test
@@ -146,7 +209,7 @@ class PendingGameEnricherTest {
         when(igdbClient.searchCandidates(eq("B"), anySet(), anyInt())).thenReturn(List.of(b));
         when(writer.apply(USER_ID, 1L, a, genres)).thenThrow(new IllegalStateException("db"));
 
-        enricher.enqueue(USER_ID, List.of(1L, 2L));
+        enricher.enqueue(USER_ID);
 
         verify(writer).apply(USER_ID, 2L, b, genres);
     }
@@ -161,7 +224,8 @@ class PendingGameEnricherTest {
         };
         PendingGameEnricher full = new PendingGameEnricher(igdbClient, writer, true, rejecting, sleeps::add);
 
-        assertThatCode(() -> full.enqueue(USER_ID, List.of(1L))).doesNotThrowAnyException();
+        assertThatCode(() -> full.enqueue(USER_ID)).doesNotThrowAnyException();
+        assertThatCode(() -> full.enqueue(USER_ID)).doesNotThrowAnyException();
     }
 
     private PendingGameEnricher enricher(boolean enabled) {

@@ -86,36 +86,41 @@ public class PsnLibraryImporter {
             return PsnSyncResultDto.privateProfile();
         }
 
-        Counters counters = new Counters();
-        counters.scanned = library.titles().size();
+        try {
+            Counters counters = new Counters();
+            counters.scanned = library.titles().size();
 
-        LinkedPhaseResult linkedPhase = transactionTemplate.execute(
-                status -> updateLinkedTitles(userId, accountId, library.titles(), counters));
+            LinkedPhaseResult linkedPhase = transactionTemplate.execute(
+                    status -> updateLinkedTitles(userId, accountId, library.titles(), counters));
 
-        for (PsnPlayedTitle title : linkedPhase.unlinkedTitles()) {
-            try {
-                Attachment attachment = transactionTemplate.execute(status -> {
-                    // Re-checked per title: if the account was unlinked/switched mid-import, stop
-                    // instead of attaching the old library to the new link.
-                    requireStillLinked(userId, accountId);
-                    return attachOrCreate(userId, title, linkedPhase.index());
-                });
-                // Index updated only after the commit, so a rolled-back title leaves no trace in it.
-                linkedPhase.index().remember(attachment);
-                counters.record(attachment);
-            } catch (PsnIntegrationException | SteamIntegrationException e) {
-                throw e;
-            } catch (RuntimeException e) {
-                counters.errored++;
-                // Class name only: driver messages can echo the offending values.
-                log.warn("PSN import of title {} for userId {} failed: {}",
-                        title.titleId(), userId, e.getClass().getSimpleName());
+            for (PsnPlayedTitle title : linkedPhase.unlinkedTitles()) {
+                try {
+                    Attachment attachment = transactionTemplate.execute(status -> {
+                        // Re-checked per title: if the account was unlinked/switched mid-import, stop
+                        // instead of attaching the old library to the new link.
+                        requireStillLinked(userId, accountId);
+                        return attachOrCreate(userId, title, linkedPhase.index());
+                    });
+                    // Index updated only after the commit, so a rolled-back title leaves no trace in it.
+                    linkedPhase.index().remember(attachment);
+                    counters.record(attachment.outcome());
+                } catch (PsnIntegrationException | SteamIntegrationException e) {
+                    throw e;
+                } catch (RuntimeException e) {
+                    counters.errored++;
+                    // Class name only: driver messages can echo the offending values.
+                    log.warn("PSN import of title {} for userId {} failed: {}",
+                            title.titleId(), userId, e.getClass().getSimpleName());
+                }
             }
-        }
 
-        // Background IGDB fill of the new placeholders; returns at once and never fails the sync.
-        pendingGameEnricher.enqueue(userId, counters.createdPendingIds);
-        return counters.toDto();
+            return counters.toDto();
+        } finally {
+            // Background IGDB fill of the user's pending games not looked up yet (the ones just created,
+            // and any an earlier run missed). Also after a failed import: what was created stays.
+            // Returns at once and never throws.
+            pendingGameEnricher.enqueue(userId);
+        }
     }
 
     // ---- Phase 1: titles that already have a link ------------------------------------------
@@ -166,7 +171,9 @@ public class PsnLibraryImporter {
     private NameIndex buildNameIndex(Long userId, List<GamePlatformLink> psnLinks) {
         Map<String, Long> gameIdByName = new HashMap<>();
         for (Game game : gameRepository.findAllByUserId(userId)) {
-            gameIdByName.putIfAbsent(nameKey(game.getName()), game.getId());
+            String key = nameKey(game.getName());
+            // A name that is only marks/suffix has no key: it must never attract another title.
+            if (!key.isEmpty()) gameIdByName.putIfAbsent(key, game.getId());
         }
         Map<ExternalPlatform, Set<Long>> linkedGameIds = new EnumMap<>(ExternalPlatform.class);
         for (GamePlatformLink link : psnLinks) {
@@ -182,7 +189,7 @@ public class PsnLibraryImporter {
         String key = nameKey(name);
         LocalDateTime now = LocalDateTime.now();
 
-        Long existingGameId = index.gameIdByName().get(key);
+        Long existingGameId = key.isEmpty() ? null : index.gameIdByName().get(key);
         if (existingGameId != null) {
             if (index.isLinked(title.platform(), existingGameId)) {
                 // Another title of the same console already owns that game (regional versions).
@@ -202,12 +209,16 @@ public class PsnLibraryImporter {
             return new Attachment(Outcome.LINKED_EXISTING, existingGameId, key, title.platform());
         }
 
+        String cover = coverUrl(title);
         Game game = gameRepository.save(Game.builder()
                 .userId(userId)
                 .name(name)
                 .category(null)
                 .reviewStatus(ReviewStatus.PENDING_REVIEW)
-                .coverImageUrl(coverUrl(title))
+                .coverImageUrl(cover)
+                // Remembered so the IGDB enrichment only replaces them while the user has not edited them.
+                .importedName(name)
+                .importedCoverUrl(cover)
                 .genres(new HashSet<>())
                 .build());
         gamePlatformLinkRepository.save(newLink(userId, game, title, now));
@@ -250,7 +261,7 @@ public class PsnLibraryImporter {
 
         void remember(Attachment attachment) {
             if (attachment.gameId() == null) return;
-            gameIdByName.putIfAbsent(attachment.nameKey(), attachment.gameId());
+            if (!attachment.nameKey().isEmpty()) gameIdByName.putIfAbsent(attachment.nameKey(), attachment.gameId());
             linkedGameIds.computeIfAbsent(attachment.platform(), p -> new HashSet<>()).add(attachment.gameId());
         }
     }
@@ -266,14 +277,10 @@ public class PsnLibraryImporter {
         int ignored;
         int skipped;
         int errored;
-        final List<Long> createdPendingIds = new ArrayList<>();
 
-        void record(Attachment attachment) {
-            switch (attachment.outcome()) {
-                case CREATED_PENDING -> {
-                    newPending++;
-                    createdPendingIds.add(attachment.gameId());
-                }
+        void record(Outcome outcome) {
+            switch (outcome) {
+                case CREATED_PENDING -> newPending++;
                 case LINKED_EXISTING -> linkedExisting++;
                 case SKIPPED -> skipped++;
             }

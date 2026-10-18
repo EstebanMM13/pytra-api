@@ -9,8 +9,15 @@ import java.util.HashSet;
 import java.util.List;
 
 /**
- * Copies IGDB metadata onto a pending game, field by field, ONLY where the game has no value yet:
- * whatever the import or the user already set is never overwritten. Pure (mutates the given entity).
+ * Copies a confident IGDB match onto a pending game without ever overwriting user data. Pure (mutates
+ * the given entity).
+ *
+ * <ul>
+ *   <li>Developer, publisher, release date, category and genres: filled only when empty.</li>
+ *   <li>Cover: filled when empty, or replaced when it is still the platform image the import set
+ *       ({@link Game#getImportedCoverUrl()}); a cover the user set is kept.</li>
+ *   <li>Name: see {@link #importedNameToReplace}; the caller checks the unique name index first.</li>
+ * </ul>
  */
 public final class PendingGameFill {
 
@@ -23,7 +30,7 @@ public final class PendingGameFill {
     /**
      * @param category suggested category, may be null
      * @param genres   existing genres matching IGDB's, may be empty
-     * @return whether any field was filled
+     * @return whether any field was set
      */
     public static boolean fillEmptyFields(Game game, IgdbGameMetadataDto metadata, GameCategory category,
                                           List<Genre> genres) {
@@ -45,7 +52,8 @@ public final class PendingGameFill {
             changed = true;
         }
         String cover = metadata.coverImageUrl();
-        if (isBlank(game.getCoverImageUrl()) && cover != null && cover.length() <= MAX_COVER_URL_LENGTH) {
+        if (cover != null && cover.length() <= MAX_COVER_URL_LENGTH && !cover.equals(game.getCoverImageUrl())
+                && (isBlank(game.getCoverImageUrl()) || coverIsStillImported(game))) {
             game.setCoverImageUrl(cover);
             changed = true;
         }
@@ -56,10 +64,19 @@ public final class PendingGameFill {
         return changed;
     }
 
-    /** Whether the game has at least one field this fill could set. */
-    public static boolean hasEmptyFields(Game game) {
-        return isBlank(game.getDeveloper()) || isBlank(game.getPublisher()) || game.getReleaseDate() == null
-                || game.getCategory() == null || isBlank(game.getCoverImageUrl()) || game.getGenres().isEmpty();
+    /**
+     * IGDB's canonical name when it may replace the game's name: the game still has exactly the name the
+     * import stored (the user never edited it) and IGDB's differs. Null otherwise.
+     */
+    public static String importedNameToReplace(Game game, IgdbGameMetadataDto metadata) {
+        String igdbName = metadata.name();
+        if (igdbName == null || game.getImportedName() == null) return null;
+        if (!game.getImportedName().equals(game.getName()) || igdbName.equals(game.getName())) return null;
+        return igdbName;
+    }
+
+    private static boolean coverIsStillImported(Game game) {
+        return game.getImportedCoverUrl() != null && game.getImportedCoverUrl().equals(game.getCoverImageUrl());
     }
 
     private static boolean isBlank(String value) {

@@ -9,10 +9,13 @@ import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.games.repository.GenreRepository;
 import com.estebanmm13.pytra_api.metadata.dto.IgdbGameCandidateDto;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -20,6 +23,7 @@ import java.util.Set;
  * Database side of {@link PendingGameEnricher}: short transactions before and after the IGDB calls,
  * never one held across them.
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class PendingGameEnrichmentWriter {
@@ -32,17 +36,23 @@ public class PendingGameEnrichmentWriter {
     public record Lookup(Long gameId, String name, Set<Integer> igdbPlatformIds) {
     }
 
+    /** The user's pending games IGDB was never asked about (or whose lookup failed), oldest first. */
+    @Transactional(readOnly = true)
+    public List<Long> findGamesWithoutLookup(Long userId) {
+        return gameRepository.findIdsWithoutIgdbLookup(userId, ReviewStatus.PENDING_REVIEW);
+    }
+
     /**
-     * Lookups for the games that are still pending, have something left to fill and at least one link
-     * that maps to an IGDB platform. Games deleted, confirmed or fully filled meanwhile are left out.
+     * Lookups for the games that are still pending, not looked up yet and have at least one link that
+     * maps to an IGDB platform. The others are left out (the caller marks them, so they are not re-read
+     * on every sync).
      */
     @Transactional(readOnly = true)
     public List<Lookup> findLookups(Long userId, List<Long> gameIds) {
         List<Lookup> lookups = new ArrayList<>();
         for (Long gameId : gameIds) {
             Game game = gameRepository.findByIdAndUserId(gameId, userId).orElse(null);
-            if (game == null || game.getReviewStatus() != ReviewStatus.PENDING_REVIEW
-                    || !PendingGameFill.hasEmptyFields(game)) {
+            if (game == null || game.getReviewStatus() != ReviewStatus.PENDING_REVIEW || game.getIgdbLookupAt() != null) {
                 continue;
             }
             List<GamePlatformLink> links = gamePlatformLinkRepository.findAllByUserIdAndGameId(userId, gameId);
@@ -55,9 +65,20 @@ public class PendingGameEnrichmentWriter {
         return lookups;
     }
 
+    /** Records that IGDB was asked about these games (whatever the outcome), so no later sync asks again. */
+    @Transactional
+    public void markLookedUp(Long userId, Collection<Long> gameIds) {
+        if (!gameIds.isEmpty()) gameRepository.markIgdbLookup(userId, gameIds, LocalDateTime.now());
+    }
+
     /**
-     * Fills the empty fields of one game from its confident IGDB match. The row is locked and re-read
+     * Applies a confident IGDB match to one game (see {@link PendingGameFill}). The row is locked and re-read
      * first: a game confirmed, edited or deleted since {@link #findLookups} is respected as it is now.
+     *
+     * <p>The name is replaced only while it is still the imported one and no other game of the user has
+     * IGDB's name (unique index on user + lower(name)); otherwise the other fields are still applied. A
+     * confident match has the same {@link ImportedGameNames#nameKey name key} as the imported name, so later
+     * syncs still find the renamed game by name.
      *
      * @param genres every existing genre (loaded once per batch), to map IGDB's genre names onto
      * @return whether anything was written
@@ -66,16 +87,27 @@ public class PendingGameEnrichmentWriter {
     public boolean apply(Long userId, Long gameId, IgdbGameCandidateDto match, List<Genre> genres) {
         Game game = gameRepository.findForUpdateByIdAndUserId(gameId, userId).orElse(null);
         if (game == null || game.getReviewStatus() != ReviewStatus.PENDING_REVIEW) return false;
-        // Name re-checked: a pending game renamed meanwhile no longer matches what was looked up.
-        if (!ImportedGameNames.nameKey(game.getName()).equals(ImportedGameNames.nameKey(match.metadata().name()))) {
-            return false;
-        }
+        // Re-checked: a pending game renamed meanwhile no longer matches what was looked up.
+        String key = ImportedGameNames.nameKey(game.getName());
+        if (key.isEmpty() || !key.equals(ImportedGameNames.nameKey(match.metadata().name()))) return false;
 
         List<Genre> matched = IgdbGenreMatcher.match(match.metadata().genres(), genres).stream()
                 .map(genre -> genreRepository.getReferenceById(genre.getId()))
                 .toList();
-        return PendingGameFill.fillEmptyFields(game, match.metadata(),
+        boolean changed = PendingGameFill.fillEmptyFields(game, match.metadata(),
                 IgdbPendingMatch.suggestCategory(match.gameModeIds()), matched);
+
+        String newName = PendingGameFill.importedNameToReplace(game, match.metadata());
+        if (newName != null) {
+            if (gameRepository.existsByUserIdAndNameIgnoreCaseAndIdNot(userId, newName, gameId)) {
+                log.info("IGDB name of pending game {} of userId {} not applied: another game has it", gameId, userId);
+            } else {
+                game.setName(newName);
+                changed = true;
+            }
+        }
+        game.setIgdbLookupAt(LocalDateTime.now());
+        return changed;
     }
 
     @Transactional(readOnly = true)

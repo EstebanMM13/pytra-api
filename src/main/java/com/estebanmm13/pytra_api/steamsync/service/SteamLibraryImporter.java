@@ -84,36 +84,41 @@ public class SteamLibraryImporter {
             return SteamSyncResultDto.privateProfile();
         }
 
-        Counters counters = new Counters();
-        counters.scanned = library.games().size();
+        try {
+            Counters counters = new Counters();
+            counters.scanned = library.games().size();
 
-        LinkedPhaseResult linkedPhase = transactionTemplate.execute(
-                status -> updateLinkedApps(userId, steamId, library.games(), counters));
+            LinkedPhaseResult linkedPhase = transactionTemplate.execute(
+                    status -> updateLinkedApps(userId, steamId, library.games(), counters));
 
-        for (SteamOwnedGame app : linkedPhase.unlinkedApps()) {
-            try {
-                Attachment attachment = transactionTemplate.execute(status -> {
-                    // Re-checked per app: if the account was unlinked/switched mid-import, stop
-                    // instead of attaching the old library to the new link.
-                    requireStillLinked(userId, steamId);
-                    return attachOrCreate(userId, app, linkedPhase.index());
-                });
-                // Index updated only after the commit, so a rolled-back app leaves no trace in it.
-                linkedPhase.index().remember(attachment);
-                counters.record(attachment);
-            } catch (SteamIntegrationException e) {
-                throw e;
-            } catch (RuntimeException e) {
-                counters.errored++;
-                // Class name only: driver messages can echo the offending values.
-                log.warn("Steam import of appid {} for userId {} failed: {}",
-                        app.appId(), userId, e.getClass().getSimpleName());
+            for (SteamOwnedGame app : linkedPhase.unlinkedApps()) {
+                try {
+                    Attachment attachment = transactionTemplate.execute(status -> {
+                        // Re-checked per app: if the account was unlinked/switched mid-import, stop
+                        // instead of attaching the old library to the new link.
+                        requireStillLinked(userId, steamId);
+                        return attachOrCreate(userId, app, linkedPhase.index());
+                    });
+                    // Index updated only after the commit, so a rolled-back app leaves no trace in it.
+                    linkedPhase.index().remember(attachment);
+                    counters.record(attachment.outcome());
+                } catch (SteamIntegrationException e) {
+                    throw e;
+                } catch (RuntimeException e) {
+                    counters.errored++;
+                    // Class name only: driver messages can echo the offending values.
+                    log.warn("Steam import of appid {} for userId {} failed: {}",
+                            app.appId(), userId, e.getClass().getSimpleName());
+                }
             }
-        }
 
-        // Background IGDB fill of the new placeholders; returns at once and never fails the sync.
-        pendingGameEnricher.enqueue(userId, counters.createdPendingIds);
-        return counters.toDto();
+            return counters.toDto();
+        } finally {
+            // Background IGDB fill of the user's pending games not looked up yet (the ones just created,
+            // and any an earlier run missed). Also after a failed import: what was created stays.
+            // Returns at once and never throws.
+            pendingGameEnricher.enqueue(userId);
+        }
     }
 
     // ---- Phase 1: apps that already have a link -------------------------------------------
@@ -172,7 +177,9 @@ public class SteamLibraryImporter {
     private NameIndex buildNameIndex(Long userId, Iterable<GamePlatformLink> steamLinks) {
         Map<String, Long> gameIdByName = new HashMap<>();
         for (Game game : gameRepository.findAllByUserId(userId)) {
-            gameIdByName.putIfAbsent(nameKey(game.getName()), game.getId());
+            String key = nameKey(game.getName());
+            // A name that is only marks/suffix has no key: it must never attract another title.
+            if (!key.isEmpty()) gameIdByName.putIfAbsent(key, game.getId());
         }
         Set<Long> gameIdsWithSteamLink = new HashSet<>();
         for (GamePlatformLink link : steamLinks) {
@@ -189,7 +196,7 @@ public class SteamLibraryImporter {
         String key = nameKey(name);
         LocalDateTime now = LocalDateTime.now();
 
-        Long existingGameId = index.gameIdByName().get(key);
+        Long existingGameId = key.isEmpty() ? null : index.gameIdByName().get(key);
         if (existingGameId != null) {
             if (index.gameIdsWithSteamLink().contains(existingGameId)) {
                 // Another Steam app already owns that game (duplicate names, DLC/test apps).
@@ -222,6 +229,9 @@ public class SteamLibraryImporter {
                 .category(null)
                 .reviewStatus(ReviewStatus.PENDING_REVIEW)
                 .coverImageUrl(steamCoverUrl(appId))
+                // Remembered so the IGDB enrichment only replaces them while the user has not edited them.
+                .importedName(name)
+                .importedCoverUrl(steamCoverUrl(appId))
                 .genres(new HashSet<>())
                 .build());
         gamePlatformLinkRepository.save(GamePlatformLink.builder()
@@ -254,7 +264,7 @@ public class SteamLibraryImporter {
     private record NameIndex(Map<String, Long> gameIdByName, Set<Long> gameIdsWithSteamLink) {
         void remember(Attachment attachment) {
             if (attachment.gameId() == null) return;
-            gameIdByName.putIfAbsent(attachment.nameKey(), attachment.gameId());
+            if (!attachment.nameKey().isEmpty()) gameIdByName.putIfAbsent(attachment.nameKey(), attachment.gameId());
             gameIdsWithSteamLink.add(attachment.gameId());
         }
     }
@@ -270,14 +280,10 @@ public class SteamLibraryImporter {
         int ignored;
         int skipped;
         int errored;
-        final List<Long> createdPendingIds = new ArrayList<>();
 
-        void record(Attachment attachment) {
-            switch (attachment.outcome()) {
-                case CREATED_PENDING -> {
-                    newPending++;
-                    createdPendingIds.add(attachment.gameId());
-                }
+        void record(Outcome outcome) {
+            switch (outcome) {
+                case CREATED_PENDING -> newPending++;
                 case LINKED_EXISTING -> linkedExisting++;
                 case SKIPPED -> skipped++;
             }

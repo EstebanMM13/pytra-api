@@ -56,6 +56,15 @@ public class Game {
     )
     private Set<Genre> genres = new HashSet<>();
 
+    /** Name as a platform sync imported it; null for games created by hand. See V26. */
+    private String importedName;
+
+    /** Cover as a platform sync imported it; null for games created by hand. See V26. */
+    private String importedCoverUrl;
+
+    /** When IGDB was last asked about this pending game; null = never (the next sync queues it). */
+    private LocalDateTime igdbLookupAt;
+
     @UpdateTimestamp
     @Column(nullable = false)
     private LocalDateTime updatedAt;
