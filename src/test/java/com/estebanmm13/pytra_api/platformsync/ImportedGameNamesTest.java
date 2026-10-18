@@ -24,8 +24,8 @@ class ImportedGameNamesTest {
 
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
-            "Grand Theft Auto V (PlayStation®5)      | grand theft auto v",
-            "Grand Theft Auto V (PlayStation 4)      | grand theft auto v",
+            "Grand Theft Auto V (PlayStation®5)      | grand theft auto 5",
+            "Grand Theft Auto V (PlayStation 4)      | grand theft auto 5",
             "Hogwarts Legacy (PS5)                   | hogwarts legacy",
             "Hogwarts Legacy (ps4)                   | hogwarts legacy",
             "Ratchet & Clank (PS4 & PS5)             | ratchet & clank",
@@ -33,7 +33,7 @@ class ImportedGameNamesTest {
             "Tom Clancy’s Rainbow Six® Siege         | tom clancy's rainbow six siege",
             "“Bunny” Game                            | \"bunny\" game",
             "Ｆｉｆａ　２３                           | fifa 23",
-            "Final Fantasy Ⅻ                         | final fantasy xii",
+            "Final Fantasy Ⅻ                         | final fantasy 12",
     })
     void nameKeyNormalizesStoreNames(String storeName, String expectedKey) {
         assertThat(ImportedGameNames.nameKey(storeName)).isEqualTo(expectedKey);
@@ -61,6 +61,41 @@ class ImportedGameNamesTest {
     void markBeforePunctuationMatchesTheNameWithoutIt() {
         assertThat(ImportedGameNames.nameKey("Ghost of Tsushima™: Director's Cut"))
                 .isEqualTo(ImportedGameNames.nameKey("Ghost of Tsushima: Director's Cut"));
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "Hades II                  | Hades 2",
+            "Grand Theft Auto V        | Grand Theft Auto 5",
+            "Final Fantasy VII: Remake | Final Fantasy 7: Remake",
+            "FINAL FANTASY XVI         | final fantasy 16",
+            "Rocky-IV                  | rocky-4",
+            "Civilization vi           | Civilization 6",
+            "Dragon Quest XX           | Dragon Quest 20",
+            "Dragon Quest XI S         | Dragon Quest 11 S",
+    })
+    void romanNumeralTokensMatchTheirDigits(String roman, String arabic) {
+        assertThat(ImportedGameNames.nameKey(roman)).isEqualTo(ImportedGameNames.nameKey(arabic));
+    }
+
+    @Test
+    void onlyStandaloneNumeralsFromTwoToTwentyAreConverted() {
+        assertThat(ImportedGameNames.nameKey("I Am Bread")).isEqualTo("i am bread");
+        assertThat(ImportedGameNames.nameKey("Mega Man X")).isEqualTo("mega man x")
+                .isNotEqualTo(ImportedGameNames.nameKey("Mega Man 10"));
+        assertThat(ImportedGameNames.nameKey("DJ Hero MIX")).isEqualTo("dj hero mix");
+        assertThat(ImportedGameNames.nameKey("DIVX Player")).isEqualTo("divx player");
+        assertThat(ImportedGameNames.nameKey("Civil War")).isEqualTo("civil war");
+        assertThat(ImportedGameNames.nameKey("Vivid Knight")).isEqualTo("vivid knight");
+        assertThat(ImportedGameNames.nameKey("Ikaruga v2")).isEqualTo("ikaruga v2");
+        assertThat(ImportedGameNames.nameKey("Final Fantasy XXI")).isEqualTo("final fantasy xxi");
+        assertThat(ImportedGameNames.nameKey("Hades IIII")).isEqualTo("hades iiii");
+        assertThat(ImportedGameNames.nameKey("Grand Theft Auto IV")).isEqualTo("grand theft auto 4");
+    }
+
+    @Test
+    void cleanNameKeepsRomanNumerals() {
+        assertThat(ImportedGameNames.cleanName("Hades II")).isEqualTo("Hades II");
     }
 
     @Test

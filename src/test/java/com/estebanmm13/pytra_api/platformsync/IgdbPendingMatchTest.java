@@ -52,6 +52,14 @@ class IgdbPendingMatchTest {
     }
 
     @Test
+    void romanNumeralInTheIgdbNameMatchesDigitsInThePendingName() {
+        IgdbGameCandidateDto hades2 = candidate(1, "Hades II", 6);
+
+        assertThat(IgdbPendingMatch.select("Hades 2", Set.of(6), List.of(candidate(2, "Hades", 6), hades2)))
+                .contains(hades2);
+    }
+
+    @Test
     void sameNameOnAnotherPlatformIsNotAMatch() {
         assertThat(IgdbPendingMatch.select("Halo Infinite", PS4, List.of(candidate(1, "Halo Infinite", 6, 169))))
                 .isEmpty();

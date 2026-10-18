@@ -135,6 +135,17 @@ class PsnLibraryImporterTest {
     }
 
     @Test
+    void romanNumeralTitleLinksToTheGameTypedWithDigits() {
+        existingGame(10L, "Hades 2", "https://example.com/hades.png");
+
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID,
+                library(title("PPSA20000_00", "Hades II", ExternalPlatform.PSN_PS5, 30)));
+
+        assertThat(result.linkedExisting()).isEqualTo(1);
+        assertThat(result.newGamesPending()).isZero();
+    }
+
+    @Test
     void enrichmentIsQueuedEvenWhenTheImportStopsHalfway() {
         when(psnLinkRepository.isLinkedTo(USER_ID, ACCOUNT_ID)).thenReturn(true, false);
 

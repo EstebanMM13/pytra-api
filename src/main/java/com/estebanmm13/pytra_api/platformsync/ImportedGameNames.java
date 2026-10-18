@@ -1,7 +1,11 @@
 package com.estebanmm13.pytra_api.platformsync;
 
 import java.text.Normalizer;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /** Name handling shared by the platform importers when they match or create games. */
@@ -58,12 +62,42 @@ public final class ImportedGameNames {
     }
 
     /**
-     * Key two names match on: {@link #cleanName(String) the clean name}, lower case. So
-     * "Marvel’s Spider-Man™" finds a game typed as "Marvel's Spider-Man". Every step ignores case, so
-     * names equal under the unique index on (user_id, LOWER(name)) always share a key and a miss never
-     * collides with that index. Only compared in memory, never persisted.
+     * Key two names match on: {@link #cleanName(String) the clean name}, lower case, with standalone Roman
+     * numerals II..XX as digits. So "Marvel’s Spider-Man™" finds a game typed as "Marvel's Spider-Man" and
+     * "Hades II" finds "Hades 2". Every step ignores case, so names equal under the unique index on
+     * (user_id, LOWER(name)) always share a key and a miss never collides with that index. Only compared
+     * in memory, never persisted.
      */
     public static String nameKey(String name) {
-        return cleanName(name).toLowerCase(Locale.ROOT);
+        return romanToArabic(cleanName(name).toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Rewrites whole-token Roman numerals II..XX (lower case) as digits: "final fantasy vii: remake" becomes
+     * "final fantasy 7: remake". A token is delimited by anything that is not a letter or digit, so "mix",
+     * "civil" or "v2" are left alone. "i" and "x" are never converted: "I Am Bread" is not "1 Am Bread" and
+     * "Mega Man X" is not "Mega Man 10".
+     */
+    static String romanToArabic(String lowerCaseName) {
+        return ROMAN_TOKEN.matcher(lowerCaseName).replaceAll(match -> ROMAN_VALUES.get(match.group()));
+    }
+
+    private static final Map<String, String> ROMAN_VALUES = romanValues();
+    private static final Pattern ROMAN_TOKEN = Pattern.compile(
+            "(?<![\\p{L}\\p{N}])(?:" + String.join("|", ROMAN_VALUES.keySet()) + ")(?![\\p{L}\\p{N}])");
+
+    /** Canonical numerals 2..20 except "x", longest first so the alternation never stops at a prefix. */
+    private static Map<String, String> romanValues() {
+        String[] numerals = {"ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv",
+                "xv", "xvi", "xvii", "xviii", "xix", "xx"};
+        Map<String, Integer> byNumeral = new HashMap<>();
+        for (int i = 0; i < numerals.length; i++) {
+            if (!numerals[i].equals("x")) byNumeral.put(numerals[i], i + 2);
+        }
+        Map<String, String> values = new LinkedHashMap<>();
+        byNumeral.keySet().stream()
+                .sorted(Comparator.comparingInt(String::length).reversed().thenComparing(Comparator.naturalOrder()))
+                .forEach(numeral -> values.put(numeral, String.valueOf(byNumeral.get(numeral))));
+        return values;
     }
 }
