@@ -58,6 +58,16 @@ class ImportedGameNamesTest {
     }
 
     @Test
+    void placeholderNameIsTheCleanNameOrTheRawNameWhenNothingIsLeft() {
+        assertThat(ImportedGameNames.placeholderName(" Grand Theft Auto V (PlayStation®5) "))
+                .isEqualTo("Grand Theft Auto V");
+        assertThat(ImportedGameNames.placeholderName("™")).isEqualTo("™");
+        assertThat(ImportedGameNames.placeholderName(null)).isEqualTo("Unknown");
+        assertThat(ImportedGameNames.placeholderName("a".repeat(300)))
+                .hasSize(ImportedGameNames.MAX_NAME_LENGTH);
+    }
+
+    @Test
     void markBeforePunctuationMatchesTheNameWithoutIt() {
         assertThat(ImportedGameNames.nameKey("Ghost of Tsushima™: Director's Cut"))
                 .isEqualTo(ImportedGameNames.nameKey("Ghost of Tsushima: Director's Cut"));

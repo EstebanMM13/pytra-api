@@ -31,7 +31,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.estebanmm13.pytra_api.platformsync.ImportedGameNames.nameKey;
-import static com.estebanmm13.pytra_api.platformsync.ImportedGameNames.truncate;
+import static com.estebanmm13.pytra_api.platformsync.ImportedGameNames.placeholderName;
 
 /**
  * Applies an already-fetched Steam library to the database. The HTTP call to Steam happens
@@ -192,7 +192,9 @@ public class SteamLibraryImporter {
 
     private Attachment attachOrCreate(Long userId, SteamOwnedGame app, NameIndex index) {
         String appId = String.valueOf(app.appId());
-        String name = truncate(app.name());
+        // Stored without store noise (marks, console suffix); keyed on the stored value so a miss never
+        // collides with the unique index on (user_id, LOWER(name)).
+        String name = placeholderName(app.name());
         String key = nameKey(name);
         LocalDateTime now = LocalDateTime.now();
 

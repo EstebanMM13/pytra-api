@@ -46,6 +46,22 @@ public final class ImportedGameNames {
     }
 
     /**
+     * Name a pending placeholder game is stored with (and remembered as its imported name):
+     * {@link #cleanName(String) the clean name}, so "Marvel's Spider-Man™ (PS5)" is saved as
+     * "Marvel's Spider-Man", truncated to games.name. Falls back to the raw (truncated) name when cleaning
+     * leaves nothing, so a title that is only marks or a console suffix is still saved under some name.
+     *
+     * <p>Importers must look the title up by {@code nameKey(placeholderName(raw))}: the key of the stored
+     * value. Two names equal ignoring case always share that key, so a miss can never insert a duplicate
+     * under the unique index on (user_id, LOWER(name)) unless the key is empty.
+     */
+    public static String placeholderName(String rawName) {
+        String raw = truncate(rawName);
+        String clean = cleanName(raw);
+        return clean.isEmpty() ? raw : truncate(clean);
+    }
+
+    /**
      * Name with the store noise removed, case kept: trademark marks dropped, NFKC-normalized,
      * typographic apostrophes and quotes as ASCII, console suffix dropped and spaces collapsed.
      * "Grand Theft Auto V (PlayStation®5)" becomes "Grand Theft Auto V". Used as a search term.

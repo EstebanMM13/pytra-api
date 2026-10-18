@@ -135,6 +135,42 @@ class PsnLibraryImporterTest {
     }
 
     @Test
+    void pendingGameIsStoredWithTheCleanNameAsNameAndImportedName() {
+        importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("PPSA03420_00", "Ghost of Tsushima™: Director’s Cut (PlayStation®5)",
+                        ExternalPlatform.PSN_PS5, 90)));
+
+        ArgumentCaptor<Game> game = ArgumentCaptor.forClass(Game.class);
+        verify(gameRepository).save(game.capture());
+        assertThat(game.getValue().getName()).isEqualTo("Ghost of Tsushima: Director's Cut");
+        assertThat(game.getValue().getImportedName()).isEqualTo("Ghost of Tsushima: Director's Cut");
+    }
+
+    @Test
+    void titlesThatCleanToTheSameNameShareOnePendingGame() {
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("PPSA01234_00", "Ratchet & Clank™ (PS5)", ExternalPlatform.PSN_PS5, 600),
+                title("CUSA13323_00", "RATCHET & CLANK®", ExternalPlatform.PSN_PS4, 1200)));
+
+        assertThat(result.newGamesPending()).isEqualTo(1);
+        assertThat(result.linkedExisting()).isEqualTo(1);
+        verify(gameRepository).save(any(Game.class));
+        assertThat(createdGames.values()).singleElement()
+                .extracting(Game::getName).isEqualTo("Ratchet & Clank");
+    }
+
+    @Test
+    void titleThatIsOnlyMarksKeepsItsRawName() {
+        importer.importLibrary(USER_ID, ACCOUNT_ID,
+                library(title("CUSA00003_00", "®", ExternalPlatform.PSN_PS4, 60)));
+
+        assertThat(createdGames.values()).singleElement().satisfies(game -> {
+            assertThat(game.getName()).isEqualTo("®");
+            assertThat(game.getImportedName()).isEqualTo("®");
+        });
+    }
+
+    @Test
     void romanNumeralTitleLinksToTheGameTypedWithDigits() {
         existingGame(10L, "Hades 2", "https://example.com/hades.png");
 

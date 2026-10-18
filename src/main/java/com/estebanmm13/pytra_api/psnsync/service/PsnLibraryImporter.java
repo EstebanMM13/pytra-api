@@ -32,7 +32,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.estebanmm13.pytra_api.platformsync.ImportedGameNames.nameKey;
-import static com.estebanmm13.pytra_api.platformsync.ImportedGameNames.truncate;
+import static com.estebanmm13.pytra_api.platformsync.ImportedGameNames.placeholderName;
 
 /**
  * Applies an already-fetched PSN game list to the database (mirrors SteamLibraryImporter). The HTTP
@@ -185,7 +185,9 @@ public class PsnLibraryImporter {
     // ---- Phase 2: one transaction per title without a link --------------------------------
 
     private Attachment attachOrCreate(Long userId, PsnPlayedTitle title, NameIndex index) {
-        String name = truncate(title.name());
+        // Stored without store noise (marks, console suffix); keyed on the stored value so a miss never
+        // collides with the unique index on (user_id, LOWER(name)).
+        String name = placeholderName(title.name());
         String key = nameKey(name);
         LocalDateTime now = LocalDateTime.now();
 

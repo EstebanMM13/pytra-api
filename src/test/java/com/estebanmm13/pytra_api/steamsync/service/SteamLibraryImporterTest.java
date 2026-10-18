@@ -70,6 +70,37 @@ class SteamLibraryImporterTest {
     }
 
     @Test
+    void newPendingPlaceholderIsStoredWithTheCleanNameAsNameAndImportedName() {
+        when(gameRepository.findAllByUserId(USER_ID)).thenReturn(List.of());
+        when(gameRepository.save(any(Game.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        importer.importLibrary(USER_ID, STEAM_ID,
+                library(new SteamOwnedGame(1817070, "Marvel’s Spider-Man Remastered™", 600)));
+
+        ArgumentCaptor<Game> saved = ArgumentCaptor.forClass(Game.class);
+        verify(gameRepository).save(saved.capture());
+        assertThat(saved.getValue().getName()).isEqualTo("Marvel's Spider-Man Remastered");
+        assertThat(saved.getValue().getImportedName()).isEqualTo("Marvel's Spider-Man Remastered");
+    }
+
+    @Test
+    void appsThatCleanToTheSameNameAreNotInsertedTwice() {
+        when(gameRepository.findAllByUserId(USER_ID)).thenReturn(List.of());
+        when(gameRepository.save(any(Game.class))).thenAnswer(inv -> {
+            Game game = inv.getArgument(0);
+            game.setId(100L);
+            return game;
+        });
+
+        importer.importLibrary(USER_ID, STEAM_ID, library(
+                new SteamOwnedGame(1, "DOOM®", 60),
+                new SteamOwnedGame(2, "Doom™", 60)));
+
+        // The second app finds the first by key and is skipped (one Steam app per game), never inserted.
+        verify(gameRepository).save(any(Game.class));
+    }
+
+    @Test
     void linkedExistingGameWithoutCoverGetsSteamHeaderCover() {
         Game existing = existingGame(10L, "Portal 2", null);
 
