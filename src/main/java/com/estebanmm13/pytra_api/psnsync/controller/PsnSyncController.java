@@ -62,7 +62,8 @@ public class PsnSyncController {
                 status.lastSyncAt(), status.configured(),
                 status.linkedGamesCount(), status.pendingCount(), status.ignoredCount(),
                 admin ? status.serviceAuthError() : null,
-                admin ? status.serviceAuthFailingSince() : null);
+                admin ? status.serviceAuthFailingSince() : null,
+                status.enrichment());
     }
 
     @DeleteMapping("/link")

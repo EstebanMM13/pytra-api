@@ -5,6 +5,8 @@ import com.estebanmm13.pytra_api.error.InvalidTokenException;
 import com.estebanmm13.pytra_api.error.SteamIntegrationException;
 import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
+import com.estebanmm13.pytra_api.platformsync.EnrichmentProgress;
+import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
 import com.estebanmm13.pytra_api.platformsync.PlatformLinkRemover;
 import com.estebanmm13.pytra_api.steamsync.client.SteamWebApiClient;
@@ -37,6 +39,7 @@ public class SteamLinkServiceImpl implements SteamLinkService {
     private final SteamSyncGuard steamSyncGuard;
     private final TokenGenerator tokenGenerator;
     private final PlatformTransactionManager transactionManager;
+    private final PendingGameEnricher pendingGameEnricher;
 
     @Override
     @Transactional
@@ -132,10 +135,12 @@ public class SteamLinkServiceImpl implements SteamLinkService {
         long linkedGames = gamePlatformLinkRepository.countByUserIdAndPlatform(userId, ExternalPlatform.STEAM);
         long pending = pendingReviewQueue.countPending(userId, SteamSyncServiceImpl.STEAM_PLATFORMS, true);
         long ignored = steamIgnoredAppRepository.countByUserId(userId);
+        EnrichmentProgress enrichment = pendingGameEnricher.progress(userId);
         return steamLinkRepository.findByUserId(userId)
                 .map(link -> new SteamStatusDto(true, link.getSteamId(), link.getPersonaName(), link.getLastSyncAt(),
-                        configured, linkedGames, pending, ignored))
-                .orElseGet(() -> new SteamStatusDto(false, null, null, null, configured, linkedGames, pending, ignored));
+                        configured, linkedGames, pending, ignored, enrichment))
+                .orElseGet(() -> new SteamStatusDto(false, null, null, null, configured, linkedGames, pending, ignored,
+                        enrichment));
     }
 
     /**

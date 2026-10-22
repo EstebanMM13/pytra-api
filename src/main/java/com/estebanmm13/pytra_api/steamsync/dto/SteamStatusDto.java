@@ -1,5 +1,7 @@
 package com.estebanmm13.pytra_api.steamsync.dto;
 
+import com.estebanmm13.pytra_api.platformsync.EnrichmentProgress;
+
 import java.time.LocalDateTime;
 
 /**
@@ -8,6 +10,7 @@ import java.time.LocalDateTime;
  * @param linkedGamesCount STEAM platform links on the user's games (pending placeholders included)
  * @param pendingCount     games still pending review
  * @param ignoredCount     Steam apps the user ignored
+ * @param enrichment       background IGDB fill of the user's pending games (Steam and PSN alike)
  */
 public record SteamStatusDto(
         boolean linked,
@@ -17,6 +20,7 @@ public record SteamStatusDto(
         boolean configured,
         long linkedGamesCount,
         long pendingCount,
-        long ignoredCount
+        long ignoredCount,
+        EnrichmentProgress enrichment
 ) {
 }

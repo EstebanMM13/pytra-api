@@ -287,6 +287,115 @@ class PendingGameEnricherTest {
         assertThatCode(() -> full.enqueue(USER_ID)).doesNotThrowAnyException();
     }
 
+    @Test
+    void runIsReportedActiveFromEnqueueUntilItFinishes() {
+        List<Runnable> queued = new ArrayList<>();
+        PendingGameEnricher deferred = new PendingGameEnricher(igdbClient, writer, true, holding(queued), sleeps::add);
+        when(writer.findGamesWithoutLookup(USER_ID)).thenReturn(List.of(1L, 2L, 3L));
+        when(writer.findLookups(eq(USER_ID), anyList())).thenReturn(List.of(
+                new Lookup(1L, "A", PS5), new Lookup(2L, "B", PS5), new Lookup(3L, "C", PS5)));
+        List<EnrichmentProgress> seen = new ArrayList<>();
+        when(igdbClient.searchCandidates(anyString(), anySet(), anyInt())).thenAnswer(inv -> {
+            seen.add(deferred.progress(USER_ID));
+            return List.of();
+        });
+
+        deferred.enqueue(USER_ID);
+        assertThat(deferred.progress(USER_ID)).isEqualTo(new EnrichmentProgress(true, 0, 0));
+
+        queued.getFirst().run();
+
+        assertThat(seen).containsExactly(
+                new EnrichmentProgress(true, 1, 3),
+                new EnrichmentProgress(true, 2, 3),
+                new EnrichmentProgress(true, 3, 3));
+        assertThat(deferred.progress(USER_ID)).isEqualTo(EnrichmentProgress.IDLE);
+        assertThat(deferred.progress(2L)).isEqualTo(EnrichmentProgress.IDLE);
+    }
+
+    @Test
+    void anIgdbAbortClearsTheProgress() {
+        when(writer.findLookups(eq(USER_ID), anyList())).thenReturn(List.of(
+                new Lookup(1L, "A", PS5), new Lookup(2L, "B", PS5), new Lookup(3L, "C", PS5)));
+        when(igdbClient.searchCandidates(anyString(), anySet(), anyInt()))
+                .thenThrow(IgdbIntegrationException.unavailable());
+
+        enricher.enqueue(USER_ID);
+
+        assertThat(enricher.progress(USER_ID)).isEqualTo(EnrichmentProgress.IDLE);
+    }
+
+    @Test
+    void anUnexpectedFailureClearsTheProgress() {
+        when(writer.findGamesWithoutLookup(USER_ID)).thenThrow(new IllegalStateException("boom"));
+
+        enricher.enqueue(USER_ID);
+
+        assertThat(enricher.progress(USER_ID)).isEqualTo(EnrichmentProgress.IDLE);
+    }
+
+    @Test
+    void aRejectedRunIsNotReportedActive() {
+        ExecutorService rejecting = new InlineExecutor() {
+            @Override
+            public void execute(Runnable command) {
+                throw new java.util.concurrent.RejectedExecutionException("shut down");
+            }
+        };
+        PendingGameEnricher full = new PendingGameEnricher(igdbClient, writer, true, rejecting, sleeps::add);
+
+        full.enqueue(USER_ID);
+
+        assertThat(full.progress(USER_ID)).isEqualTo(EnrichmentProgress.IDLE);
+    }
+
+    @Test
+    void aCappedRunStaysActiveThroughTheRequeuedRun() {
+        List<Runnable> queued = new ArrayList<>();
+        PendingGameEnricher deferred = new PendingGameEnricher(igdbClient, writer, true, holding(queued), sleeps::add);
+        List<Long> ids = LongStream.rangeClosed(1, 250).boxed().toList();
+        when(writer.findGamesWithoutLookup(USER_ID)).thenReturn(ids, ids.subList(200, 250));
+
+        deferred.enqueue(USER_ID);
+        queued.removeFirst().run();
+
+        assertThat(queued).hasSize(1);
+        assertThat(deferred.progress(USER_ID)).isEqualTo(new EnrichmentProgress(true, 200, 200));
+
+        queued.removeFirst().run();
+
+        assertThat(deferred.progress(USER_ID)).isEqualTo(EnrichmentProgress.IDLE);
+    }
+
+    @Test
+    void aSyncDuringARunKeepsTheUserActiveAndAddsToTheCount() {
+        List<Runnable> queued = new ArrayList<>();
+        PendingGameEnricher deferred = new PendingGameEnricher(igdbClient, writer, true, holding(queued), sleeps::add);
+        when(writer.findGamesWithoutLookup(USER_ID)).thenReturn(List.of(1L, 2L), List.of(3L));
+        when(writer.findLookups(USER_ID, List.of(1L, 2L))).thenAnswer(inv -> {
+            deferred.enqueue(USER_ID);
+            return List.of();
+        });
+
+        deferred.enqueue(USER_ID);
+        queued.removeFirst().run();
+
+        assertThat(deferred.progress(USER_ID)).isEqualTo(new EnrichmentProgress(true, 2, 2));
+
+        queued.removeFirst().run();
+
+        assertThat(deferred.progress(USER_ID)).isEqualTo(EnrichmentProgress.IDLE);
+    }
+
+    private static ExecutorService holding(List<Runnable> queued) {
+        return new InlineExecutor() {
+            @Override
+            public void execute(Runnable command) {
+                queued.add(command);
+            }
+        };
+    }
+
     private PendingGameEnricher enricher(boolean enabled) {
         return new PendingGameEnricher(igdbClient, writer, enabled, new InlineExecutor(), sleeps::add);
     }

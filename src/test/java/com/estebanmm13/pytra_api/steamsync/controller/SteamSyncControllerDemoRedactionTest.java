@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.steamsync.controller;
 
 import com.estebanmm13.pytra_api.auth.security.AuthenticatedUser;
 import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
+import com.estebanmm13.pytra_api.platformsync.EnrichmentProgress;
 import com.estebanmm13.pytra_api.steamsync.dto.SteamStatusDto;
 import com.estebanmm13.pytra_api.steamsync.service.SteamLinkService;
 import com.estebanmm13.pytra_api.steamsync.service.SteamSyncService;
@@ -29,7 +30,8 @@ class SteamSyncControllerDemoRedactionTest {
         mockMvc = MockMvcBuilders.standaloneSetup(
                 new SteamSyncController(mock(SteamSyncService.class), steamLinkService, currentUserResolver)).build();
         when(steamLinkService.getStatus(5L)).thenReturn(
-                new SteamStatusDto(true, "76561198000000000", "RealPersona", null, true, 42, 3, 1));
+                new SteamStatusDto(true, "76561198000000000", "RealPersona", null, true, 42, 3, 1,
+                        new EnrichmentProgress(true, 3, 10)));
     }
 
     private void signedInAs(boolean demo) {
@@ -47,7 +49,10 @@ class SteamSyncControllerDemoRedactionTest {
                 .andExpect(jsonPath("$.personaName").value(nullValue()))
                 .andExpect(jsonPath("$.linked").value(true))
                 .andExpect(jsonPath("$.linkedGamesCount").value(42))
-                .andExpect(jsonPath("$.pendingCount").value(3));
+                .andExpect(jsonPath("$.pendingCount").value(3))
+                .andExpect(jsonPath("$.enrichment.active").value(true))
+                .andExpect(jsonPath("$.enrichment.processed").value(3))
+                .andExpect(jsonPath("$.enrichment.total").value(10));
     }
 
     @Test

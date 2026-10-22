@@ -3,6 +3,7 @@ package com.estebanmm13.pytra_api.psnsync.controller;
 import com.estebanmm13.pytra_api.auth.security.AuthenticatedUser;
 import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
 import com.estebanmm13.pytra_api.error.PsnIntegrationException;
+import com.estebanmm13.pytra_api.platformsync.EnrichmentProgress;
 import com.estebanmm13.pytra_api.psnsync.dto.PsnStatusDto;
 import com.estebanmm13.pytra_api.psnsync.service.PsnLinkService;
 import com.estebanmm13.pytra_api.psnsync.service.PsnSyncService;
@@ -39,7 +40,7 @@ class PsnSyncControllerRedactionTest {
         mockMvc = MockMvcBuilders.standaloneSetup(
                 new PsnSyncController(mock(PsnSyncService.class), psnLinkService, currentUserResolver)).build();
         PsnStatusDto status = new PsnStatusDto(true, "962157895908076652", "EstebanK13", null, true, 42, 3, 1,
-                PsnIntegrationException.SERVICE_AUTH_FAILED, FAILING_SINCE);
+                PsnIntegrationException.SERVICE_AUTH_FAILED, FAILING_SINCE, new EnrichmentProgress(true, 3, 10));
         when(psnLinkService.getStatus(5L)).thenReturn(status);
         when(psnLinkService.link(5L, "EstebanK13")).thenReturn(status);
     }
@@ -60,7 +61,10 @@ class PsnSyncControllerRedactionTest {
                 .andExpect(jsonPath("$.onlineId").value(nullValue()))
                 .andExpect(jsonPath("$.linked").value(true))
                 .andExpect(jsonPath("$.linkedGamesCount").value(42))
-                .andExpect(jsonPath("$.pendingCount").value(3));
+                .andExpect(jsonPath("$.pendingCount").value(3))
+                .andExpect(jsonPath("$.enrichment.active").value(true))
+                .andExpect(jsonPath("$.enrichment.processed").value(3))
+                .andExpect(jsonPath("$.enrichment.total").value(10));
     }
 
     @Test

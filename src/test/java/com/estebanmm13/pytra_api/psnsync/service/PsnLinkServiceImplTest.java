@@ -3,6 +3,7 @@ package com.estebanmm13.pytra_api.psnsync.service;
 import com.estebanmm13.pytra_api.error.PsnIntegrationException;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
+import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
 import com.estebanmm13.pytra_api.platformsync.PlatformLinkRemover;
 import com.estebanmm13.pytra_api.psnsync.client.PsnAccount;
@@ -52,7 +53,7 @@ class PsnLinkServiceImplTest {
         service = new PsnLinkServiceImpl(psnLinkRepository, psnIgnoredTitleRepository, gamePlatformLinkRepository,
                 mock(PendingReviewQueue.class), new PlatformLinkRemover(gamePlatformLinkRepository, mock(GameRepository.class)),
                 psnApiClient, new SteamSyncGuard(),
-                mock(PlatformTransactionManager.class));
+                mock(PlatformTransactionManager.class), mock(PendingGameEnricher.class));
         when(psnApiClient.isConfigured()).thenReturn(true);
         when(psnLinkRepository.saveAndFlush(any(PsnLink.class))).thenAnswer(inv -> inv.getArgument(0));
         when(gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(USER_ID, PsnPlatforms.ALL)).thenReturn(List.of());

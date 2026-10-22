@@ -2,6 +2,8 @@ package com.estebanmm13.pytra_api.psnsync.service;
 
 import com.estebanmm13.pytra_api.error.PsnIntegrationException;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
+import com.estebanmm13.pytra_api.platformsync.EnrichmentProgress;
+import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
 import com.estebanmm13.pytra_api.platformsync.PlatformLinkRemover;
 import com.estebanmm13.pytra_api.psnsync.client.PsnAccount;
@@ -33,6 +35,7 @@ public class PsnLinkServiceImpl implements PsnLinkService {
     private final PsnApiClient psnApiClient;
     private final SteamSyncGuard syncGuard;
     private final PlatformTransactionManager transactionManager;
+    private final PendingGameEnricher pendingGameEnricher;
 
     /**
      * Service fields are always filled here; the controller strips them for non-admins (and the PSN
@@ -47,11 +50,12 @@ public class PsnLinkServiceImpl implements PsnLinkService {
         long ignored = psnIgnoredTitleRepository.countByUserId(userId);
         Instant authFailingSince = configured ? psnApiClient.serviceAuthFailingSince() : null;
         String authError = authFailingSince != null ? PsnIntegrationException.SERVICE_AUTH_FAILED : null;
+        EnrichmentProgress enrichment = pendingGameEnricher.progress(userId);
         return psnLinkRepository.findByUserId(userId)
                 .map(link -> new PsnStatusDto(true, link.getAccountId(), link.getOnlineId(), link.getLastSyncAt(),
-                        configured, linkedGames, pending, ignored, authError, authFailingSince))
+                        configured, linkedGames, pending, ignored, authError, authFailingSince, enrichment))
                 .orElseGet(() -> new PsnStatusDto(false, null, null, null,
-                        configured, linkedGames, pending, ignored, authError, authFailingSince));
+                        configured, linkedGames, pending, ignored, authError, authFailingSince, enrichment));
     }
 
     /**

@@ -41,6 +41,9 @@ import java.util.concurrent.TimeUnit;
  * applied (see {@link IgdbPendingMatch}), never over user data (see {@link PendingGameFill}).
  *
  * <p>Skipped silently when IGDB has no credentials or {@code app.igdb.pending-enrichment.enabled} is false.
+ *
+ * <p>{@link #progress} tells whether a run is queued or running for a user, so the client can poll the
+ * review queue while it fills. It is in memory only: a restart forgets it, like the queued runs.
  */
 @Slf4j
 @Component
@@ -70,6 +73,12 @@ public class PendingGameEnricher {
     private final Sleeper sleeper;
     /** Users with a run waiting in the queue: a second sync meanwhile adds nothing, that run covers it. */
     private final Set<Long> queuedUsers = ConcurrentHashMap.newKeySet();
+    /**
+     * Users with a run queued or running. Entries are immutable and only replaced through
+     * {@link ConcurrentHashMap#compute}, so the request threads (enqueue, progress) and the worker never
+     * see a half-updated state. Removed as soon as no run is queued or running.
+     */
+    private final ConcurrentHashMap<Long, UserProgress> progressByUser = new ConcurrentHashMap<>();
     private long lastRequestNanos;
     private boolean anyRequest;
 
@@ -102,10 +111,13 @@ public class PendingGameEnricher {
     public void enqueue(Long userId) {
         try {
             if (!enabled || !igdbClient.isEnabled() || !queuedUsers.add(userId)) return;
+            // Before execute: the request that synced must already see the run as active when it answers.
+            progressByUser.compute(userId, (id, current) -> (current == null ? UserProgress.NONE : current).queued(true));
             try {
                 executor.execute(() -> run(userId));
             } catch (RuntimeException e) {
                 queuedUsers.remove(userId);
+                progressByUser.computeIfPresent(userId, (id, current) -> current.queued(false).orNullIfIdle());
                 throw e;
             }
         } catch (RejectedExecutionException e) {
@@ -113,6 +125,12 @@ public class PendingGameEnricher {
         } catch (RuntimeException e) {
             log.warn("IGDB enrichment for userId {} could not be queued: {}", userId, e.getClass().getSimpleName());
         }
+    }
+
+    /** Progress of the user's queued or running run; {@link EnrichmentProgress#IDLE} when there is none. */
+    public EnrichmentProgress progress(Long userId) {
+        UserProgress current = progressByUser.get(userId);
+        return current == null ? EnrichmentProgress.IDLE : new EnrichmentProgress(true, current.processed(), current.total());
     }
 
     @PreDestroy
@@ -131,6 +149,17 @@ public class PendingGameEnricher {
     void run(Long userId) {
         // Removed first: a sync finishing while this run works queues the next one.
         queuedUsers.remove(userId);
+        progressByUser.compute(userId, (id, current) -> (current == null ? UserProgress.NONE : current).started());
+        try {
+            enrichPendingGames(userId);
+        } finally {
+            // After any re-queue in enrichPendingGames, which already marked the next run as queued:
+            // the user stays active until that run finishes too.
+            progressByUser.computeIfPresent(userId, (id, current) -> current.finished().orNullIfIdle());
+        }
+    }
+
+    private void enrichPendingGames(Long userId) {
         RunState state = new RunState();
         List<Long> gameIds;
         boolean capped;
@@ -138,6 +167,8 @@ public class PendingGameEnricher {
             gameIds = writer.findGamesWithoutLookup(userId);
             capped = gameIds.size() > MAX_GAMES_PER_RUN;
             if (capped) gameIds = gameIds.subList(0, MAX_GAMES_PER_RUN);
+            int runSize = gameIds.size();
+            progressByUser.computeIfPresent(userId, (id, current) -> current.withMoreToProcess(runSize));
             for (int from = 0; from < gameIds.size() && !state.aborted && !stopping(); from += BATCH_SIZE) {
                 enrichBatch(userId, gameIds.subList(from, Math.min(from + BATCH_SIZE, gameIds.size())), state);
             }
@@ -162,11 +193,13 @@ public class PendingGameEnricher {
         // Games with nothing to look up (gone, confirmed, no IGDB platform) are marked right away.
         Set<Long> done = new HashSet<>(batch);
         lookups.forEach(lookup -> done.remove(lookup.gameId()));
+        countProcessed(userId, batch.size() - lookups.size());
         List<Genre> genres = lookups.isEmpty() ? List.of() : writer.findAllGenres();
 
         try {
             for (PendingGameEnrichmentWriter.Lookup lookup : lookups) {
                 if (stopping()) return;
+                countProcessed(userId, 1);
                 String term = ImportedGameNames.cleanName(lookup.name());
                 if (term.isEmpty()) {
                     done.add(lookup.gameId());
@@ -254,6 +287,10 @@ public class PendingGameEnricher {
         }
     }
 
+    private void countProcessed(Long userId, int games) {
+        if (games > 0) progressByUser.computeIfPresent(userId, (id, current) -> current.withProcessed(games));
+    }
+
     private boolean stopping() {
         return Thread.currentThread().isInterrupted() || executor.isShutdown();
     }
@@ -266,6 +303,39 @@ public class PendingGameEnricher {
         }
         anyRequest = true;
         lastRequestNanos = System.nanoTime();
+    }
+
+    /**
+     * One user's enrichment state. {@code processed}/{@code total} add up over runs chained while the user
+     * stays active (a capped backlog, or a sync during a run), so the client sees one growing count.
+     */
+    private record UserProgress(boolean queued, boolean running, int processed, int total) {
+        static final UserProgress NONE = new UserProgress(false, false, 0, 0);
+
+        UserProgress queued(boolean value) {
+            return new UserProgress(value, running, processed, total);
+        }
+
+        UserProgress started() {
+            return new UserProgress(false, true, processed, total);
+        }
+
+        UserProgress finished() {
+            return new UserProgress(queued, false, processed, total);
+        }
+
+        UserProgress withMoreToProcess(int games) {
+            return new UserProgress(queued, running, processed, total + games);
+        }
+
+        UserProgress withProcessed(int games) {
+            return new UserProgress(queued, running, Math.min(total, processed + games), total);
+        }
+
+        /** Null removes the entry from the map (ConcurrentHashMap#compute contract). */
+        UserProgress orNullIfIdle() {
+            return queued || running ? this : null;
+        }
     }
 
     private static final class RunState {

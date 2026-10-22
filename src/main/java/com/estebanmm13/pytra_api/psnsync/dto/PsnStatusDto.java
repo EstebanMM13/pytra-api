@@ -1,5 +1,7 @@
 package com.estebanmm13.pytra_api.psnsync.dto;
 
+import com.estebanmm13.pytra_api.platformsync.EnrichmentProgress;
+
 import java.time.Instant;
 import java.time.LocalDateTime;
 
@@ -12,6 +14,7 @@ import java.time.LocalDateTime;
  * @param serviceAuthError        admins only: {@code PSN_SERVICE_AUTH_FAILED} while Sony rejects the service
  *                                account (renew PSN_NPSSO); null when healthy and always null for other users
  * @param serviceAuthFailingSince admins only: when that started; null otherwise
+ * @param enrichment              background IGDB fill of the user's pending games (Steam and PSN alike)
  */
 public record PsnStatusDto(
         boolean linked,
@@ -23,6 +26,7 @@ public record PsnStatusDto(
         long pendingCount,
         long ignoredCount,
         String serviceAuthError,
-        Instant serviceAuthFailingSince
+        Instant serviceAuthFailingSince,
+        EnrichmentProgress enrichment
 ) {
 }

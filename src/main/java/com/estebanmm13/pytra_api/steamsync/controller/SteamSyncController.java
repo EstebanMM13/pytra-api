@@ -43,7 +43,7 @@ public class SteamSyncController {
     /** The demo account is public: hide which Steam account is linked to it (id and persona name). */
     private static SteamStatusDto redactForDemo(SteamStatusDto status) {
         return new SteamStatusDto(status.linked(), null, null, status.lastSyncAt(), status.configured(),
-                status.linkedGamesCount(), status.pendingCount(), status.ignoredCount());
+                status.linkedGamesCount(), status.pendingCount(), status.ignoredCount(), status.enrichment());
     }
 
     @DeleteMapping("/link")

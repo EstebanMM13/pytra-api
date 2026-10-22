@@ -9,6 +9,7 @@ import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.PendingGameConfirmer;
+import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
 import com.estebanmm13.pytra_api.platformsync.PlatformLinkRemover;
 import com.estebanmm13.pytra_api.steamsync.client.SteamWebApiClient;
@@ -113,6 +114,6 @@ class SteamSharedPendingGameTest {
     private SteamLinkServiceImpl linkService() {
         return new SteamLinkServiceImpl(mock(SteamLinkStateRepository.class), steamLinkRepository, steamIgnoredAppRepository,
                 linkRepository, mock(PendingReviewQueue.class), remover, mock(SteamWebApiClient.class), new SteamSyncGuard(),
-                mock(TokenGenerator.class), transactionManager);
+                mock(TokenGenerator.class), transactionManager, mock(PendingGameEnricher.class));
     }
 }
