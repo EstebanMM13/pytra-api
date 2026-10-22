@@ -5,6 +5,7 @@ import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
+import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.HybridPlaytimeReconciler;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
@@ -30,7 +31,9 @@ import java.util.Optional;
  *   <li>SINGLEPLAYER: each link keeps ONE "canonical" Experience up to date
  *       (GamePlatformLink.experienceId), separate from any run the user created by hand. Its label,
  *       note and catalog platform come from {@link ImportedRunSource}.</li>
- *   <li>ONLINE/HYBRID: hours go to OnlinePlaytime, which is already a single total per game.</li>
+ *   <li>ONLINE: hours go to OnlinePlaytime, which is already a single total per game.</li>
+ *   <li>HYBRID: hours go to OnlinePlaytime too, minus the hours of the runs logged on the linked
+ *       platforms (the platform total already includes them). See {@link HybridPlaytimeReconciler}.</li>
  * </ul>
  */
 @Slf4j
@@ -41,6 +44,7 @@ public class ExternalPlaytimeWriter {
     private final ExperienceRepository experienceRepository;
     private final OnlinePlaytimeRepository onlinePlaytimeRepository;
     private final PlatformService platformService;
+    private final HybridPlaytimeReconciler hybridPlaytimeReconciler;
 
     /**
      * Moves the link's baseline to the platform's current total. Managed entities are dirty-checked,
@@ -68,6 +72,9 @@ public class ExternalPlaytimeWriter {
         if (game.getReviewStatus() != ReviewStatus.CONFIRMED) {
             return false;
         }
+        if (game.getCategory() == GameCategory.HYBRID) {
+            return hybridPlaytimeReconciler.applySyncedChange(link, baselineMinutes, now);
+        }
         return addDelta(link, game, (currentMinutes - baselineMinutes) / 60.0, now);
     }
 
@@ -79,8 +86,10 @@ public class ExternalPlaytimeWriter {
      *
      * <p>ONLINE/HYBRID rule: the user may already have typed an OnlinePlaytime by hand for this game,
      * and that number most likely already includes (part of) the synced hours. Adding the synced total
-     * on top would double count, so the total becomes max(existing, sum of the links' totals). From
-     * then on only positive deltas reported by later syncs are added.
+     * on top would double count, so the total becomes max(existing, synced hours). From then on only
+     * changes reported by later syncs are applied. For ONLINE the synced hours are the sum of the links'
+     * totals; for HYBRID they are the synced share, without the runs already logged on the linked
+     * platforms ({@link HybridPlaytimeReconciler}).
      */
     public void importTotalsOnConfirm(List<GamePlatformLink> links, Game game) {
         if (links.isEmpty()) {
@@ -96,7 +105,9 @@ public class ExternalPlaytimeWriter {
             return;
         }
 
-        double syncedTotalHours = links.stream().mapToLong(GamePlatformLink::getLastSyncedPlaytimeMinutes).sum() / 60.0;
+        double syncedTotalHours = game.getCategory() == GameCategory.HYBRID
+                ? hybridPlaytimeReconciler.shareOf(game, links)
+                : links.stream().mapToLong(GamePlatformLink::getLastSyncedPlaytimeMinutes).sum() / 60.0;
         LocalDateTime lastSyncedAt = links.stream()
                 .map(GamePlatformLink::getLastSyncedAt)
                 .filter(Objects::nonNull)

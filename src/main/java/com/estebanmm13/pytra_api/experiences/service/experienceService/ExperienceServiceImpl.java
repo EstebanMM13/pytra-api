@@ -7,12 +7,14 @@ import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceResponseDt
 import com.estebanmm13.pytra_api.experiences.mapper.ExperienceMapper;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
+import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.HybridPlaytimeReconciler;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platforms.service.PlatformService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +28,7 @@ public class ExperienceServiceImpl implements ExperienceService {
     private final GameRepository gameRepository;
     private final ExperienceMapper experienceMapper;
     private final PlatformService platformService;
+    private final HybridPlaytimeReconciler hybridPlaytimeReconciler;
 
     @Override
     public List<ExperienceResponseDto> findAllByGame(Long gameId, Long userId) {
@@ -46,13 +49,17 @@ public class ExperienceServiceImpl implements ExperienceService {
         return experienceMapper.toResponseDto(experience);
     }
 
+    // Create, update and delete also move a synced HYBRID game's hours between its runs and its
+    // online playtime (HybridPlaytimeReconciler), so each one is a single transaction.
     @Override
+    @Transactional
     public ExperienceResponseDto create(Long gameId, ExperienceRequestDto experienceRequestDto, Long userId) {
         Game game = requireOwnedGame(gameId, userId);
         // Only new runs are refused: existing runs of a game later recategorised as ONLINE stay editable.
         if (game.getCategory() == GameCategory.ONLINE) {
             throw new InvalidRequestException(InvalidRequestException.ONLINE_GAME_RUN);
         }
+        Double syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
 
         Experience experience = Experience.builder()
                 .userId(userId)
@@ -75,13 +82,17 @@ public class ExperienceServiceImpl implements ExperienceService {
                 .build();
 
         experienceRepository.save(experience);
+        hybridPlaytimeReconciler.afterRunChange(game, syncedShareBefore);
         return experienceMapper.toResponseDto(experience);
     }
 
     @Override
+    @Transactional
     public ExperienceResponseDto update(Long id, ExperienceRequestDto experienceRequestDto, Long userId) {
         Experience experience = experienceRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Experience not found"));
+        Game game = gameRepository.findByIdAndUserId(experience.getGameId(), userId).orElse(null);
+        Double syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
 
         experience.setRunLabel(experienceRequestDto.getRunLabel());
         experience.setYear(experienceRequestDto.getYear());
@@ -100,14 +111,19 @@ public class ExperienceServiceImpl implements ExperienceService {
         experience.setNotes(experienceRequestDto.getNotes());
 
         experienceRepository.save(experience);
+        hybridPlaytimeReconciler.afterRunChange(game, syncedShareBefore);
         return experienceMapper.toResponseDto(experience);
     }
 
     @Override
+    @Transactional
     public void delete(Long id, Long userId) {
         Experience experience = experienceRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Experience not found"));
+        Game game = gameRepository.findByIdAndUserId(experience.getGameId(), userId).orElse(null);
+        Double syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
         experienceRepository.delete(experience);
+        hybridPlaytimeReconciler.afterRunChange(game, syncedShareBefore);
     }
 
     private Game requireOwnedGame(Long gameId, Long userId) {

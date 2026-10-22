@@ -4,11 +4,13 @@ import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
+import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.HybridPlaytimeReconciler;
 import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
+import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.platforms.model.Platform;
 import com.estebanmm13.pytra_api.platforms.service.PlatformService;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,8 +38,11 @@ class ExternalPlaytimeWriterTest {
     private final ExperienceRepository experienceRepository = mock(ExperienceRepository.class);
     private final OnlinePlaytimeRepository onlinePlaytimeRepository = mock(OnlinePlaytimeRepository.class);
     private final PlatformService platformService = mock(PlatformService.class);
+    private final GamePlatformLinkRepository gamePlatformLinkRepository = mock(GamePlatformLinkRepository.class);
+    private final HybridPlaytimeReconciler hybridPlaytimeReconciler =
+            new HybridPlaytimeReconciler(experienceRepository, onlinePlaytimeRepository, gamePlatformLinkRepository);
     private final ExternalPlaytimeWriter writer =
-            new ExternalPlaytimeWriter(experienceRepository, onlinePlaytimeRepository, platformService);
+            new ExternalPlaytimeWriter(experienceRepository, onlinePlaytimeRepository, platformService, hybridPlaytimeReconciler);
 
     @BeforeEach
     void setUp() {
@@ -137,6 +142,81 @@ class ExternalPlaytimeWriterTest {
         verify(experienceRepository).save(run.capture());
         assertThat(run.getValue().getHours()).isEqualTo(1.5);
         assertThat(run.getValue().getPlatform().getLegacyCode()).isEqualTo("PS5");
+    }
+
+    @Test
+    void hybridConfirmLeavesOutRunsAlreadyLoggedOnTheLinkedPlatform() {
+        Game game = game(GameCategory.HYBRID, ReviewStatus.CONFIRMED);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(List.of(run("PC", 40.0)));
+
+        writer.importTotalsOnConfirm(List.of(link(game, ExternalPlatform.STEAM, 60 * 60)), game);
+
+        ArgumentCaptor<OnlinePlaytime> online = ArgumentCaptor.forClass(OnlinePlaytime.class);
+        verify(onlinePlaytimeRepository).save(online.capture());
+        assertThat(online.getValue().getTotalHours()).isEqualTo(20.0);
+    }
+
+    @Test
+    void onlineConfirmIgnoresRunsAndKeepsTheWholeSyncedTotal() {
+        Game game = game(GameCategory.ONLINE, ReviewStatus.CONFIRMED);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(List.of(run("PC", 40.0)));
+
+        writer.importTotalsOnConfirm(List.of(link(game, ExternalPlatform.STEAM, 60 * 60)), game);
+
+        ArgumentCaptor<OnlinePlaytime> online = ArgumentCaptor.forClass(OnlinePlaytime.class);
+        verify(onlinePlaytimeRepository).save(online.capture());
+        assertThat(online.getValue().getTotalHours()).isEqualTo(60.0);
+    }
+
+    @Test
+    void hybridSyncDeltaIsAbsorbedByARunThatCoversIt() {
+        Game game = game(GameCategory.HYBRID, ReviewStatus.CONFIRMED);
+        GamePlatformLink link = link(game, ExternalPlatform.STEAM, 30 * 60);
+        when(gamePlatformLinkRepository.findAllByUserIdAndGameId(USER_ID, GAME_ID)).thenReturn(List.of(link));
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(List.of(run("PC", 40.0)));
+
+        boolean updated = writer.applySyncedTotal(link, 35 * 60, LocalDateTime.now());
+
+        assertThat(updated).isFalse();
+        assertThat(link.getLastSyncedPlaytimeMinutes()).isEqualTo(35L * 60);
+        verify(onlinePlaytimeRepository, never()).save(any());
+    }
+
+    @Test
+    void hybridSyncDeltaBeyondTheRunsGoesToOnlineHours() {
+        Game game = game(GameCategory.HYBRID, ReviewStatus.CONFIRMED);
+        GamePlatformLink link = link(game, ExternalPlatform.STEAM, 50 * 60);
+        OnlinePlaytime online = OnlinePlaytime.builder().userId(USER_ID).gameId(GAME_ID).totalHours(15.0).build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(online));
+        when(gamePlatformLinkRepository.findAllByUserIdAndGameId(USER_ID, GAME_ID)).thenReturn(List.of(link));
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(List.of(run("PC", 40.0)));
+
+        // Share 50 - 40 = 10 -> 60 - 40 = 20: +10 on top of the 15 already there (5 typed by hand).
+        boolean updated = writer.applySyncedTotal(link, 60 * 60, LocalDateTime.now());
+
+        assertThat(updated).isTrue();
+        assertThat(online.getTotalHours()).isEqualTo(25.0);
+        verify(onlinePlaytimeRepository).save(online);
+    }
+
+    @Test
+    void hybridNegativeDeltaStillNeverSubtracts() {
+        Game game = game(GameCategory.HYBRID, ReviewStatus.CONFIRMED);
+        GamePlatformLink link = link(game, ExternalPlatform.STEAM, 60 * 60);
+
+        boolean updated = writer.applySyncedTotal(link, 30 * 60, LocalDateTime.now());
+
+        assertThat(updated).isFalse();
+        verify(onlinePlaytimeRepository, never()).save(any());
+    }
+
+    private static Experience run(String platformCode, double hours) {
+        return Experience.builder()
+                .userId(USER_ID)
+                .gameId(GAME_ID)
+                .hours(hours)
+                .platform(Platform.builder().name(platformCode).legacyCode(platformCode).build())
+                .build();
     }
 
     private static Game game(GameCategory category, ReviewStatus status) {
