@@ -199,7 +199,15 @@ public class PsnApiClient {
                 item.path("playCount").asInt(0),
                 PsnPlayDuration.toMinutes(item.path("playDuration").asText(null)),
                 instant(item.path("firstPlayedDateTime").asText(null)),
-                instant(item.path("lastPlayedDateTime").asText(null)));
+                instant(item.path("lastPlayedDateTime").asText(null)),
+                conceptId(item.path("concept").path("id")));
+    }
+
+    /** {@code concept.id} as a positive number (PSN sends it as a JSON number); null when missing or malformed. */
+    static Long conceptId(JsonNode id) {
+        long value = id.isIntegralNumber() ? id.asLong()
+                : id.isTextual() && id.asText().matches("\\d{1,18}") ? Long.parseLong(id.asText()) : 0;
+        return value > 0 ? value : null;
     }
 
     /** PSN title category → Pytra link platform; null for anything that is not a PS4/PS5 game. */

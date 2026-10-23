@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.psnsync.client;
 
 import com.estebanmm13.pytra_api.error.PsnIntegrationException;
 import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -132,7 +133,8 @@ class PsnApiClientTest {
                         {"titles":[
                           {"titleId":"PPSA01411_00","name":"Demon's Souls","imageUrl":"https://image.api.playstation.com/ds.png",
                            "category":"ps5_native_game","playCount":12,"playDuration":"PT40H29M31S",
-                           "firstPlayedDateTime":"2020-11-12T19:40:19Z","lastPlayedDateTime":"2024-08-03T19:28:27.12Z"}
+                           "firstPlayedDateTime":"2020-11-12T19:40:19Z","lastPlayedDateTime":"2024-08-03T19:28:27.12Z",
+                           "concept":{"id":10000177,"titleIds":["PPSA01411_00","PPSA01412_00"],"name":"Demon's Souls"}}
                         ],"nextOffset":1,"previousOffset":0,"totalItemCount":2}""", MediaType.APPLICATION_JSON));
         server.expect(requestTo(startsWith(TITLES_URL)))
                 .andExpect(queryParam("offset", "1"))
@@ -149,8 +151,22 @@ class PsnApiClientTest {
         assertThat(result.titles()).containsExactly(
                 new PsnPlayedTitle("PPSA01411_00", "Demon's Souls", "https://image.api.playstation.com/ds.png",
                         ExternalPlatform.PSN_PS5, 12, 40 * 60 + 30,
-                        Instant.parse("2020-11-12T19:40:19Z"), Instant.parse("2024-08-03T19:28:27.12Z")),
+                        Instant.parse("2020-11-12T19:40:19Z"), Instant.parse("2024-08-03T19:28:27.12Z"),
+                        10000177L),
                 new PsnPlayedTitle("CUSA00900_00", "Bloodborne", null, ExternalPlatform.PSN_PS4, 3, 60, null, null));
+    }
+
+    @Test
+    void conceptIdIsReadAsAPositiveNumberOrLeftUnknown() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+
+        assertThat(PsnApiClient.conceptId(mapper.readTree("10000177"))).isEqualTo(10000177L);
+        assertThat(PsnApiClient.conceptId(mapper.readTree("\"234567\""))).isEqualTo(234567L);
+        assertThat(PsnApiClient.conceptId(mapper.readTree("0"))).isNull();
+        assertThat(PsnApiClient.conceptId(mapper.readTree("-5"))).isNull();
+        assertThat(PsnApiClient.conceptId(mapper.readTree("\"abc\""))).isNull();
+        assertThat(PsnApiClient.conceptId(mapper.readTree("{}").path("id"))).isNull();
+        assertThat(PsnApiClient.conceptId(mapper.readTree("null"))).isNull();
     }
 
     @Test

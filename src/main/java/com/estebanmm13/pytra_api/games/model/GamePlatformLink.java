@@ -48,4 +48,8 @@ public class GamePlatformLink {
     // Last time played according to the platform (Steam rtime_last_played). Null when the
     // platform never reported it (never played, or not synced since this column was added).
     private Instant lastPlayedAt;
+
+    // PSN concept id: one id for every version of the same game (see V29). Null for Steam links and for
+    // PSN titles that did not report one; refreshed on every PSN sync.
+    private Long psnConceptId;
 }

@@ -12,6 +12,8 @@ import java.time.Instant;
  * @param playtimeMinutes {@code playDuration} rounded to the nearest minute (0 when missing or malformed)
  * @param firstPlayedAt   {@code firstPlayedDateTime}; null when missing. Not persisted in phase 1
  * @param lastPlayedAt    {@code lastPlayedDateTime}; null when missing
+ * @param conceptId       {@code concept.id}: one id for every version of the same game (regional SKUs, PS4/PS5
+ *                        editions); null when missing. Same name with different concepts = different games
  */
 public record PsnPlayedTitle(
         String titleId,
@@ -21,6 +23,12 @@ public record PsnPlayedTitle(
         int playCount,
         long playtimeMinutes,
         Instant firstPlayedAt,
-        Instant lastPlayedAt
+        Instant lastPlayedAt,
+        Long conceptId
 ) {
+    /** A title without a known concept. */
+    public PsnPlayedTitle(String titleId, String name, String imageUrl, ExternalPlatform platform, int playCount,
+                          long playtimeMinutes, Instant firstPlayedAt, Instant lastPlayedAt) {
+        this(titleId, name, imageUrl, platform, playCount, playtimeMinutes, firstPlayedAt, lastPlayedAt, null);
+    }
 }

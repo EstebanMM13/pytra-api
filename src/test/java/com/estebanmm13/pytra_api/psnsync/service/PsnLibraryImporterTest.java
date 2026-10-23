@@ -272,6 +272,35 @@ class PsnLibraryImporterTest {
     }
 
     @Test
+    void newLinkStoresThePsnConcept() {
+        importer.importLibrary(USER_ID, ACCOUNT_ID,
+                library(title("PPSA01411_00", "Demon's Souls", ExternalPlatform.PSN_PS5, 60, 10000177L)));
+
+        assertThat(savedLinks).singleElement()
+                .extracting(GamePlatformLink::getPsnConceptId).isEqualTo(10000177L);
+    }
+
+    @Test
+    void linkedTitleBackfillsItsConceptButAMissingOneNeverErasesIt() {
+        Game game = existingGame(10L, "Bloodborne", null);
+        GamePlatformLink legacy = GamePlatformLink.builder()
+                .userId(USER_ID).game(game).platform(ExternalPlatform.PSN_PS4).externalId("CUSA00900_00")
+                .lastSyncedPlaytimeMinutes(60L).lastSyncedAt(LocalDateTime.now()).build();
+        GamePlatformLink known = GamePlatformLink.builder()
+                .userId(USER_ID).game(game).platform(ExternalPlatform.PSN_PS5).externalId("PPSA00900_00")
+                .lastSyncedPlaytimeMinutes(60L).lastSyncedAt(LocalDateTime.now()).psnConceptId(77L).build();
+        when(gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(USER_ID, PsnPlatforms.ALL))
+                .thenReturn(List.of(legacy, known));
+
+        importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("CUSA00900_00", "Bloodborne", ExternalPlatform.PSN_PS4, 60, 77L),
+                title("PPSA00900_00", "Bloodborne", ExternalPlatform.PSN_PS5, 60)));
+
+        assertThat(legacy.getPsnConceptId()).isEqualTo(77L);
+        assertThat(known.getPsnConceptId()).isEqualTo(77L);
+    }
+
+    @Test
     void privateProfileChangesNothing() {
         PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID, PsnPlayedGamesResult.privateProfile());
 
@@ -324,6 +353,12 @@ class PsnLibraryImporterTest {
     private static PsnPlayedTitle title(String titleId, String name, ExternalPlatform platform, long minutes) {
         return new PsnPlayedTitle(titleId, name, "https://image.api.playstation.com/" + titleId + ".png",
                 platform, 1, minutes, null, LAST_PLAYED);
+    }
+
+    private static PsnPlayedTitle title(String titleId, String name, ExternalPlatform platform, long minutes,
+                                        Long conceptId) {
+        return new PsnPlayedTitle(titleId, name, "https://image.api.playstation.com/" + titleId + ".png",
+                platform, 1, minutes, null, LAST_PLAYED, conceptId);
     }
 
     private static PsnPlayedGamesResult library(PsnPlayedTitle... titles) {

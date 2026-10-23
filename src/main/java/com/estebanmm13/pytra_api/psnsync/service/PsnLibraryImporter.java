@@ -154,6 +154,10 @@ public class PsnLibraryImporter {
             if (title.lastPlayedAt() != null) {
                 link.setLastPlayedAt(title.lastPlayedAt());
             }
+            // Backfills links created before PSN concepts were stored (V29); also never erased by a miss.
+            if (title.conceptId() != null && !title.conceptId().equals(link.getPsnConceptId())) {
+                link.setPsnConceptId(title.conceptId());
+            }
             if (externalPlaytimeWriter.applySyncedTotal(link, title.playtimeMinutes(), now)) {
                 counters.updated++;
             }
@@ -236,6 +240,7 @@ public class PsnLibraryImporter {
                 .lastSyncedPlaytimeMinutes(title.playtimeMinutes())
                 .lastSyncedAt(now)
                 .lastPlayedAt(title.lastPlayedAt())
+                .psnConceptId(title.conceptId())
                 .build();
     }
 
