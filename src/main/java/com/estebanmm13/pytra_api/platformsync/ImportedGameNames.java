@@ -2,8 +2,10 @@ package com.estebanmm13.pytra_api.platformsync;
 
 import java.text.Normalizer;
 import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -59,6 +61,34 @@ public final class ImportedGameNames {
         String raw = truncate(rawName);
         String clean = cleanName(raw);
         return clean.isEmpty() ? raw : truncate(clean);
+    }
+
+    /**
+     * Names to try, in order, for a game that must be told apart from another game of the user with the same
+     * name (a different PSN concept): the name itself, then with the console as a suffix ("Until Dawn (PS5)"),
+     * then numbered ("Until Dawn (PS5) (2)" ... up to {@code (maxNumber)}). Every candidate fits games.name.
+     *
+     * <p>The console suffix is the one {@link #cleanName} strips, so "Until Dawn (PS5)" keeps the name key
+     * "until dawn": later syncs, the IGDB search and the IGDB match still see the plain name. The numbered
+     * fallbacks (only when that name is taken too) lose that.
+     */
+    public static List<String> disambiguatedNames(String name, String consoleCode, int maxNumber) {
+        String base = truncate(name);
+        List<String> names = new ArrayList<>();
+        names.add(base);
+        String console = " (" + consoleCode + ")";
+        names.add(withSuffix(base, console));
+        for (int n = 2; n <= maxNumber; n++) {
+            names.add(withSuffix(base, console + " (" + n + ")"));
+        }
+        return names;
+    }
+
+    /** {@code name + suffix}, cutting the name (never the suffix) so the result fits games.name. */
+    private static String withSuffix(String name, String suffix) {
+        int room = MAX_NAME_LENGTH - suffix.length();
+        String head = name.length() <= room ? name : name.substring(0, room).strip();
+        return head + suffix;
     }
 
     /**

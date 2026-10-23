@@ -127,4 +127,23 @@ class ImportedGameNamesTest {
         assertThat(ImportedGameNames.truncate(" ")).isEqualTo("Unknown");
         assertThat(ImportedGameNames.truncate("x".repeat(300))).hasSize(ImportedGameNames.MAX_NAME_LENGTH);
     }
+
+    @Test
+    void disambiguatedNamesTryThePlainNameThenTheConsoleThenNumbers() {
+        assertThat(ImportedGameNames.disambiguatedNames("Until Dawn", "PS5", 3))
+                .containsExactly("Until Dawn", "Until Dawn (PS5)", "Until Dawn (PS5) (2)", "Until Dawn (PS5) (3)");
+    }
+
+    @Test
+    void consoleSuffixKeepsTheNameKey() {
+        assertThat(ImportedGameNames.nameKey("Until Dawn (PS5)")).isEqualTo(ImportedGameNames.nameKey("Until Dawn"));
+        assertThat(ImportedGameNames.nameKey("Until Dawn (PS4)")).isEqualTo("until dawn");
+    }
+
+    @Test
+    void disambiguatedNamesAlwaysFitTheColumn() {
+        assertThat(ImportedGameNames.disambiguatedNames("x".repeat(300), "PS4", 2))
+                .allSatisfy(name -> assertThat(name).hasSizeLessThanOrEqualTo(ImportedGameNames.MAX_NAME_LENGTH))
+                .element(1).asString().endsWith(" (PS4)");
+    }
 }

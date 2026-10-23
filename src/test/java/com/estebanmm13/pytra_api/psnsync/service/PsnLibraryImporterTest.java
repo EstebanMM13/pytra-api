@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -79,6 +80,8 @@ class PsnLibraryImporterTest {
             return game;
         });
         when(gameRepository.getReferenceById(any())).thenAnswer(inv -> createdGames.get(inv.<Long>getArgument(0)));
+        when(gameRepository.existsByUserIdAndNameIgnoreCase(eq(USER_ID), any())).thenAnswer(inv ->
+                createdGames.values().stream().anyMatch(g -> g.getName().equalsIgnoreCase(inv.getArgument(1))));
         when(gamePlatformLinkRepository.save(any(GamePlatformLink.class))).thenAnswer(inv -> {
             savedLinks.add(inv.getArgument(0));
             return inv.getArgument(0);
@@ -117,6 +120,85 @@ class PsnLibraryImporterTest {
                 .containsExactly(ExternalPlatform.PSN_PS5, ExternalPlatform.PSN_PS4);
         assertThat(savedLinks).extracting(link -> link.getGame().getId()).containsOnly(101L);
         verify(pendingGameEnricher).enqueue(USER_ID);
+    }
+
+    @Test
+    void sameNameWithDifferentPsnConceptsBecomesTwoPendingGames() {
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("CUSA02636_00", "Until Dawn™", ExternalPlatform.PSN_PS4, 600, 201L),
+                title("PPSA21000_00", "Until Dawn™", ExternalPlatform.PSN_PS5, 300, 202L)));
+
+        assertThat(result.newGamesPending()).isEqualTo(2);
+        assertThat(result.linkedExisting()).isZero();
+        assertThat(createdGames.values()).extracting(Game::getName, Game::getImportedName)
+                .containsExactlyInAnyOrder(tuple("Until Dawn", "Until Dawn"), tuple("Until Dawn (PS5)", "Until Dawn"));
+        assertThat(savedLinks).extracting(link -> link.getGame().getId()).doesNotHaveDuplicates();
+    }
+
+    @Test
+    void sameNameAndSamePsnConceptShareOnePendingGame() {
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("PPSA01234_00", "Ghost of Tsushima", ExternalPlatform.PSN_PS5, 600, 300L),
+                title("CUSA13323_00", "Ghost of Tsushima", ExternalPlatform.PSN_PS4, 1200, 300L)));
+
+        assertThat(result.newGamesPending()).isEqualTo(1);
+        assertThat(result.linkedExisting()).isEqualTo(1);
+        assertThat(savedLinks).extracting(link -> link.getGame().getId()).containsOnly(101L);
+    }
+
+    @Test
+    void anUnknownConceptOnEitherSideKeepsTheNameMatch() {
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("PPSA01234_00", "Ghost of Tsushima", ExternalPlatform.PSN_PS5, 600, 300L),
+                title("CUSA13323_00", "Ghost of Tsushima", ExternalPlatform.PSN_PS4, 1200)));
+
+        assertThat(result.newGamesPending()).isEqualTo(1);
+        assertThat(result.linkedExisting()).isEqualTo(1);
+    }
+
+    @Test
+    void aManualGameAttractsATitleWhateverItsConcept() {
+        existingGame(10L, "Until Dawn", null);
+
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID,
+                library(title("PPSA21000_00", "Until Dawn", ExternalPlatform.PSN_PS5, 300, 202L)));
+
+        assertThat(result.linkedExisting()).isEqualTo(1);
+        assertThat(savedLinks).singleElement().extracting(link -> link.getGame().getId()).isEqualTo(10L);
+    }
+
+    @Test
+    void aGameLinkedToAnotherConceptGetsASeparateGameAndRegionalVersionsFindIt() {
+        Game original = existingGame(10L, "Until Dawn", null);
+        GamePlatformLink ps4 = GamePlatformLink.builder()
+                .userId(USER_ID).game(original).platform(ExternalPlatform.PSN_PS4).externalId("CUSA02636_00")
+                .lastSyncedPlaytimeMinutes(600L).lastSyncedAt(LocalDateTime.now()).psnConceptId(201L).build();
+        when(gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(USER_ID, PsnPlatforms.ALL))
+                .thenReturn(List.of(ps4));
+
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("CUSA02636_00", "Until Dawn", ExternalPlatform.PSN_PS4, 600, 201L),
+                title("PPSA21000_00", "Until Dawn", ExternalPlatform.PSN_PS5, 300, 202L),
+                title("PPSA21001_00", "Until Dawn", ExternalPlatform.PSN_PS5, 10, 202L)));
+
+        assertThat(result.newGamesPending()).isEqualTo(1);
+        assertThat(result.skipped()).isEqualTo(1);
+        assertThat(createdGames.get(101L).getName()).isEqualTo("Until Dawn (PS5)");
+        assertThat(savedLinks).singleElement().satisfies(link -> {
+            assertThat(link.getGame().getId()).isEqualTo(101L);
+            assertThat(link.getExternalId()).isEqualTo("PPSA21000_00");
+        });
+    }
+
+    @Test
+    void aThirdConceptWithTheSameNameAndConsoleIsNumbered() {
+        importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("CUSA00001_00", "Doom", ExternalPlatform.PSN_PS4, 60, 1L),
+                title("CUSA00002_00", "Doom", ExternalPlatform.PSN_PS4, 60, 2L),
+                title("CUSA00003_00", "Doom", ExternalPlatform.PSN_PS4, 60, 3L)));
+
+        assertThat(createdGames.values()).extracting(Game::getName)
+                .containsExactlyInAnyOrder("Doom", "Doom (PS4)", "Doom (PS4) (2)");
     }
 
     @Test

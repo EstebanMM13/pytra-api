@@ -9,6 +9,7 @@ import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.ExternalPlaytimeWriter;
+import com.estebanmm13.pytra_api.platformsync.ImportedGameNames;
 import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.psnsync.client.PsnPlayedGamesResult;
 import com.estebanmm13.pytra_api.psnsync.client.PsnPlayedTitle;
@@ -49,6 +50,11 @@ import static com.estebanmm13.pytra_api.platformsync.ImportedGameNames.placehold
  * <p>Titles are linked per console: the PS4 and PS5 versions of a game are two PSN titles with their own
  * playtime, and both link to the same Pytra game (one PSN_PS4 and one PSN_PS5 link). A second title for
  * the same console and name (regional versions) is {@code skipped}, like Steam's duplicate names.
+ *
+ * <p>Same name is not always same game: PSN's concept id groups the versions of one game, so a title whose
+ * known concept differs from every same-name game's known concepts (Until Dawn 2015 vs its 2024 remake)
+ * becomes a pending game of its own, named "Until Dawn (PS5)" when "Until Dawn" is taken. An unknown concept
+ * on either side keeps the plain name match.
  */
 @Slf4j
 @Component
@@ -56,6 +62,8 @@ public class PsnLibraryImporter {
 
     /** games.cover_image_url is VARCHAR(500). */
     private static final int MAX_COVER_URL_LENGTH = 500;
+    /** Numbered names tried for a split PSN concept once "Name" and "Name (PS5)" are taken. */
+    private static final int MAX_NAME_NUMBER = 9;
 
     private final PsnLinkRepository psnLinkRepository;
     private final GameRepository gameRepository;
@@ -173,17 +181,23 @@ public class PsnLibraryImporter {
     }
 
     private NameIndex buildNameIndex(Long userId, List<GamePlatformLink> psnLinks) {
-        Map<String, Long> gameIdByName = new HashMap<>();
+        // Several games can share a key (a split PSN concept is "Until Dawn (PS5)" next to "Until Dawn").
+        Map<String, List<Long>> gameIdsByName = new HashMap<>();
         for (Game game : gameRepository.findAllByUserId(userId)) {
             String key = nameKey(game.getName());
             // A name that is only marks/suffix has no key: it must never attract another title.
-            if (!key.isEmpty()) gameIdByName.putIfAbsent(key, game.getId());
+            if (!key.isEmpty()) gameIdsByName.computeIfAbsent(key, k -> new ArrayList<>()).add(game.getId());
         }
         Map<ExternalPlatform, Set<Long>> linkedGameIds = new EnumMap<>(ExternalPlatform.class);
+        Map<Long, Set<Long>> conceptsByGameId = new HashMap<>();
         for (GamePlatformLink link : psnLinks) {
-            linkedGameIds.computeIfAbsent(link.getPlatform(), p -> new HashSet<>()).add(link.getGame().getId());
+            Long gameId = link.getGame().getId();
+            linkedGameIds.computeIfAbsent(link.getPlatform(), p -> new HashSet<>()).add(gameId);
+            if (link.getPsnConceptId() != null) {
+                conceptsByGameId.computeIfAbsent(gameId, id -> new HashSet<>()).add(link.getPsnConceptId());
+            }
         }
-        return new NameIndex(gameIdByName, linkedGameIds);
+        return new NameIndex(gameIdsByName, linkedGameIds, conceptsByGameId);
     }
 
     // ---- Phase 2: one transaction per title without a link --------------------------------
@@ -195,11 +209,12 @@ public class PsnLibraryImporter {
         String key = nameKey(name);
         LocalDateTime now = LocalDateTime.now();
 
-        Long existingGameId = key.isEmpty() ? null : index.gameIdByName().get(key);
+        NameMatch match = key.isEmpty() ? NameMatch.NONE : index.match(key, title.conceptId());
+        Long existingGameId = match.gameId();
         if (existingGameId != null) {
             if (index.isLinked(title.platform(), existingGameId)) {
                 // Another title of the same console already owns that game (regional versions).
-                return new Attachment(Outcome.SKIPPED, null, key, title.platform());
+                return new Attachment(Outcome.SKIPPED, null, key, title.platform(), null);
             }
             // The user already has this game: by hand (its hours very likely include part of the PSN
             // total), from Steam, or from the other console's title. The current PSN playtime becomes
@@ -212,13 +227,16 @@ public class PsnLibraryImporter {
                 existing.setCoverImageUrl(cover);
             }
             gamePlatformLinkRepository.save(newLink(userId, existing, title, now));
-            return new Attachment(Outcome.LINKED_EXISTING, existingGameId, key, title.platform());
+            return new Attachment(Outcome.LINKED_EXISTING, existingGameId, key, title.platform(), title.conceptId());
         }
 
+        // Every same-name game is another PSN concept (e.g. Until Dawn 2015 vs its 2024 remake): a game of
+        // its own, under a name the unique index accepts. The imported name stays the plain one.
+        String storedName = match.otherConcept() ? availableName(userId, name, title.platform()) : name;
         String cover = coverUrl(title);
         Game game = gameRepository.save(Game.builder()
                 .userId(userId)
-                .name(name)
+                .name(storedName)
                 .category(null)
                 .reviewStatus(ReviewStatus.PENDING_REVIEW)
                 .coverImageUrl(cover)
@@ -228,7 +246,21 @@ public class PsnLibraryImporter {
                 .genres(new HashSet<>())
                 .build());
         gamePlatformLinkRepository.save(newLink(userId, game, title, now));
-        return new Attachment(Outcome.CREATED_PENDING, game.getId(), key, title.platform());
+        return new Attachment(Outcome.CREATED_PENDING, game.getId(), key, title.platform(), title.conceptId());
+    }
+
+    /**
+     * First name of {@link ImportedGameNames#disambiguatedNames} no game of the user has yet ("Until Dawn
+     * (PS5)" when "Until Dawn" is taken).
+     *
+     * @throws IllegalStateException when every candidate is taken (the title is counted as errored)
+     */
+    private String availableName(Long userId, String name, ExternalPlatform platform) {
+        for (String candidate : ImportedGameNames.disambiguatedNames(name, PsnPlatforms.consoleCode(platform),
+                MAX_NAME_NUMBER)) {
+            if (!gameRepository.existsByUserIdAndNameIgnoreCase(userId, candidate)) return candidate;
+        }
+        throw new IllegalStateException("No free name for a split PSN concept");
     }
 
     private static GamePlatformLink newLink(Long userId, Game game, PsnPlayedTitle title, LocalDateTime now) {
@@ -258,18 +290,64 @@ public class PsnLibraryImporter {
 
     private enum Outcome { CREATED_PENDING, LINKED_EXISTING, SKIPPED }
 
-    private record Attachment(Outcome outcome, Long gameId, String nameKey, ExternalPlatform platform) {
+    private record Attachment(Outcome outcome, Long gameId, String nameKey, ExternalPlatform platform,
+                              Long conceptId) {
     }
 
-    private record NameIndex(Map<String, Long> gameIdByName, Map<ExternalPlatform, Set<Long>> linkedGameIds) {
+    /**
+     * Result of looking a title up by name.
+     *
+     * @param gameId       the game to link the title to; null when there is none
+     * @param otherConcept true when same-name games exist but all belong to other PSN concepts
+     */
+    private record NameMatch(Long gameId, boolean otherConcept) {
+        static final NameMatch NONE = new NameMatch(null, false);
+    }
+
+    /**
+     * The user's games by {@link ImportedGameNames#nameKey name key}, which consoles link each one, and the
+     * known PSN concepts of each (empty for manual/Steam games and for PSN links that never reported one).
+     */
+    private record NameIndex(Map<String, List<Long>> gameIdsByName,
+                             Map<ExternalPlatform, Set<Long>> linkedGameIds,
+                             Map<Long, Set<Long>> conceptsByGameId) {
         boolean isLinked(ExternalPlatform platform, Long gameId) {
             return linkedGameIds.getOrDefault(platform, Set.of()).contains(gameId);
         }
 
+        /**
+         * The same-name game a title belongs to. A title without a known concept takes the first one (the
+         * behaviour before concepts were stored). One with a concept takes the game of that concept, else one
+         * with no known concept; when every same-name game has another known concept it is a different game.
+         */
+        NameMatch match(String key, Long conceptId) {
+            List<Long> gameIds = gameIdsByName.getOrDefault(key, List.of());
+            if (gameIds.isEmpty()) return NameMatch.NONE;
+            if (conceptId == null) return new NameMatch(gameIds.getFirst(), false);
+            for (Long gameId : gameIds) {
+                if (concepts(gameId).contains(conceptId)) return new NameMatch(gameId, false);
+            }
+            for (Long gameId : gameIds) {
+                if (concepts(gameId).isEmpty()) return new NameMatch(gameId, false);
+            }
+            return new NameMatch(null, true);
+        }
+
+        private Set<Long> concepts(Long gameId) {
+            return conceptsByGameId.getOrDefault(gameId, Set.of());
+        }
+
         void remember(Attachment attachment) {
-            if (attachment.gameId() == null) return;
-            if (!attachment.nameKey().isEmpty()) gameIdByName.putIfAbsent(attachment.nameKey(), attachment.gameId());
-            linkedGameIds.computeIfAbsent(attachment.platform(), p -> new HashSet<>()).add(attachment.gameId());
+            Long gameId = attachment.gameId();
+            if (gameId == null) return;
+            if (!attachment.nameKey().isEmpty()) {
+                List<Long> sameName = gameIdsByName.computeIfAbsent(attachment.nameKey(), k -> new ArrayList<>());
+                if (!sameName.contains(gameId)) sameName.add(gameId);
+            }
+            linkedGameIds.computeIfAbsent(attachment.platform(), p -> new HashSet<>()).add(gameId);
+            if (attachment.conceptId() != null) {
+                conceptsByGameId.computeIfAbsent(gameId, id -> new HashSet<>()).add(attachment.conceptId());
+            }
         }
     }
 
