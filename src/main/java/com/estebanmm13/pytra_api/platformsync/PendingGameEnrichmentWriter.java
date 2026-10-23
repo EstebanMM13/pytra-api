@@ -13,10 +13,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -32,8 +36,15 @@ public class PendingGameEnrichmentWriter {
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
     private final GenreRepository genreRepository;
 
-    /** What the enricher needs to search IGDB for one pending game. */
-    public record Lookup(Long gameId, String name, Set<Integer> igdbPlatformIds) {
+    /**
+     * What the enricher needs to search IGDB for one pending game.
+     *
+     * @param lastPlayedOn latest day (UTC) any of its links reports it was played; null when none does
+     */
+    public record Lookup(Long gameId, String name, Set<Integer> igdbPlatformIds, LocalDate lastPlayedOn) {
+        public Lookup(Long gameId, String name, Set<Integer> igdbPlatformIds) {
+            this(gameId, name, igdbPlatformIds, null);
+        }
     }
 
     /** The user's pending games IGDB was never asked about (or whose lookup failed), oldest first. */
@@ -59,7 +70,13 @@ public class PendingGameEnrichmentWriter {
             Set<Integer> platformIds = IgdbPendingMatch.igdbPlatformIds(
                     links.stream().map(GamePlatformLink::getPlatform).toList());
             if (!platformIds.isEmpty()) {
-                lookups.add(new Lookup(gameId, game.getName(), platformIds));
+                LocalDate lastPlayedOn = links.stream()
+                        .map(GamePlatformLink::getLastPlayedAt)
+                        .filter(Objects::nonNull)
+                        .max(Comparator.naturalOrder())
+                        .map(at -> LocalDate.ofInstant(at, ZoneOffset.UTC))
+                        .orElse(null);
+                lookups.add(new Lookup(gameId, game.getName(), platformIds, lastPlayedOn));
             }
         }
         return lookups;

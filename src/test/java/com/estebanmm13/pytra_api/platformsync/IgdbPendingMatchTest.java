@@ -6,6 +6,7 @@ import com.estebanmm13.pytra_api.metadata.dto.IgdbGameCandidateDto;
 import com.estebanmm13.pytra_api.metadata.dto.IgdbGameMetadataDto;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 
@@ -77,6 +78,42 @@ class IgdbPendingMatchTest {
     }
 
     @Test
+    void aGameReleasedAfterTheLastPlayIsRuledOut() {
+        IgdbGameCandidateDto original = dated(1, "Until Dawn", LocalDate.of(2015, 8, 25), 48);
+        IgdbGameCandidateDto remake = dated(2, "Until Dawn", LocalDate.of(2024, 10, 4), 48);
+
+        assertThat(IgdbPendingMatch.select("Until Dawn", PS4, List.of(original, remake), LocalDate.of(2016, 1, 2)))
+                .contains(original);
+    }
+
+    @Test
+    void lastPlayDateOnlyBreaksTiesItCanProve() {
+        IgdbGameCandidateDto original = dated(1, "Until Dawn", LocalDate.of(2015, 8, 25), 48);
+        IgdbGameCandidateDto remake = dated(2, "Until Dawn", LocalDate.of(2024, 10, 4), 48);
+        IgdbGameCandidateDto undated = dated(3, "Until Dawn", null, 48);
+
+        // Both released before the last play, or an undated one left: still ambiguous.
+        assertThat(IgdbPendingMatch.select("Until Dawn", PS4, List.of(original, remake), LocalDate.of(2025, 1, 1)))
+                .isEmpty();
+        assertThat(IgdbPendingMatch.select("Until Dawn", PS4, List.of(undated, remake), LocalDate.of(2016, 1, 1)))
+                .isEmpty();
+        assertThat(IgdbPendingMatch.select("Until Dawn", PS4, List.of(original, undated, remake), LocalDate.of(2016, 1, 1)))
+                .isEmpty();
+        assertThat(IgdbPendingMatch.select("Until Dawn", PS4, List.of(original, remake), null)).isEmpty();
+        // Released the day after the last play (time zones): not ruled out.
+        assertThat(IgdbPendingMatch.select("Until Dawn", PS4, List.of(original, remake), LocalDate.of(2024, 10, 3)))
+                .isEmpty();
+    }
+
+    @Test
+    void lastPlayDateNeverRejectsASingleMatch() {
+        IgdbGameCandidateDto remake = dated(2, "Until Dawn", LocalDate.of(2024, 10, 4), 167);
+
+        assertThat(IgdbPendingMatch.select("Until Dawn (PS5)", Set.of(167), List.of(remake), LocalDate.of(2016, 1, 1)))
+                .contains(remake);
+    }
+
+    @Test
     void theSameGameListedTwiceIsStillConfident() {
         IgdbGameCandidateDto doom = candidate(1, "DOOM", 6);
 
@@ -101,7 +138,11 @@ class IgdbPendingMatchTest {
     }
 
     private static IgdbGameCandidateDto candidate(long id, String name, Integer... platformIds) {
-        IgdbGameMetadataDto metadata = new IgdbGameMetadataDto(id, name, null, null, null, List.of(), null, List.of());
+        return dated(id, name, null, platformIds);
+    }
+
+    private static IgdbGameCandidateDto dated(long id, String name, LocalDate releaseDate, Integer... platformIds) {
+        IgdbGameMetadataDto metadata = new IgdbGameMetadataDto(id, name, null, null, releaseDate, List.of(), null, List.of());
         return new IgdbGameCandidateDto(metadata, Set.of(platformIds), Set.of(1));
     }
 }

@@ -212,7 +212,8 @@ public class PendingGameEnricher {
                     List<IgdbGameCandidateDto> candidates =
                             igdbClient.searchCandidates(term, lookup.igdbPlatformIds(), SEARCH_LIMIT);
                     state.consecutiveFailures = 0;
-                    match = IgdbPendingMatch.select(lookup.name(), lookup.igdbPlatformIds(), candidates);
+                    match = IgdbPendingMatch.select(lookup.name(), lookup.igdbPlatformIds(), candidates,
+                            lookup.lastPlayedOn());
                 } catch (RuntimeException e) {
                     // Not marked: the game is retried on a later sync.
                     state.failed++;

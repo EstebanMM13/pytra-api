@@ -56,6 +56,22 @@ class PendingGameEnrichmentWriterTest {
     }
 
     @Test
+    void lookupsCarryTheLatestDayAnyLinkWasPlayed() {
+        Game game = pending(5L, "Until Dawn");
+        GamePlatformLink ps4 = link(game, ExternalPlatform.PSN_PS4);
+        ps4.setLastPlayedAt(java.time.Instant.parse("2016-01-01T23:30:00Z"));
+        GamePlatformLink ps5 = link(game, ExternalPlatform.PSN_PS5);
+        ps5.setLastPlayedAt(java.time.Instant.parse("2024-10-20T10:00:00Z"));
+        when(gameRepository.findByIdAndUserId(5L, USER_ID)).thenReturn(Optional.of(game));
+        when(linkRepository.findAllByUserIdAndGameId(USER_ID, 5L))
+                .thenReturn(List.of(ps4, ps5, link(game, ExternalPlatform.STEAM)));
+
+        assertThat(writer.findLookups(USER_ID, List.of(5L))).singleElement()
+                .extracting(PendingGameEnrichmentWriter.Lookup::lastPlayedOn)
+                .isEqualTo(LocalDate.of(2024, 10, 20));
+    }
+
+    @Test
     void confirmedDeletedOrUnlinkedGamesAreNotLookedUp() {
         Game confirmed = pending(5L, "A");
         confirmed.setReviewStatus(ReviewStatus.CONFIRMED);

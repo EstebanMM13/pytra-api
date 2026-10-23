@@ -4,6 +4,7 @@ import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.metadata.dto.IgdbGameCandidateDto;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -18,7 +19,9 @@ import static com.estebanmm13.pytra_api.platformsync.ImportedGameNames.nameKey;
  *
  * <p>A match is CONFIDENT only when exactly one IGDB game has the same {@link ImportedGameNames#nameKey
  * name key} as the pending game AND was released on one of the platforms it was synced from. Anything
- * else (no hit, a near name, two games with that name on that platform) is ambiguous and left alone.
+ * else (no hit, a near name, two games with that name on that platform) is ambiguous and left alone,
+ * except when the date the user last played it rules out all but one of those games (see
+ * {@link #select(String, Set, List, LocalDate)}).
  */
 public final class IgdbPendingMatch {
 
@@ -59,6 +62,19 @@ public final class IgdbPendingMatch {
     /** The single confident candidate, or empty when there is none or more than one. */
     public static Optional<IgdbGameCandidateDto> select(String gameName, Set<Integer> platformIds,
                                                         List<IgdbGameCandidateDto> candidates) {
+        return select(gameName, platformIds, candidates, null);
+    }
+
+    /**
+     * Same as {@link #select(String, Set, List)}, but when several same-name games remain, the ones released
+     * more than a day after {@code lastPlayedOn} are dropped: the user cannot have played a game before it
+     * came out (e.g. a 2024 remake for a title last played in 2016). Confident only if exactly one is left and
+     * its release date is known.
+     *
+     * @param lastPlayedOn the latest day the platforms report the game was played; null when unknown
+     */
+    public static Optional<IgdbGameCandidateDto> select(String gameName, Set<Integer> platformIds,
+                                                        List<IgdbGameCandidateDto> candidates, LocalDate lastPlayedOn) {
         String key = gameName == null ? "" : nameKey(gameName);
         if (key.isEmpty() || platformIds.isEmpty()) return Optional.empty();
 
@@ -66,8 +82,22 @@ public final class IgdbPendingMatch {
                 .filter(c -> key.equals(nameKey(c.metadata().name())))
                 .filter(c -> !Collections.disjoint(c.platformIds(), platformIds))
                 .toList();
-        long distinctGames = confident.stream().mapToLong(c -> c.metadata().igdbId()).distinct().count();
-        return distinctGames == 1 ? Optional.of(confident.getFirst()) : Optional.empty();
+        if (distinctGames(confident) > 1 && lastPlayedOn != null) {
+            // One day of slack: IGDB dates are days (UTC), the platform's play time an instant.
+            LocalDate latestPossibleRelease = lastPlayedOn.plusDays(1);
+            // An undated game might be the one, so it stays in the race but never wins it alone.
+            List<IgdbGameCandidateDto> possible = confident.stream()
+                    .filter(c -> c.metadata().releaseDate() == null
+                            || !c.metadata().releaseDate().isAfter(latestPossibleRelease))
+                    .toList();
+            boolean provable = distinctGames(possible) == 1 && possible.getFirst().metadata().releaseDate() != null;
+            return provable ? Optional.of(possible.getFirst()) : Optional.empty();
+        }
+        return distinctGames(confident) == 1 ? Optional.of(confident.getFirst()) : Optional.empty();
+    }
+
+    private static long distinctGames(List<IgdbGameCandidateDto> candidates) {
+        return candidates.stream().mapToLong(c -> c.metadata().igdbId()).distinct().count();
     }
 
     /**
