@@ -148,6 +148,48 @@ class PsnIntegrationTests extends AbstractIntegrationTest {
     }
 
     @Test
+    void sameNameTitlesOfDifferentConceptsBecomeTwoPendingGames() throws Exception {
+        link(alice);
+        library(title("CUSA02636_00", "Until Dawn™", ExternalPlatform.PSN_PS4, 600, 201L),
+                title("PPSA21000_00", "Until Dawn™", ExternalPlatform.PSN_PS5, 300, 202L));
+
+        sync(aliceAuth)
+                .andExpect(jsonPath("$.newGamesPending").value(2))
+                .andExpect(jsonPath("$.linkedExisting").value(0));
+
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT g.name AS name, g.imported_name AS imported, l.platform AS platform, l.psn_concept_id AS concept "
+                        + "FROM games g JOIN game_platform_links l ON l.game_id = g.id WHERE g.user_id = ? ORDER BY l.platform",
+                alice.getId()))
+                .extracting(row -> row.get("name"), row -> row.get("imported"), row -> row.get("platform"),
+                        row -> ((Number) row.get("concept")).longValue())
+                .containsExactly(
+                        tuple("Until Dawn", "Until Dawn", "PSN_PS4", 201L),
+                        tuple("Until Dawn (PS5)", "Until Dawn", "PSN_PS5", 202L));
+    }
+
+    @Test
+    void pendingGameMergedBeforeConceptsWereKnownIsSplitOnTheNextSync() throws Exception {
+        link(alice);
+        library(title("CUSA02636_00", "Until Dawn", ExternalPlatform.PSN_PS4, 600),
+                title("PPSA21000_00", "Until Dawn", ExternalPlatform.PSN_PS5, 300));
+        sync(aliceAuth).andExpect(jsonPath("$.newGamesPending").value(1));
+        Long mergedId = gameIdByName("Until Dawn");
+
+        library(title("CUSA02636_00", "Until Dawn", ExternalPlatform.PSN_PS4, 600, 201L),
+                title("PPSA21000_00", "Until Dawn", ExternalPlatform.PSN_PS5, 300, 202L));
+        sync(aliceAuth).andExpect(jsonPath("$.newGamesPending").value(1));
+
+        Long splitId = gameIdByName("Until Dawn (PS5)");
+        assertThat(gamePlatformLinkRepository.findAllByUserIdAndGameId(alice.getId(), mergedId))
+                .extracting(link -> link.getPlatform()).containsExactly(ExternalPlatform.PSN_PS4);
+        assertThat(gamePlatformLinkRepository.findAllByUserIdAndGameId(alice.getId(), splitId))
+                .extracting(link -> link.getPlatform()).containsExactly(ExternalPlatform.PSN_PS5);
+        performAs(aliceAuth, get("/api/v1/integrations/psn/pending"))
+                .andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
     void confirmingASingleplayerGameCreatesOneRunPerConsole() throws Exception {
         link(alice);
         library(title("PPSA01234_00", "Ghost of Tsushima", ExternalPlatform.PSN_PS5, 120),
@@ -280,6 +322,12 @@ class PsnIntegrationTests extends AbstractIntegrationTest {
     private static PsnPlayedTitle title(String titleId, String name, ExternalPlatform platform, long minutes) {
         return new PsnPlayedTitle(titleId, name, "https://image.api.playstation.com/" + titleId + ".png",
                 platform, 1, minutes, null, LAST_PLAYED);
+    }
+
+    private static PsnPlayedTitle title(String titleId, String name, ExternalPlatform platform, long minutes,
+                                        Long conceptId) {
+        return new PsnPlayedTitle(titleId, name, "https://image.api.playstation.com/" + titleId + ".png",
+                platform, 1, minutes, null, LAST_PLAYED, conceptId);
     }
 
     private ResultActions sync(String auth) throws Exception {

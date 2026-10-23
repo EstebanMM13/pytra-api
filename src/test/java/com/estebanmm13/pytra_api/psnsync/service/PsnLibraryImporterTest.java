@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -199,6 +200,75 @@ class PsnLibraryImporterTest {
 
         assertThat(createdGames.values()).extracting(Game::getName)
                 .containsExactlyInAnyOrder("Doom", "Doom (PS4)", "Doom (PS4) (2)");
+    }
+
+    @Test
+    void pendingGameThatMergedTwoConceptsIsSplitOnTheNextSync() {
+        Game merged = existingGame(10L, "Until Dawn", "https://image.api.playstation.com/CUSA02636_00.png");
+        merged.setReviewStatus(ReviewStatus.PENDING_REVIEW);
+        merged.setImportedName("Until Dawn");
+        merged.setIgdbLookupAt(LocalDateTime.now());
+        // Linked before concepts were stored: phase 1 backfills them, then the split sees two concepts.
+        GamePlatformLink ps4 = psnLink(1L, merged, ExternalPlatform.PSN_PS4, "CUSA02636_00", null);
+        GamePlatformLink ps5 = psnLink(2L, merged, ExternalPlatform.PSN_PS5, "PPSA21000_00", null);
+        mergedLinks(merged, ps4, ps5);
+
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("CUSA02636_00", "Until Dawn™", ExternalPlatform.PSN_PS4, 600, 201L),
+                title("PPSA21000_00", "Until Dawn™", ExternalPlatform.PSN_PS5, 300, 202L)));
+
+        assertThat(result.newGamesPending()).isEqualTo(1);
+        Game split = createdGames.get(101L);
+        assertThat(split.getName()).isEqualTo("Until Dawn (PS5)");
+        assertThat(split.getImportedName()).isEqualTo("Until Dawn");
+        assertThat(split.getReviewStatus()).isEqualTo(ReviewStatus.PENDING_REVIEW);
+        assertThat(split.getCoverImageUrl()).isEqualTo("https://image.api.playstation.com/PPSA21000_00.png");
+        assertThat(split.getIgdbLookupAt()).isNull();
+        assertThat(ps5.getGame()).isSameAs(split);
+        assertThat(ps4.getGame()).isSameAs(merged);
+        assertThat(merged.getName()).isEqualTo("Until Dawn");
+        assertThat(merged.getIgdbLookupAt()).isNull();
+        verify(pendingGameEnricher).enqueue(USER_ID);
+    }
+
+    @Test
+    void confirmedGameWithTwoConceptsIsNeverSplit() {
+        Game merged = existingGame(10L, "Until Dawn", null);
+        GamePlatformLink ps4 = psnLink(1L, merged, ExternalPlatform.PSN_PS4, "CUSA02636_00", 201L);
+        GamePlatformLink ps5 = psnLink(2L, merged, ExternalPlatform.PSN_PS5, "PPSA21000_00", 202L);
+        mergedLinks(merged, ps4, ps5);
+
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID, library(
+                title("CUSA02636_00", "Until Dawn", ExternalPlatform.PSN_PS4, 600, 201L),
+                title("PPSA21000_00", "Until Dawn", ExternalPlatform.PSN_PS5, 300, 202L)));
+
+        assertThat(result.newGamesPending()).isZero();
+        verify(gameRepository, never()).save(any(Game.class));
+        assertThat(ps5.getGame()).isSameAs(merged);
+    }
+
+    @Test
+    void pendingGameWithOneConceptOrARunIsNotSplit() {
+        Game sameConcept = existingGame(10L, "Ghost of Tsushima", null);
+        sameConcept.setReviewStatus(ReviewStatus.PENDING_REVIEW);
+        Game withRun = existingGame(11L, "Until Dawn", null);
+        withRun.setReviewStatus(ReviewStatus.PENDING_REVIEW);
+        GamePlatformLink ps4WithRun = psnLink(3L, withRun, ExternalPlatform.PSN_PS4, "CUSA02636_00", 201L);
+        ps4WithRun.setExperienceId(99L);
+        GamePlatformLink ps5 = psnLink(4L, withRun, ExternalPlatform.PSN_PS5, "PPSA21000_00", 202L);
+        when(gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(USER_ID, PsnPlatforms.ALL)).thenReturn(List.of(
+                psnLink(1L, sameConcept, ExternalPlatform.PSN_PS4, "CUSA13323_00", 300L),
+                psnLink(2L, sameConcept, ExternalPlatform.PSN_PS5, "PPSA01234_00", 300L),
+                ps4WithRun, ps5));
+        when(gameRepository.findForUpdateByIdAndUserId(11L, USER_ID)).thenReturn(Optional.of(withRun));
+        when(gamePlatformLinkRepository.findAllByUserIdAndGameId(USER_ID, 11L)).thenReturn(List.of(ps4WithRun, ps5));
+
+        PsnSyncResultDto result = importer.importLibrary(USER_ID, ACCOUNT_ID, library());
+
+        assertThat(result.newGamesPending()).isZero();
+        verify(gameRepository, never()).save(any(Game.class));
+        verify(gameRepository, never()).findForUpdateByIdAndUserId(10L, USER_ID);
+        assertThat(ps5.getGame()).isSameAs(withRun);
     }
 
     @Test
@@ -430,6 +500,19 @@ class PsnLibraryImporterTest {
         userGames.add(game);
         createdGames.put(id, game);
         return game;
+    }
+
+    private static GamePlatformLink psnLink(Long id, Game game, ExternalPlatform platform, String titleId, Long conceptId) {
+        return GamePlatformLink.builder()
+                .id(id).userId(USER_ID).game(game).platform(platform).externalId(titleId)
+                .lastSyncedPlaytimeMinutes(60L).lastSyncedAt(LocalDateTime.now()).psnConceptId(conceptId).build();
+    }
+
+    private void mergedLinks(Game game, GamePlatformLink... links) {
+        when(gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(USER_ID, PsnPlatforms.ALL))
+                .thenReturn(List.of(links));
+        when(gameRepository.findForUpdateByIdAndUserId(game.getId(), USER_ID)).thenReturn(Optional.of(game));
+        when(gamePlatformLinkRepository.findAllByUserIdAndGameId(USER_ID, game.getId())).thenReturn(List.of(links));
     }
 
     private static PsnPlayedTitle title(String titleId, String name, ExternalPlatform platform, long minutes) {

@@ -23,9 +23,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -54,7 +56,8 @@ import static com.estebanmm13.pytra_api.platformsync.ImportedGameNames.placehold
  * <p>Same name is not always same game: PSN's concept id groups the versions of one game, so a title whose
  * known concept differs from every same-name game's known concepts (Until Dawn 2015 vs its 2024 remake)
  * becomes a pending game of its own, named "Until Dawn (PS5)" when "Until Dawn" is taken. An unknown concept
- * on either side keeps the plain name match.
+ * on either side keeps the plain name match. Pending games merged before concepts were known are split
+ * the same way on the next sync (see {@link #splitMergedConcepts}).
  */
 @Slf4j
 @Component
@@ -101,16 +104,24 @@ public class PsnLibraryImporter {
             LinkedPhaseResult linkedPhase = transactionTemplate.execute(
                     status -> updateLinkedTitles(userId, accountId, library.titles(), counters));
 
+            NameIndex index = linkedPhase.index();
+            if (splitMergedConcepts(userId, accountId, linkedPhase.links(), library.titles(), counters) > 0) {
+                // Links moved to new games: the index built in phase 1 no longer matches the database.
+                index = transactionTemplate.execute(status -> buildNameIndex(userId,
+                        gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(userId, PsnPlatforms.ALL)));
+            }
+            NameIndex nameIndex = index;
+
             for (PsnPlayedTitle title : linkedPhase.unlinkedTitles()) {
                 try {
                     Attachment attachment = transactionTemplate.execute(status -> {
                         // Re-checked per title: if the account was unlinked/switched mid-import, stop
                         // instead of attaching the old library to the new link.
                         requireStillLinked(userId, accountId);
-                        return attachOrCreate(userId, title, linkedPhase.index());
+                        return attachOrCreate(userId, title, nameIndex);
                     });
                     // Index updated only after the commit, so a rolled-back title leaves no trace in it.
-                    linkedPhase.index().remember(attachment);
+                    nameIndex.remember(attachment);
                     counters.record(attachment.outcome());
                 } catch (PsnIntegrationException | SteamIntegrationException e) {
                     throw e;
@@ -171,7 +182,7 @@ public class PsnLibraryImporter {
             }
         }
 
-        return new LinkedPhaseResult(unlinked, buildNameIndex(userId, links));
+        return new LinkedPhaseResult(unlinked, links, buildNameIndex(userId, links));
     }
 
     private void requireStillLinked(Long userId, String accountId) {
@@ -198,6 +209,105 @@ public class PsnLibraryImporter {
             }
         }
         return new NameIndex(gameIdsByName, linkedGameIds, conceptsByGameId);
+    }
+
+    // ---- Self-heal: pending games that merged two PSN concepts ------------------------------
+
+    /**
+     * Before concepts were stored, same-name titles of different games were merged into one pending game
+     * (Until Dawn 2015 + its 2024 remake), which IGDB could then never match. Now that phase 1 knows their
+     * concepts, each extra concept's links move to a pending game of its own; both are queued for IGDB
+     * again. Confirmed games are left alone: the user already reviewed them. One transaction per game; a
+     * failing game is logged and left as it is.
+     *
+     * @return how many pending games were created
+     */
+    private int splitMergedConcepts(Long userId, String accountId, List<GamePlatformLink> psnLinks,
+                                    List<PsnPlayedTitle> titles, Counters counters) {
+        Map<Long, Set<Long>> conceptsByPendingGame = new HashMap<>();
+        for (GamePlatformLink link : psnLinks) {
+            if (link.getPsnConceptId() != null && link.getGame().getReviewStatus() == ReviewStatus.PENDING_REVIEW) {
+                conceptsByPendingGame.computeIfAbsent(link.getGame().getId(), id -> new HashSet<>())
+                        .add(link.getPsnConceptId());
+            }
+        }
+        List<Long> mergedGameIds = conceptsByPendingGame.entrySet().stream()
+                .filter(entry -> entry.getValue().size() > 1)
+                .map(Map.Entry::getKey)
+                .sorted()
+                .toList();
+        if (mergedGameIds.isEmpty()) return 0;
+
+        Map<String, PsnPlayedTitle> titlesById = titles.stream()
+                .collect(Collectors.toMap(PsnPlayedTitle::titleId, Function.identity(), (a, b) -> a));
+        int created = 0;
+        for (Long gameId : mergedGameIds) {
+            try {
+                Integer split = transactionTemplate.execute(status -> {
+                    requireStillLinked(userId, accountId);
+                    return splitConcepts(userId, gameId, titlesById);
+                });
+                created += split == null ? 0 : split;
+            } catch (PsnIntegrationException | SteamIntegrationException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                log.warn("PSN concept split of pending game {} for userId {} failed: {}",
+                        gameId, userId, e.getClass().getSimpleName());
+            }
+        }
+        counters.newPending += created;
+        if (created > 0) {
+            log.info("PSN sync for userId {} split {} merged PSN concepts into pending games of their own",
+                    userId, created);
+        }
+        return created;
+    }
+
+    /**
+     * Keeps the concept of the game's oldest PSN link (the title that created it) and moves every other
+     * known concept's links to a new pending game. Links without a known concept and non-PSN links stay.
+     *
+     * @return pending games created
+     */
+    private int splitConcepts(Long userId, Long gameId, Map<String, PsnPlayedTitle> titlesById) {
+        Game game = gameRepository.findForUpdateByIdAndUserId(gameId, userId).orElse(null);
+        if (game == null || game.getReviewStatus() != ReviewStatus.PENDING_REVIEW) return 0;
+
+        Map<Long, List<GamePlatformLink>> linksByConcept = new LinkedHashMap<>();
+        gamePlatformLinkRepository.findAllByUserIdAndGameId(userId, gameId).stream()
+                .filter(link -> PsnPlatforms.ALL.contains(link.getPlatform()) && link.getPsnConceptId() != null)
+                .sorted(Comparator.comparing(GamePlatformLink::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .forEach(link -> linksByConcept.computeIfAbsent(link.getPsnConceptId(), c -> new ArrayList<>()).add(link));
+        // A pending game has no runs yet; if one somehow does, moving its links would orphan them.
+        boolean anyRun = linksByConcept.values().stream().flatMap(List::stream)
+                .anyMatch(link -> link.getExperienceId() != null);
+        if (linksByConcept.size() < 2 || anyRun) return 0;
+
+        int created = 0;
+        for (List<GamePlatformLink> links : linksByConcept.values().stream().skip(1).toList()) {
+            GamePlatformLink representative = links.stream()
+                    .min(Comparator.comparing(GamePlatformLink::getPlatform, PsnPlatforms.PS5_FIRST))
+                    .orElseThrow();
+            PsnPlayedTitle title = titlesById.get(representative.getExternalId());
+            String importedName = title != null ? placeholderName(title.name())
+                    : placeholderName(game.getImportedName() != null ? game.getImportedName() : game.getName());
+            String cover = title != null ? coverUrl(title) : null;
+            Game split = gameRepository.save(Game.builder()
+                    .userId(userId)
+                    .name(availableName(userId, importedName, representative.getPlatform()))
+                    .category(null)
+                    .reviewStatus(ReviewStatus.PENDING_REVIEW)
+                    .coverImageUrl(cover)
+                    .importedName(importedName)
+                    .importedCoverUrl(cover)
+                    .genres(new HashSet<>())
+                    .build());
+            links.forEach(link -> link.setGame(split));
+            created++;
+        }
+        // Looked up again with one concept (one console) each, so IGDB can tell them apart.
+        game.setIgdbLookupAt(null);
+        return created;
     }
 
     // ---- Phase 2: one transaction per title without a link --------------------------------
@@ -351,7 +461,8 @@ public class PsnLibraryImporter {
         }
     }
 
-    private record LinkedPhaseResult(List<PsnPlayedTitle> unlinkedTitles, NameIndex index) {
+    private record LinkedPhaseResult(List<PsnPlayedTitle> unlinkedTitles, List<GamePlatformLink> links,
+                                     NameIndex index) {
     }
 
     private static final class Counters {
