@@ -13,6 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -26,7 +27,8 @@ import java.util.Set;
  *   the current principal, so a demo token grants nothing an anonymous caller doesn't already have (and a
  *   stale demo header must not break a real login).</li>
  *   <li>{@code /api/v1/users/me/export} and anything below it is blocked even for GET: it consumes the per-user
- *   export rate limit, which every demo visitor shares, and a bulk download is not browsing.</li>
+ *   export rate limit, which every demo visitor shares, and a bulk download is not browsing. Same for
+ *   {@code /api/v1/export/} and below (the Obsidian sync export).</li>
  * </ul>
  * Paths are compared on {@link RequestPaths#pathWithinApplication} (decoded and normalized by the container),
  * never on the raw request URI, so encoded, {@code ..} or {@code ;} variants cannot reach an exemption.
@@ -48,7 +50,7 @@ public class DemoReadOnlyFilter extends OncePerRequestFilter {
             "/api/v1/auth/exchange-code",
             "/api/v1/auth/demo"
     );
-    private static final String BLOCKED_READ_PREFIX = "/api/v1/users/me/export";
+    private static final List<String> BLOCKED_READ_PREFIXES = List.of("/api/v1/users/me/export", "/api/v1/export/");
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -76,6 +78,7 @@ public class DemoReadOnlyFilter extends OncePerRequestFilter {
         if (PUBLIC_AUTH_PATHS.contains(path)) {
             return true;
         }
-        return SAFE_METHODS.contains(request.getMethod().toUpperCase()) && !path.startsWith(BLOCKED_READ_PREFIX);
+        return SAFE_METHODS.contains(request.getMethod().toUpperCase())
+                && BLOCKED_READ_PREFIXES.stream().noneMatch(path::startsWith);
     }
 }

@@ -17,7 +17,7 @@ class SecurityConfigCorsTest {
 
     @Test
     void preflightIsCacheableForTwoHours() throws Exception {
-        SecurityConfig config = new SecurityConfig(null, null, null, null, null, null);
+        SecurityConfig config = new SecurityConfig(null, null, null, null, null, null, null);
         ReflectionTestUtils.setField(config, "allowedOrigins", List.of(ORIGIN));
 
         MockHttpServletRequest preflight = new MockHttpServletRequest("OPTIONS", "/api/v1/games");

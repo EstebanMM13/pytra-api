@@ -4,6 +4,7 @@ import com.estebanmm13.pytra_api.auth.security.DemoReadOnlyFilter;
 import com.estebanmm13.pytra_api.auth.security.JwtFilter;
 import com.estebanmm13.pytra_api.auth.security.MobileAwareAuthorizationRequestResolver;
 import com.estebanmm13.pytra_api.auth.security.MobileFlagAuthorizationRequestRepository;
+import com.estebanmm13.pytra_api.auth.security.PersonalAccessTokenFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -39,6 +40,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
+    private final PersonalAccessTokenFilter personalAccessTokenFilter;
     private final DemoReadOnlyFilter demoReadOnlyFilter;
     private final OAuth2UserService <OidcUserRequest, OidcUser> oAuth2UserService;
     private final AuthenticationSuccessHandler successHandler;
@@ -52,6 +54,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                // Personal access tokens, only for GET /api/v1/export/obsidian; JwtFilter ignores token-shaped values.
+                .addFilterBefore(personalAccessTokenFilter, JwtFilter.class)
                 // After JwtFilter (which runs before UsernamePasswordAuthenticationFilter): needs the demo principal.
                 .addFilterAfter(demoReadOnlyFilter, UsernamePasswordAuthenticationFilter.class)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -85,6 +89,14 @@ public class SecurityConfig {
     @Bean
     public FilterRegistrationBean<JwtFilter> jwtFilterRegistration(JwtFilter filter) {
         FilterRegistrationBean<JwtFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<PersonalAccessTokenFilter> personalAccessTokenFilterRegistration(
+            PersonalAccessTokenFilter filter) {
+        FilterRegistrationBean<PersonalAccessTokenFilter> registration = new FilterRegistrationBean<>(filter);
         registration.setEnabled(false);
         return registration;
     }

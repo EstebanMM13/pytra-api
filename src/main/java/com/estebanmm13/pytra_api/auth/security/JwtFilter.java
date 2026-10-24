@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.auth.security;
 
+import com.estebanmm13.pytra_api.account.service.PersonalAccessTokenService;
 import com.estebanmm13.pytra_api.auth.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -41,6 +42,11 @@ public class JwtFilter extends OncePerRequestFilter {
             return;
         }
         final String jwt = authHeader.substring(7);
+        // Personal access tokens are not JWTs: PersonalAccessTokenFilter handles them (or leaves them anonymous).
+        if (PersonalAccessTokenService.looksLikeToken(jwt)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         final String username;
         final Long userId;

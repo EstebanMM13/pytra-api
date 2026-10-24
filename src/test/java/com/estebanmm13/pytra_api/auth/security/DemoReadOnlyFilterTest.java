@@ -54,6 +54,7 @@ class DemoReadOnlyFilterTest {
             "GET, /api/v1/users/me/export",
             "GET, /api/v1/users/me/export/",
             "GET, /api/v1/users/me/export/archive.zip",
+            "GET, /api/v1/export/obsidian",
             "POST, /api/v1/auth/unknown",
             "POST, /API/V1/AUTH/LOGIN",
             "POST, /api/v1/auth/login/"
@@ -82,7 +83,8 @@ class DemoReadOnlyFilterTest {
     @CsvSource({
             "POST, /api/v1/games",
             "DELETE, /api/v1/users/me",
-            "GET, /api/v1/users/me/export"
+            "GET, /api/v1/users/me/export",
+            "GET, /api/v1/export/obsidian"
     })
     void normalSessionIsUnaffected(String method, String uri) throws Exception {
         assertThat(run(false, method, uri).getStatus()).isEqualTo(200);
