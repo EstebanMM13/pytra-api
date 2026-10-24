@@ -29,8 +29,9 @@ import java.util.Optional;
  * total per title, so there is no way to know which run an hour belongs to. Instead:
  * <ul>
  *   <li>SINGLEPLAYER: each link keeps ONE "canonical" Experience up to date
- *       (GamePlatformLink.experienceId), separate from any run the user created by hand. Its label,
- *       note and catalog platform come from {@link ImportedRunSource}.</li>
+ *       (GamePlatformLink.experienceId). When the game already has exactly one in-progress run on the
+ *       link's platform, that run is adopted; otherwise a separate run is created, labelled, noted and
+ *       placed on the catalog platform given by {@link ImportedRunSource}.</li>
  *   <li>ONLINE: hours go to OnlinePlaytime, which is already a single total per game.</li>
  *   <li>HYBRID: hours go to OnlinePlaytime too, minus the hours of the runs logged on the linked
  *       platforms (the platform total already includes them). See {@link HybridPlaytimeReconciler}.</li>
@@ -82,7 +83,9 @@ public class ExternalPlaytimeWriter {
      * Confirm-time import of the whole synced total of every link of the game (one game can be
      * linked to Steam and to the PS4 and PS5 versions on PSN at the same time).
      *
-     * <p>SINGLEPLAYER: each link gets its canonical Experience with its own total, on its own platform.
+     * <p>SINGLEPLAYER: each link gets its canonical Experience with its own total, on its own platform. An
+     * adopted in-progress run keeps max(its hours, the synced total): its hours most likely already
+     * include (part of) the synced ones, like the ONLINE rule below.
      *
      * <p>ONLINE/HYBRID rule: the user may already have typed an OnlinePlaytime by hand for this game,
      * and that number most likely already includes (part of) the synced hours. Adding the synced total
@@ -98,8 +101,18 @@ public class ExternalPlaytimeWriter {
 
         if (game.getCategory() == GameCategory.SINGLEPLAYER) {
             for (GamePlatformLink link : links) {
-                if (findCanonicalExperience(link).isEmpty()) {
-                    createCanonicalExperience(link, game.getId(), link.getLastSyncedPlaytimeMinutes() / 60.0);
+                if (findCanonicalExperience(link).isPresent()) {
+                    continue;
+                }
+                double syncedHours = link.getLastSyncedPlaytimeMinutes() / 60.0;
+                Optional<Experience> inProgress = findAdoptableRun(link, game.getId());
+                if (inProgress.isPresent()) {
+                    Experience run = inProgress.get();
+                    run.setHours(Math.max(run.getHours(), syncedHours));
+                    experienceRepository.save(run);
+                    link.setExperienceId(run.getId());
+                } else {
+                    createCanonicalExperience(link, game.getId(), syncedHours);
                 }
             }
             return;
@@ -133,7 +146,8 @@ public class ExternalPlaytimeWriter {
         }
 
         if (category == GameCategory.SINGLEPLAYER) {
-            Optional<Experience> canonical = findCanonicalExperience(link);
+            Optional<Experience> canonical = findCanonicalExperience(link)
+                    .or(() -> adoptInProgressRun(link, game.getId()));
             if (canonical.isPresent()) {
                 Experience experience = canonical.get();
                 experience.setHours(experience.getHours() + hoursToAdd);
@@ -156,6 +170,25 @@ public class ExternalPlaytimeWriter {
     private Optional<Experience> findCanonicalExperience(GamePlatformLink link) {
         if (link.getExperienceId() == null) return Optional.empty();
         return experienceRepository.findByIdAndUserId(link.getExperienceId(), link.getUserId());
+    }
+
+    /** Adopts the game's only in-progress run on the link's platform as the link's canonical run. */
+    private Optional<Experience> adoptInProgressRun(GamePlatformLink link, Long gameId) {
+        Optional<Experience> run = findAdoptableRun(link, gameId);
+        run.ifPresent(experience -> link.setExperienceId(experience.getId()));
+        return run;
+    }
+
+    /**
+     * The game's run the user is playing on the link's platform, when there is exactly one. With none or
+     * several there is no telling which run the hours belong to, so a canonical run is created instead.
+     */
+    private Optional<Experience> findAdoptableRun(GamePlatformLink link, Long gameId) {
+        ImportedRunSource source = ImportedRunSource.of(link.getPlatform());
+        List<Experience> inProgress = experienceRepository.findAllByGameIdAndUserId(gameId, link.getUserId()).stream()
+                .filter(run -> run.getStatus() == ExperienceStatus.EN_CURSO && source.isOnPlatform(run))
+                .toList();
+        return inProgress.size() == 1 ? Optional.of(inProgress.getFirst()) : Optional.empty();
     }
 
     private void createCanonicalExperience(GamePlatformLink link, Long gameId, double hours) {

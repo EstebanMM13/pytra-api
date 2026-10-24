@@ -1,6 +1,7 @@
 package com.estebanmm13.pytra_api.platformsync;
 
 import com.estebanmm13.pytra_api.experiences.model.Experience;
+import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
@@ -23,6 +24,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -208,6 +210,64 @@ class ExternalPlaytimeWriterTest {
 
         assertThat(updated).isFalse();
         verify(onlinePlaytimeRepository, never()).save(any());
+    }
+
+    @Test
+    void firstDeltaGoesToTheOnlyInProgressRunOnTheLinksPlatform() {
+        Game game = game(GameCategory.SINGLEPLAYER, ReviewStatus.CONFIRMED);
+        GamePlatformLink link = link(game, ExternalPlatform.PSN_PS5, 60);
+        Experience manual = inProgressRun(7L, "PS5", 15.0);
+        Experience finishedPs5 = run("PS5", 30.0);
+        finishedPs5.setStatus(ExperienceStatus.COMPLETADO);
+        Experience pcRun = inProgressRun(8L, "PC", 2.0);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID))
+                .thenReturn(List.of(manual, finishedPs5, pcRun));
+
+        boolean updated = writer.applySyncedTotal(link, 60 + 78, LocalDateTime.now());
+
+        assertThat(updated).isTrue();
+        assertThat(link.getExperienceId()).isEqualTo(7L);
+        assertThat(manual.getHours()).isCloseTo(16.3, within(1e-9));
+        verify(experienceRepository).save(manual);
+        verify(platformService, never()).requireByLegacyCode(any());
+    }
+
+    @Test
+    void severalInProgressRunsOnThePlatformStillGetACanonicalRun() {
+        Game game = game(GameCategory.SINGLEPLAYER, ReviewStatus.CONFIRMED);
+        GamePlatformLink link = link(game, ExternalPlatform.PSN_PS5, 0);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID))
+                .thenReturn(List.of(inProgressRun(7L, "PS5", 15.0), inProgressRun(9L, "PS5", 3.0)));
+
+        writer.applySyncedTotal(link, 60, LocalDateTime.now());
+
+        ArgumentCaptor<Experience> created = ArgumentCaptor.forClass(Experience.class);
+        verify(experienceRepository).save(created.capture());
+        assertThat(created.getValue().getRunLabel()).isEqualTo("Importado de PlayStation");
+        assertThat(created.getValue().getHours()).isEqualTo(1.0);
+    }
+
+    @Test
+    void confirmAdoptsTheInProgressRunKeepingTheLargerHours() {
+        Game game = game(GameCategory.SINGLEPLAYER, ReviewStatus.CONFIRMED);
+        Experience manual = inProgressRun(7L, "PC", 3.0);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(List.of(manual));
+        GamePlatformLink steam = link(game, ExternalPlatform.STEAM, 300);
+
+        writer.importTotalsOnConfirm(List.of(steam), game);
+
+        assertThat(steam.getExperienceId()).isEqualTo(7L);
+        assertThat(manual.getHours()).isEqualTo(5.0);
+        verify(experienceRepository).save(manual);
+        verify(platformService, never()).requireByLegacyCode(any());
+    }
+
+    private static Experience inProgressRun(Long id, String platformCode, double hours) {
+        Experience run = run(platformCode, hours);
+        run.setId(id);
+        run.setRunLabel("Run 1");
+        run.setStatus(ExperienceStatus.EN_CURSO);
+        return run;
     }
 
     private static Experience run(String platformCode, double hours) {

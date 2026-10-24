@@ -236,6 +236,31 @@ class PsnIntegrationTests extends AbstractIntegrationTest {
     }
 
     @Test
+    void laterHoursGoToTheInProgressRunOnTheSameConsole() throws Exception {
+        link(alice);
+        Long gameId = createGameVia(aliceAuth, "Saros", "");
+        Long runId = createExperienceVia(aliceAuth, gameId,
+                "{\"runLabel\": \"Run 1\", \"status\": \"EN_CURSO\", \"platform\": \"PS5\", \"hours\": 15.0}");
+        library(title("PPSA02000_00", "Saros", ExternalPlatform.PSN_PS5, 600));
+        sync(aliceAuth).andExpect(jsonPath("$.linkedExisting").value(1));
+
+        library(title("PPSA02000_00", "Saros", ExternalPlatform.PSN_PS5, 678));
+        sync(aliceAuth).andExpect(jsonPath("$.gamesUpdated").value(1));
+
+        assertThat(runHours(gameId)).containsExactly(tuple(runId, 16.3));
+        assertThat(gamePlatformLinkRepository.findByUserIdAndGameIdAndPlatform(alice.getId(), gameId, ExternalPlatform.PSN_PS5))
+                .hasValueSatisfying(link -> assertThat(link.getExperienceId()).isEqualTo(runId));
+    }
+
+    private List<org.assertj.core.groups.Tuple> runHours(Long gameId) {
+        return jdbcTemplate.queryForList("SELECT id, hours FROM experiences WHERE game_id = ? ORDER BY id", gameId)
+                .stream()
+                .map(row -> tuple(((Number) row.get("id")).longValue(),
+                        Math.round(((Number) row.get("hours")).doubleValue() * 100) / 100.0))
+                .toList();
+    }
+
+    @Test
     void privateProfileChangesNothing() throws Exception {
         link(alice);
         doReturn(PsnPlayedGamesResult.privateProfile()).when(psnApiClient).getPlayedGames(anyString());

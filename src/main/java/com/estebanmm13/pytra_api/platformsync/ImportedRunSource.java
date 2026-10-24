@@ -1,5 +1,7 @@
 package com.estebanmm13.pytra_api.platformsync;
 
+import com.estebanmm13.pytra_api.experiences.model.Experience;
+import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
 
 /**
@@ -26,5 +28,37 @@ public record ImportedRunSource(String runLabel, String note, String platformLeg
             case PSN_PS4 -> PSN_PS4;
             default -> throw new IllegalArgumentException("No import source for platform " + platform);
         };
+    }
+
+    /** True when the run is played on this source's catalog platform. */
+    public boolean isOnPlatform(Experience run) {
+        return run.getPlatform() != null
+                && run.getPlatform().getLegacyCode() != null
+                && platformLegacyCode.equalsIgnoreCase(run.getPlatform().getLegacyCode());
+    }
+
+    /**
+     * True when the run is this source's canonical run exactly as the sync created it: still in progress on
+     * this source's platform, with the import label and note, and nothing the user typed (rating, year,
+     * dates, platinum, replay, summary, pros, cons, other notes).
+     */
+    public boolean isUntouchedImportedRun(Experience run) {
+        return runLabel.equals(run.getRunLabel())
+                && run.getStatus() == ExperienceStatus.EN_CURSO
+                && isOnPlatform(run)
+                && (isBlank(run.getNotes()) || note.equals(run.getNotes()))
+                && run.getRating() == null
+                && run.getYear() == null
+                && run.getStartDate() == null
+                && run.getEndDate() == null
+                && !Boolean.TRUE.equals(run.getPlatinum())
+                && !Boolean.TRUE.equals(run.getReplay())
+                && isBlank(run.getSummary())
+                && isBlank(run.getPros())
+                && isBlank(run.getCons());
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }
