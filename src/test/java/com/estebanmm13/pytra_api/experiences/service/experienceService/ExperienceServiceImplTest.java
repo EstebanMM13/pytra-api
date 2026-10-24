@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.experiences.service.experienceService;
 
+import com.estebanmm13.pytra_api.diary.repository.DiaryEntryGameRepository;
 import com.estebanmm13.pytra_api.error.InvalidRequestException;
 import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperiencePatchDto;
@@ -39,8 +40,10 @@ class ExperienceServiceImplTest {
     private final GameRepository gameRepository = mock(GameRepository.class);
     private final PlatformService platformService = mock(PlatformService.class);
     private final HybridPlaytimeReconciler hybridPlaytimeReconciler = mock(HybridPlaytimeReconciler.class);
+    private final DiaryEntryGameRepository diaryEntryGameRepository = mock(DiaryEntryGameRepository.class);
     private final ExperienceServiceImpl service = new ExperienceServiceImpl(
-            experienceRepository, gameRepository, mock(ExperienceMapper.class), platformService, hybridPlaytimeReconciler);
+            experienceRepository, gameRepository, mock(ExperienceMapper.class), platformService, hybridPlaytimeReconciler,
+            diaryEntryGameRepository);
 
     @Test
     void newRunForAnOnlineGameIsRejected() {
@@ -161,6 +164,46 @@ class ExperienceServiceImplTest {
         order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
         order.verify(experienceRepository).delete(run);
         order.verify(hybridPlaytimeReconciler).afterRunChange(game, 20.0);
+    }
+
+    @Test
+    void deleteDetachesTheRunsDiaryLinesBeforeDeletingIt() {
+        ownedGame(GameCategory.SINGLEPLAYER);
+        Experience run = ownedRun();
+
+        service.delete(RUN_ID, USER_ID);
+
+        InOrder order = inOrder(diaryEntryGameRepository, experienceRepository);
+        order.verify(diaryEntryGameRepository).detachRun(RUN_ID);
+        order.verify(experienceRepository).delete(run);
+    }
+
+    @Test
+    void addHoursAddsAndSubtractsThroughTheReconciledSave() {
+        Game game = ownedGame(GameCategory.HYBRID);
+        Experience run = ownedRun();
+        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(5.0);
+
+        service.addHours(RUN_ID, new BigDecimal("2.25"), USER_ID);
+        assertThat(run.getHours()).isEqualTo(3.25);
+
+        service.addHours(RUN_ID, new BigDecimal("-0.1"), USER_ID);
+        assertThat(run.getHours()).isEqualTo(3.15);
+
+        InOrder order = inOrder(hybridPlaytimeReconciler, experienceRepository);
+        order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
+        order.verify(experienceRepository).save(run);
+        order.verify(hybridPlaytimeReconciler).afterRunChange(game, 5.0);
+    }
+
+    @Test
+    void addHoursNeverGoesBelowZero() {
+        ownedGame(GameCategory.SINGLEPLAYER);
+        Experience run = ownedRun();
+
+        service.addHours(RUN_ID, new BigDecimal("-5"), USER_ID);
+
+        assertThat(run.getHours()).isEqualTo(0.0);
     }
 
     private Experience ownedRun() {

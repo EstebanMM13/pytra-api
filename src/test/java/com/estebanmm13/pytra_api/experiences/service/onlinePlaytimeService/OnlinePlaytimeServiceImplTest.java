@@ -95,6 +95,40 @@ class OnlinePlaytimeServiceImplTest {
         assertThat(response.getPlatforms()).isEmpty();
     }
 
+    @Test
+    void addHoursCreatesTheMissingRowForAPositiveChange() {
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.empty());
+
+        service.addHours(GAME_ID, new java.math.BigDecimal("1.5"), USER_ID);
+
+        org.mockito.ArgumentCaptor<OnlinePlaytime> captor = org.mockito.ArgumentCaptor.forClass(OnlinePlaytime.class);
+        verify(onlinePlaytimeRepository).save(captor.capture());
+        assertThat(captor.getValue().getTotalHours()).isEqualTo(1.5);
+        assertThat(captor.getValue().getUserId()).isEqualTo(USER_ID);
+        assertThat(captor.getValue().getGameId()).isEqualTo(GAME_ID);
+    }
+
+    @Test
+    void addHoursWithoutARowIgnoresASubtraction() {
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.empty());
+
+        service.addHours(GAME_ID, new java.math.BigDecimal("-1.5"), USER_ID);
+
+        verify(onlinePlaytimeRepository, never()).save(any());
+    }
+
+    @Test
+    void addHoursChangesTheTotalAndNeverGoesBelowZero() {
+        OnlinePlaytime existing = OnlinePlaytime.builder().id(1L).userId(USER_ID).gameId(GAME_ID).totalHours(10.1).build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(existing));
+
+        service.addHours(GAME_ID, new java.math.BigDecimal("0.2"), USER_ID);
+        assertThat(existing.getTotalHours()).isEqualTo(10.3);
+
+        service.addHours(GAME_ID, new java.math.BigDecimal("-20"), USER_ID);
+        assertThat(existing.getTotalHours()).isEqualTo(0.0);
+    }
+
     private static OnlinePlaytimeRequestDto request(Set<Long> platformIds) {
         OnlinePlaytimeRequestDto dto = new OnlinePlaytimeRequestDto();
         dto.setTotalHours(12.0);

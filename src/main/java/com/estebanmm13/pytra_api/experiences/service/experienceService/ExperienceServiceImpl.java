@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.experiences.service.experienceService;
 
+import com.estebanmm13.pytra_api.diary.repository.DiaryEntryGameRepository;
 import com.estebanmm13.pytra_api.error.InvalidRequestException;
 import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperiencePatchDto;
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -31,6 +33,7 @@ public class ExperienceServiceImpl implements ExperienceService {
     private final ExperienceMapper experienceMapper;
     private final PlatformService platformService;
     private final HybridPlaytimeReconciler hybridPlaytimeReconciler;
+    private final DiaryEntryGameRepository diaryEntryGameRepository;
 
     @Override
     public List<ExperienceResponseDto> findAllByGame(Long gameId, Long userId) {
@@ -130,8 +133,16 @@ public class ExperienceServiceImpl implements ExperienceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Experience not found"));
         Game game = gameRepository.findByIdAndUserId(experience.getGameId(), userId).orElse(null);
         Double syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
+        // The diary hours added to this run go away with it: its diary lines must never subtract them again.
+        diaryEntryGameRepository.detachRun(experience.getId());
         experienceRepository.delete(experience);
         hybridPlaytimeReconciler.afterRunChange(game, syncedShareBefore);
+    }
+
+    @Override
+    @Transactional
+    public void addHours(Long id, BigDecimal deltaHours, Long userId) {
+        saveReconciled(id, userId, experience -> experience.setHours(HoursArithmetic.add(experience.getHours(), deltaHours)));
     }
 
     /**

@@ -65,7 +65,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(InvalidRequestException.class)
     public ResponseEntity<ApiError> handleInvalidRequest(InvalidRequestException e) {
-        ApiError apiError = new ApiError(HttpStatus.BAD_REQUEST.value(), e.getMessage(), Map.of(), LocalDateTime.now());
+        ApiError apiError = new ApiError(HttpStatus.BAD_REQUEST.value(), e.getMessage(), e.getFieldErrors(), LocalDateTime.now());
         return ResponseEntity.badRequest().body(apiError);
     }
 
