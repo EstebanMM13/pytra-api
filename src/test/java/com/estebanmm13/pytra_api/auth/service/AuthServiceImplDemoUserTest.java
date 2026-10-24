@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.auth.service;
 
+import com.estebanmm13.pytra_api.account.repository.PersonalAccessTokenRepository;
 import com.estebanmm13.pytra_api.auth.dto.exchangeToken.ExchangeCodeTokenRequestDto;
 import com.estebanmm13.pytra_api.auth.dto.forgotPassword.ForgotPasswordRequestDto;
 import com.estebanmm13.pytra_api.auth.dto.login.LoginRequestDto;
@@ -52,11 +53,13 @@ class AuthServiceImplDemoUserTest {
     private final PasswordResetTokenRepository passwordResetTokenRepository = mock(PasswordResetTokenRepository.class);
     private final ExchangeCodeTokenRepository exchangeCodeTokenRepository = mock(ExchangeCodeTokenRepository.class);
     private final AuthEmailService authEmailService = mock(AuthEmailService.class);
+    private final PersonalAccessTokenRepository personalAccessTokenRepository = mock(PersonalAccessTokenRepository.class);
 
     private AuthServiceImpl service(DemoMode demoMode) {
         AuthServiceImpl service = new AuthServiceImpl(userRepository, passwordEncoder, jwtService, mock(UserMapper.class),
                 emailVerificationTokenRepository, tokenGenerator, passwordResetTokenRepository,
-                exchangeCodeTokenRepository, authEmailService, mock(RegistrationPolicy.class), demoMode);
+                exchangeCodeTokenRepository, authEmailService, mock(RegistrationPolicy.class), demoMode,
+                personalAccessTokenRepository);
         when(tokenGenerator.generateTokenRaw()).thenReturn("raw");
         when(passwordEncoder.encode(anyString())).thenReturn("hash");
         service.initDummyPasswordHash();
@@ -150,6 +153,24 @@ class AuthServiceImplDemoUserTest {
                 .isInstanceOf(InvalidTokenException.class).hasMessage("Invalid token");
         assertThat(demo.getPasswordHash()).isEqualTo("stored-hash");
         verify(userRepository, never()).save(any());
+        verify(personalAccessTokenRepository, never()).deleteAllByUserId(anyLong());
+    }
+
+    @Test
+    void resetPasswordRevokesEveryPersonalAccessToken() {
+        AuthServiceImpl service = service(new DemoMode(""));
+        User user = demoUser(true);
+        when(tokenGenerator.hashToken("reset")).thenReturn("reset-hash");
+        when(passwordResetTokenRepository.findByTokenHash("reset-hash")).thenReturn(Optional.of(PasswordResetToken.builder()
+                .user(user).tokenHash("reset-hash").expiresAt(LocalDateTime.now().plusHours(1)).build()));
+        ResetPasswordRequestDto request = new ResetPasswordRequestDto();
+        request.setToken("reset");
+        request.setNewPassword("new-password-123");
+
+        service.resetPassword(request);
+
+        assertThat(user.getPasswordHash()).isEqualTo("hash");
+        verify(personalAccessTokenRepository).deleteAllByUserId(DEMO_ID);
     }
 
     @Test

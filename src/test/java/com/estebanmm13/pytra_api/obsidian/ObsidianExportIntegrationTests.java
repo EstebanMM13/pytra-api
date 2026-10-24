@@ -1,7 +1,10 @@
 package com.estebanmm13.pytra_api.obsidian;
 
 import com.estebanmm13.pytra_api.AbstractIntegrationTest;
+import com.estebanmm13.pytra_api.auth.model.PasswordResetToken;
 import com.estebanmm13.pytra_api.auth.model.User;
+import com.estebanmm13.pytra_api.auth.repository.PasswordResetTokenRepository;
+import com.estebanmm13.pytra_api.auth.security.TokenGenerator;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
@@ -35,6 +38,12 @@ class ObsidianExportIntegrationTests extends AbstractIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private PasswordResetTokenRepository passwordResetTokenRepository;
+
+    @Autowired
+    private TokenGenerator tokenGenerator;
 
     private User alice;
     private User bob;
@@ -173,6 +182,25 @@ class ObsidianExportIntegrationTests extends AbstractIntegrationTest {
         performAs(bobAuth, get(EXPORT)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.games", hasSize(1)))
                 .andExpect(jsonPath("$.games[0].name").value("Bob Secret Game"));
+    }
+
+    @Test
+    void resettingThePasswordRevokesEveryToken() throws Exception {
+        String aliceToken = "Bearer " + createToken(aliceAuth, "Obsidian");
+        String bobToken = "Bearer " + createToken(bobAuth, "Obsidian");
+        passwordResetTokenRepository.save(PasswordResetToken.builder()
+                .user(alice).tokenHash(tokenGenerator.hashToken("obsidian-reset-" + alice.getId()))
+                .expiresAt(LocalDateTime.now().plusHours(1)).build());
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"token\": \"obsidian-reset-" + alice.getId() + "\", \"newPassword\": \"Brand-new-pass-123\"}"))
+                .andExpect(status().is2xxSuccessful());
+
+        performAs(aliceToken, get(EXPORT)).andExpect(status().isUnauthorized());
+        performAs(aliceAuth, get(TOKENS)).andExpect(jsonPath("$", hasSize(0)));
+        // Other users keep theirs.
+        performAs(bobToken, get(EXPORT)).andExpect(status().isOk());
     }
 
     @Test

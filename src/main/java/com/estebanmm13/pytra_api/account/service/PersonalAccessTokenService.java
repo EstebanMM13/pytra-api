@@ -60,7 +60,8 @@ public class PersonalAccessTokenService {
 
     @Transactional
     public CreatedAccessTokenResponseDto create(Long userId, String name) {
-        User user = userRepository.findById(userId)
+        // Row lock on the user until commit: two concurrent creates cannot both pass the cap check.
+        User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (tokenRepository.countByUser_Id(userId) >= MAX_TOKENS_PER_USER) {
             throw new ResourceLimitExceededException(ResourceLimitExceededException.ACCESS_TOKEN_LIMIT);

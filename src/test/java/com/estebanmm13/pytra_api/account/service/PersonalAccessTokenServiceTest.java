@@ -41,7 +41,7 @@ class PersonalAccessTokenServiceTest {
 
     @Test
     void createReturnsThePlaintextOnceAndStoresOnlyItsHash() {
-        when(userRepository.findById(7L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(user));
         when(tokenRepository.countByUser_Id(7L)).thenReturn(0L);
         when(tokenRepository.save(any())).thenAnswer(invocation -> {
             PersonalAccessToken token = invocation.getArgument(0);
@@ -68,7 +68,7 @@ class PersonalAccessTokenServiceTest {
 
     @Test
     void createRefusesASixthToken() {
-        when(userRepository.findById(7L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(user));
         when(tokenRepository.countByUser_Id(7L)).thenReturn(5L);
 
         assertThatThrownBy(() -> service.create(7L, "One more"))

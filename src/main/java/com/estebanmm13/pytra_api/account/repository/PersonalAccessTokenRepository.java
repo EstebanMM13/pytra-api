@@ -26,6 +26,11 @@ public interface PersonalAccessTokenRepository extends JpaRepository<PersonalAcc
 
     long countByUser_Id(Long userId);
 
+    /** Revokes every token of the user (password reset). Runs in the caller's transaction. */
+    @Modifying
+    @Query("DELETE FROM PersonalAccessToken t WHERE t.user.id = :userId")
+    int deleteAllByUserId(@Param("userId") Long userId);
+
     /**
      * Stamps the last use only when the stored one is older than {@code threshold} (or unset), so a client
      * polling every few seconds writes at most one row update per window. Own transaction: the caller

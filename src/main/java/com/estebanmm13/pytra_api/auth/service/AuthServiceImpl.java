@@ -12,6 +12,7 @@ import com.estebanmm13.pytra_api.auth.dto.resendVerification.ResendVerificationR
 import com.estebanmm13.pytra_api.auth.dto.resetPassword.ResetPasswordRequestDto;
 import com.estebanmm13.pytra_api.auth.mapper.UserMapper;
 import com.estebanmm13.pytra_api.auth.model.*;
+import com.estebanmm13.pytra_api.account.repository.PersonalAccessTokenRepository;
 import com.estebanmm13.pytra_api.auth.repository.EmailVerificationTokenRepository;
 import com.estebanmm13.pytra_api.auth.repository.ExchangeCodeTokenRepository;
 import com.estebanmm13.pytra_api.auth.repository.PasswordResetTokenRepository;
@@ -61,6 +62,7 @@ public class AuthServiceImpl implements AuthService {
     private final AuthEmailService authEmailService;
     private final RegistrationPolicy registrationPolicy;
     private final DemoMode demoMode;
+    private final PersonalAccessTokenRepository personalAccessTokenRepository;
 
     // Hash compared against when the account does not exist (or has no password), so a failed login costs
     // the same bcrypt work either way and response time does not reveal which identifiers are registered.
@@ -272,6 +274,8 @@ public class AuthServiceImpl implements AuthService {
         // The reset link was delivered to this inbox, which proves ownership of the email.
         user.setEmailVerified(true);
         userRepository.save(user);
+        // A new password ends every long-lived credential too (same transaction as the password update).
+        personalAccessTokenRepository.deleteAllByUserId(user.getId());
 
     }
 
