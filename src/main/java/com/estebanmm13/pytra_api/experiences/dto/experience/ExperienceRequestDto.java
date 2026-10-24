@@ -1,6 +1,8 @@
 package com.estebanmm13.pytra_api.experiences.dto.experience;
 
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
+import com.estebanmm13.pytra_api.experiences.validation.RunDate;
+import com.estebanmm13.pytra_api.experiences.validation.RunDateRange;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,11 +12,13 @@ import java.time.LocalDate;
 
 @Getter
 @Setter
+@RunDateRange
 public class ExperienceRequestDto {
 
     @NotBlank
     private String runLabel;
 
+    @RunDate
     private Integer year;
 
     @NotNull
@@ -29,8 +33,10 @@ public class ExperienceRequestDto {
     @PositiveOrZero
     private Double hours;
 
+    @RunDate
     private LocalDate startDate;
 
+    @RunDate
     private LocalDate endDate;
 
     /** Catalog platform id. Required unless the legacy {@code platform} code is sent. */
