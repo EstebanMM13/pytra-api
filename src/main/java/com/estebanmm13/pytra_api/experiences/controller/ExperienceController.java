@@ -1,6 +1,7 @@
 package com.estebanmm13.pytra_api.experiences.controller;
 
 import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
+import com.estebanmm13.pytra_api.experiences.dto.experience.ExperiencePatchDto;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceRequestDto;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceResponseDto;
 import com.estebanmm13.pytra_api.experiences.service.experienceService.ExperienceService;
@@ -30,6 +31,14 @@ public class ExperienceController {
             @PathVariable Long id,
             @Valid @RequestBody ExperienceRequestDto experienceRequestDto) {
         return ResponseEntity.ok(experienceService.update(id, experienceRequestDto, currentUserResolver.getCurrentUserId()));
+    }
+
+    /** Changes only the sent figures (hours, rating): the inline edit of the run detail page. */
+    @PatchMapping("/{id}")
+    public ResponseEntity<ExperienceResponseDto> patchExperience(
+            @PathVariable Long id,
+            @Valid @RequestBody ExperiencePatchDto experiencePatchDto) {
+        return ResponseEntity.ok(experienceService.patch(id, experiencePatchDto, currentUserResolver.getCurrentUserId()));
     }
 
     @DeleteMapping("/{id}")

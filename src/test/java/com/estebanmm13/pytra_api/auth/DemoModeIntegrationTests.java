@@ -107,6 +107,7 @@ class DemoModeIntegrationTests extends AbstractIntegrationTest {
                 put("/api/v1/games/{id}", demoGameId),
                 delete("/api/v1/games/{id}", demoGameId),
                 post("/api/v1/games/{id}/experiences", demoGameId),
+                patch("/api/v1/experiences/{id}", 1L),
                 put("/api/v1/games/{id}/online-playtime", demoGameId),
                 post("/api/v1/sagas"),
                 post("/api/v1/genres"),

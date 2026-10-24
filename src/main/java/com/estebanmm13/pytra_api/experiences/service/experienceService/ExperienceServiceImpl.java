@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.experiences.service.experienceService;
 
 import com.estebanmm13.pytra_api.error.InvalidRequestException;
 import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
+import com.estebanmm13.pytra_api.experiences.dto.experience.ExperiencePatchDto;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceRequestDto;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceResponseDto;
 import com.estebanmm13.pytra_api.experiences.mapper.ExperienceMapper;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 @Service
 @RequiredArgsConstructor
@@ -89,30 +91,36 @@ public class ExperienceServiceImpl implements ExperienceService {
     @Override
     @Transactional
     public ExperienceResponseDto update(Long id, ExperienceRequestDto experienceRequestDto, Long userId) {
-        Experience experience = experienceRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Experience not found"));
-        Game game = gameRepository.findByIdAndUserId(experience.getGameId(), userId).orElse(null);
-        Double syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
+        return saveReconciled(id, userId, experience -> {
+            experience.setRunLabel(experienceRequestDto.getRunLabel());
+            experience.setYear(experienceRequestDto.getYear());
+            experience.setStatus(experienceRequestDto.getStatus());
+            experience.setRating(experienceRequestDto.getRating());
+            experience.setHours(experienceRequestDto.getHours() != null ? experienceRequestDto.getHours() : 0.0);
+            experience.setStartDate(experienceRequestDto.getStartDate());
+            experience.setEndDate(experienceRequestDto.getEndDate());
+            experience.setPlatform(platformService.resolve(
+                    experienceRequestDto.getPlatformId(), experienceRequestDto.getPlatform(), experience.getPlatform()));
+            experience.setPlatinum(experienceRequestDto.getPlatinum() != null ? experienceRequestDto.getPlatinum() : false);
+            experience.setReplay(experienceRequestDto.getReplay() != null ? experienceRequestDto.getReplay() : false);
+            experience.setSummary(experienceRequestDto.getSummary());
+            experience.setPros(experienceRequestDto.getPros());
+            experience.setCons(experienceRequestDto.getCons());
+            experience.setNotes(experienceRequestDto.getNotes());
+        });
+    }
 
-        experience.setRunLabel(experienceRequestDto.getRunLabel());
-        experience.setYear(experienceRequestDto.getYear());
-        experience.setStatus(experienceRequestDto.getStatus());
-        experience.setRating(experienceRequestDto.getRating());
-        experience.setHours(experienceRequestDto.getHours() != null ? experienceRequestDto.getHours() : 0.0);
-        experience.setStartDate(experienceRequestDto.getStartDate());
-        experience.setEndDate(experienceRequestDto.getEndDate());
-        experience.setPlatform(platformService.resolve(
-                experienceRequestDto.getPlatformId(), experienceRequestDto.getPlatform(), experience.getPlatform()));
-        experience.setPlatinum(experienceRequestDto.getPlatinum() != null ? experienceRequestDto.getPlatinum() : false);
-        experience.setReplay(experienceRequestDto.getReplay() != null ? experienceRequestDto.getReplay() : false);
-        experience.setSummary(experienceRequestDto.getSummary());
-        experience.setPros(experienceRequestDto.getPros());
-        experience.setCons(experienceRequestDto.getCons());
-        experience.setNotes(experienceRequestDto.getNotes());
-
-        experienceRepository.save(experience);
-        hybridPlaytimeReconciler.afterRunChange(game, syncedShareBefore);
-        return experienceMapper.toResponseDto(experience);
+    @Override
+    @Transactional
+    public ExperienceResponseDto patch(Long id, ExperiencePatchDto experiencePatchDto, Long userId) {
+        return saveReconciled(id, userId, experience -> {
+            if (experiencePatchDto.getHours() != null) {
+                experience.setHours(experiencePatchDto.getHours());
+            }
+            if (experiencePatchDto.isRatingSent()) {
+                experience.setRating(experiencePatchDto.getRating());
+            }
+        });
     }
 
     @Override
@@ -124,6 +132,23 @@ public class ExperienceServiceImpl implements ExperienceService {
         Double syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
         experienceRepository.delete(experience);
         hybridPlaytimeReconciler.afterRunChange(game, syncedShareBefore);
+    }
+
+    /**
+     * Applies {@code changes} to the user's run and saves it, moving a synced HYBRID game's hours between
+     * its runs and its online playtime around the change. Shared by the full and the partial update.
+     */
+    private ExperienceResponseDto saveReconciled(Long id, Long userId, Consumer<Experience> changes) {
+        Experience experience = experienceRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Experience not found"));
+        Game game = gameRepository.findByIdAndUserId(experience.getGameId(), userId).orElse(null);
+        Double syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
+
+        changes.accept(experience);
+
+        experienceRepository.save(experience);
+        hybridPlaytimeReconciler.afterRunChange(game, syncedShareBefore);
+        return experienceMapper.toResponseDto(experience);
     }
 
     private Game requireOwnedGame(Long gameId, Long userId) {

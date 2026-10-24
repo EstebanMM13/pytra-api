@@ -30,6 +30,7 @@ import java.util.HashSet;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -116,6 +117,7 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.POST, "/api/v1/games/1/experiences"),
                 Arguments.of(HttpMethod.GET, "/api/v1/experiences/1"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/experiences/1"),
+                Arguments.of(HttpMethod.PATCH, "/api/v1/experiences/1"),
                 Arguments.of(HttpMethod.DELETE, "/api/v1/experiences/1"),
                 Arguments.of(HttpMethod.GET, "/api/v1/games/1/online-playtime"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/games/1/online-playtime"),
@@ -328,6 +330,16 @@ class TenantIsolationTests extends AbstractIntegrationTest {
             perform(get("/api/v1/experiences/{id}", aliceExperienceId), aliceAuth)
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.runLabel").value("Alice run"));
+        }
+
+        @Test
+        void otherUserCannotPatchExperience() throws Exception {
+            perform(patch("/api/v1/experiences/{id}", aliceExperienceId), bobAuth, "{\"hours\": 999}")
+                    .andExpect(status().isNotFound());
+
+            perform(get("/api/v1/experiences/{id}", aliceExperienceId), aliceAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.hours").value(not(999.0)));
         }
 
         @Test

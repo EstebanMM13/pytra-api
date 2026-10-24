@@ -1,6 +1,8 @@
 package com.estebanmm13.pytra_api.experiences.service.experienceService;
 
 import com.estebanmm13.pytra_api.error.InvalidRequestException;
+import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
+import com.estebanmm13.pytra_api.experiences.dto.experience.ExperiencePatchDto;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceRequestDto;
 import com.estebanmm13.pytra_api.experiences.mapper.ExperienceMapper;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
@@ -15,8 +17,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.InOrder;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
@@ -83,6 +87,66 @@ class ExperienceServiceImplTest {
         order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
         order.verify(experienceRepository).save(run);
         order.verify(hybridPlaytimeReconciler).afterRunChange(game, 60.0);
+    }
+
+    @Test
+    void patchChangesOnlyTheSentFiguresAndReconcilesHybridHours() {
+        Game game = ownedGame(GameCategory.HYBRID);
+        Experience run = ownedRun();
+        run.setRunLabel("Run 1");
+        run.setRating(new BigDecimal("7"));
+        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(40.0);
+        ExperiencePatchDto patch = new ExperiencePatchDto();
+        patch.setHours(12.5);
+
+        service.patch(RUN_ID, patch, USER_ID);
+
+        assertThat(run.getHours()).isEqualTo(12.5);
+        assertThat(run.getRating()).isEqualByComparingTo("7");
+        assertThat(run.getRunLabel()).isEqualTo("Run 1");
+        InOrder order = inOrder(hybridPlaytimeReconciler, experienceRepository);
+        order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
+        order.verify(experienceRepository).save(run);
+        order.verify(hybridPlaytimeReconciler).afterRunChange(game, 40.0);
+    }
+
+    @Test
+    void patchSetsOrClearsTheRatingOnlyWhenSentAndKeepsTheHours() {
+        ownedGame(GameCategory.SINGLEPLAYER);
+        Experience run = ownedRun();
+        ExperiencePatchDto rate = new ExperiencePatchDto();
+        rate.setRating(new BigDecimal("9.25"));
+
+        service.patch(RUN_ID, rate, USER_ID);
+        assertThat(run.getRating()).isEqualByComparingTo("9.25");
+        assertThat(run.getHours()).isEqualTo(1.0);
+
+        ExperiencePatchDto clear = new ExperiencePatchDto();
+        clear.setRating(null);
+        service.patch(RUN_ID, clear, USER_ID);
+        assertThat(run.getRating()).isNull();
+        assertThat(run.getHours()).isEqualTo(1.0);
+    }
+
+    @Test
+    void patchOfAnExistingRunOfAnOnlineGameIsAllowed() {
+        ownedGame(GameCategory.ONLINE);
+        Experience run = ownedRun();
+        ExperiencePatchDto patch = new ExperiencePatchDto();
+        patch.setHours(4.0);
+
+        service.patch(RUN_ID, patch, USER_ID);
+
+        verify(experienceRepository).save(run);
+    }
+
+    @Test
+    void patchOfAForeignRunIsNotFound() {
+        when(experienceRepository.findByIdAndUserId(RUN_ID, USER_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.patch(RUN_ID, new ExperiencePatchDto(), USER_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(experienceRepository, never()).save(any());
     }
 
     @Test

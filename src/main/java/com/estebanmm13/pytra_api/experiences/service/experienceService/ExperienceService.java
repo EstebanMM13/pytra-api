@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.experiences.service.experienceService;
 
+import com.estebanmm13.pytra_api.experiences.dto.experience.ExperiencePatchDto;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceRequestDto;
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceResponseDto;
 
@@ -10,5 +11,6 @@ public interface ExperienceService {
     ExperienceResponseDto findById(Long id, Long userId);
     ExperienceResponseDto create(Long gameId, ExperienceRequestDto experienceRequestDto, Long userId);
     ExperienceResponseDto update(Long id, ExperienceRequestDto experienceRequestDto, Long userId);
+    ExperienceResponseDto patch(Long id, ExperiencePatchDto experiencePatchDto, Long userId);
     void delete(Long id, Long userId);
 }
