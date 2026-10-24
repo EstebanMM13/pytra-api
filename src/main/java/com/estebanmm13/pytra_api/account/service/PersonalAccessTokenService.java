@@ -9,6 +9,7 @@ import com.estebanmm13.pytra_api.auth.repository.UserRepository;
 import com.estebanmm13.pytra_api.auth.security.TokenGenerator;
 import com.estebanmm13.pytra_api.error.ResourceLimitExceededException;
 import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +38,7 @@ public class PersonalAccessTokenService {
     private final TokenGenerator tokenGenerator;
     private final Clock clock;
 
+    @Autowired
     public PersonalAccessTokenService(PersonalAccessTokenRepository tokenRepository,
                                       UserRepository userRepository,
                                       TokenGenerator tokenGenerator) {

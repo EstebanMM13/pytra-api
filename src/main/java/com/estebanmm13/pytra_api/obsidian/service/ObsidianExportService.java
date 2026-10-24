@@ -17,6 +17,7 @@ import com.estebanmm13.pytra_api.obsidian.dto.ObsidianExportDto.GameDto;
 import com.estebanmm13.pytra_api.obsidian.dto.ObsidianExportDto.OnlineDto;
 import com.estebanmm13.pytra_api.obsidian.dto.ObsidianExportDto.SagaDto;
 import com.estebanmm13.pytra_api.platforms.model.Platform;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +52,7 @@ public class ObsidianExportService {
     private final OnlinePlaytimeRepository onlinePlaytimeRepository;
     private final Clock clock;
 
+    @Autowired
     public ObsidianExportService(GameRepository gameRepository,
                                  ExperienceRepository experienceRepository,
                                  OnlinePlaytimeRepository onlinePlaytimeRepository) {
