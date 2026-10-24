@@ -27,4 +27,12 @@ public interface DiaryEntryGameRepository extends JpaRepository<DiaryEntryGame, 
     @Modifying(flushAutomatically = true, clearAutomatically = false)
     @Query("UPDATE DiaryEntryGame g SET g.experienceId = null, g.countsHours = false WHERE g.experienceId = :experienceId")
     int detachRun(@Param("experienceId") Long experienceId);
+
+    /**
+     * Before a run is merged into another one (its hours moved with it): its diary lines follow the hours
+     * to the other run, keeping their {@code countsHours} flag, so nothing is added or subtracted twice.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = false)
+    @Query("UPDATE DiaryEntryGame g SET g.experienceId = :targetId WHERE g.experienceId = :sourceId")
+    int repointRun(@Param("sourceId") Long sourceId, @Param("targetId") Long targetId);
 }

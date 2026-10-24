@@ -9,6 +9,7 @@ import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.metadata.client.SteamCoverImages;
 import com.estebanmm13.pytra_api.platformsync.ExternalPlaytimeWriter;
+import com.estebanmm13.pytra_api.platformsync.ImportedRunMerger;
 import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGame;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGamesResult;
@@ -60,6 +61,7 @@ public class SteamLibraryImporter {
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
     private final SteamIgnoredAppRepository steamIgnoredAppRepository;
     private final ExternalPlaytimeWriter externalPlaytimeWriter;
+    private final ImportedRunMerger importedRunMerger;
     private final PendingGameEnricher pendingGameEnricher;
     private final TransactionTemplate transactionTemplate;
 
@@ -68,6 +70,7 @@ public class SteamLibraryImporter {
                                 GamePlatformLinkRepository gamePlatformLinkRepository,
                                 SteamIgnoredAppRepository steamIgnoredAppRepository,
                                 ExternalPlaytimeWriter externalPlaytimeWriter,
+                                ImportedRunMerger importedRunMerger,
                                 PendingGameEnricher pendingGameEnricher,
                                 PlatformTransactionManager transactionManager) {
         this.steamLinkRepository = steamLinkRepository;
@@ -75,6 +78,7 @@ public class SteamLibraryImporter {
         this.gamePlatformLinkRepository = gamePlatformLinkRepository;
         this.steamIgnoredAppRepository = steamIgnoredAppRepository;
         this.externalPlaytimeWriter = externalPlaytimeWriter;
+        this.importedRunMerger = importedRunMerger;
         this.pendingGameEnricher = pendingGameEnricher;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
@@ -90,6 +94,8 @@ public class SteamLibraryImporter {
 
             LinkedPhaseResult linkedPhase = transactionTemplate.execute(
                     status -> updateLinkedApps(userId, steamId, library.games(), counters));
+            // Folds imported runs created before in-progress runs were adopted into the user's own run.
+            importedRunMerger.mergeAll(userId);
 
             for (SteamOwnedGame app : linkedPhase.unlinkedApps()) {
                 try {

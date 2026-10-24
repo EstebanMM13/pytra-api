@@ -8,6 +8,7 @@ import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.ExternalPlaytimeWriter;
+import com.estebanmm13.pytra_api.platformsync.ImportedRunMerger;
 import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.psnsync.client.PsnPlayedGamesResult;
 import com.estebanmm13.pytra_api.psnsync.client.PsnPlayedTitle;
@@ -61,12 +62,13 @@ class PsnLibraryImporterTest {
     private final AtomicLong ids = new AtomicLong(100);
     private final Map<Long, Game> createdGames = new HashMap<>();
 
+    private final ImportedRunMerger importedRunMerger = mock(ImportedRunMerger.class);
     private PsnLibraryImporter importer;
 
     @BeforeEach
     void setUp() {
         importer = new PsnLibraryImporter(psnLinkRepository, gameRepository, gamePlatformLinkRepository,
-                psnIgnoredTitleRepository, externalPlaytimeWriter, pendingGameEnricher,
+                psnIgnoredTitleRepository, externalPlaytimeWriter, importedRunMerger, pendingGameEnricher,
                 mock(PlatformTransactionManager.class));
         when(psnLinkRepository.markSynced(eq(USER_ID), eq(ACCOUNT_ID), any())).thenReturn(1);
         when(psnLinkRepository.isLinkedTo(USER_ID, ACCOUNT_ID)).thenReturn(true);
@@ -106,6 +108,8 @@ class PsnLibraryImporterTest {
             assertThat(link.getLastSyncedPlaytimeMinutes()).isEqualTo(2430L);
             assertThat(link.getLastPlayedAt()).isEqualTo(LAST_PLAYED);
         });
+        // Every sync also runs the imported-run self-heal for the user.
+        verify(importedRunMerger).mergeAll(USER_ID);
     }
 
     @Test

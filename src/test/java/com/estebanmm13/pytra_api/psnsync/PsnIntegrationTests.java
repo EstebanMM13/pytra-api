@@ -252,6 +252,28 @@ class PsnIntegrationTests extends AbstractIntegrationTest {
                 .hasValueSatisfying(link -> assertThat(link.getExperienceId()).isEqualTo(runId));
     }
 
+    @Test
+    void untouchedImportedRunIsMergedIntoTheInProgressRunOnSync() throws Exception {
+        link(alice);
+        Long gameId = createGameVia(aliceAuth, "Saros", "");
+        Long runId = createExperienceVia(aliceAuth, gameId,
+                "{\"runLabel\": \"Run 1\", \"status\": \"EN_CURSO\", \"platform\": \"PS5\", \"hours\": 15.0}");
+        library(title("PPSA02000_00", "Saros", ExternalPlatform.PSN_PS5, 600));
+        sync(aliceAuth);
+        // State left by the sync before in-progress runs were adopted: a separate imported run took the delta.
+        Long importedId = createExperienceVia(aliceAuth, gameId,
+                "{\"runLabel\": \"Importado de PlayStation\", \"status\": \"EN_CURSO\", \"platform\": \"PS5\", "
+                        + "\"hours\": 1.3, \"notes\": \"Horas importadas automáticamente desde PlayStation Network\"}");
+        jdbcTemplate.update("UPDATE game_platform_links SET experience_id = ? WHERE game_id = ?", importedId, gameId);
+
+        sync(aliceAuth);
+        sync(aliceAuth);
+
+        assertThat(runHours(gameId)).containsExactly(tuple(runId, 16.3));
+        assertThat(gamePlatformLinkRepository.findByUserIdAndGameIdAndPlatform(alice.getId(), gameId, ExternalPlatform.PSN_PS5))
+                .hasValueSatisfying(link -> assertThat(link.getExperienceId()).isEqualTo(runId));
+    }
+
     private List<org.assertj.core.groups.Tuple> runHours(Long gameId) {
         return jdbcTemplate.queryForList("SELECT id, hours FROM experiences WHERE game_id = ? ORDER BY id", gameId)
                 .stream()

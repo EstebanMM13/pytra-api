@@ -6,6 +6,7 @@ import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.ExternalPlaytimeWriter;
+import com.estebanmm13.pytra_api.platformsync.ImportedRunMerger;
 import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGame;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGamesResult;
@@ -41,12 +42,13 @@ class SteamLibraryImporterTest {
     private final GamePlatformLinkRepository gamePlatformLinkRepository = mock(GamePlatformLinkRepository.class);
     private final SteamIgnoredAppRepository steamIgnoredAppRepository = mock(SteamIgnoredAppRepository.class);
 
+    private final ImportedRunMerger importedRunMerger = mock(ImportedRunMerger.class);
     private SteamLibraryImporter importer;
 
     @BeforeEach
     void setUp() {
         importer = new SteamLibraryImporter(steamLinkRepository, gameRepository, gamePlatformLinkRepository,
-                steamIgnoredAppRepository, mock(ExternalPlaytimeWriter.class), mock(PendingGameEnricher.class),
+                steamIgnoredAppRepository, mock(ExternalPlaytimeWriter.class), importedRunMerger, mock(PendingGameEnricher.class),
                 mock(PlatformTransactionManager.class));
         when(steamLinkRepository.markSynced(eq(USER_ID), eq(STEAM_ID), any())).thenReturn(1);
         when(steamLinkRepository.isLinkedTo(USER_ID, STEAM_ID)).thenReturn(true);
@@ -67,6 +69,8 @@ class SteamLibraryImporterTest {
         assertThat(saved.getValue().getReviewStatus()).isEqualTo(ReviewStatus.PENDING_REVIEW);
         assertThat(saved.getValue().getCoverImageUrl())
                 .isEqualTo("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/620/library_600x900.jpg");
+        // Every sync also runs the imported-run self-heal for the user.
+        verify(importedRunMerger).mergeAll(USER_ID);
     }
 
     @Test

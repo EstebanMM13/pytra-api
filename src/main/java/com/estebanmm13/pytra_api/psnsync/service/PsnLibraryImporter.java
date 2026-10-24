@@ -9,6 +9,7 @@ import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platformsync.ExternalPlaytimeWriter;
+import com.estebanmm13.pytra_api.platformsync.ImportedRunMerger;
 import com.estebanmm13.pytra_api.platformsync.ImportedGameNames;
 import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.psnsync.client.PsnPlayedGamesResult;
@@ -73,6 +74,7 @@ public class PsnLibraryImporter {
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
     private final PsnIgnoredTitleRepository psnIgnoredTitleRepository;
     private final ExternalPlaytimeWriter externalPlaytimeWriter;
+    private final ImportedRunMerger importedRunMerger;
     private final PendingGameEnricher pendingGameEnricher;
     private final TransactionTemplate transactionTemplate;
 
@@ -81,6 +83,7 @@ public class PsnLibraryImporter {
                               GamePlatformLinkRepository gamePlatformLinkRepository,
                               PsnIgnoredTitleRepository psnIgnoredTitleRepository,
                               ExternalPlaytimeWriter externalPlaytimeWriter,
+                              ImportedRunMerger importedRunMerger,
                               PendingGameEnricher pendingGameEnricher,
                               PlatformTransactionManager transactionManager) {
         this.psnLinkRepository = psnLinkRepository;
@@ -88,6 +91,7 @@ public class PsnLibraryImporter {
         this.gamePlatformLinkRepository = gamePlatformLinkRepository;
         this.psnIgnoredTitleRepository = psnIgnoredTitleRepository;
         this.externalPlaytimeWriter = externalPlaytimeWriter;
+        this.importedRunMerger = importedRunMerger;
         this.pendingGameEnricher = pendingGameEnricher;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
@@ -103,6 +107,8 @@ public class PsnLibraryImporter {
 
             LinkedPhaseResult linkedPhase = transactionTemplate.execute(
                     status -> updateLinkedTitles(userId, accountId, library.titles(), counters));
+            // Folds imported runs created before in-progress runs were adopted into the user's own run.
+            importedRunMerger.mergeAll(userId);
 
             NameIndex index = linkedPhase.index();
             if (splitMergedConcepts(userId, accountId, linkedPhase.links(), library.titles(), counters) > 0) {
