@@ -2,9 +2,15 @@ package com.estebanmm13.pytra_api.stats;
 
 import com.estebanmm13.pytra_api.AbstractIntegrationTest;
 import com.estebanmm13.pytra_api.auth.model.User;
+import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
+import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
+import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
+import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.LocalDateTime;
 import java.time.Year;
 
 import static org.hamcrest.Matchers.contains;
@@ -19,11 +25,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Stats added for the web redesign: averages, status counts, year summary, highlights, notes, in-progress. */
 class StatsIntegrationTests extends AbstractIntegrationTest {
 
+    @Autowired
+    private GameRepository gameRepository;
+
+    @Autowired
+    private GamePlatformLinkRepository gamePlatformLinkRepository;
+
+    private User user;
     private String auth;
 
     @BeforeEach
     void createUser() {
-        User user = createVerifiedUser("stats");
+        user = createVerifiedUser("stats");
         auth = bearer(user);
     }
 
@@ -224,5 +237,95 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[0].hours").value(1.5))
                 .andExpect(jsonPath("$[1].experienceId").value(older))
                 .andExpect(jsonPath("$[1].coverImageUrl").value("https://img.test/first.png"));
+    }
+
+    @Test
+    void onlineDiaryHoursCountInTheirYearWithoutChangingRunCountsOrAllTimeTotals() throws Exception {
+        Long online = createOnlineGame("Arena");
+        Long story = createGameVia(auth, "Story", "");
+        Long storyRun = createExperienceVia(auth, story, run("Run", "EN_CURSO", 8, 10.0, 2024, null, null, ""));
+
+        // 2024: 2h online + 1.5h on the run (already in the run's hours), then 1h online in May.
+        saveDiaryDay("2024-03-05", diaryGame(online, null, "2") + ", " + diaryGame(story, storyRun, "1.5"));
+        saveDiaryDay("2024-05-01", diaryGame(online, null, "1"));
+        // 2023 only has online diary hours.
+        saveDiaryDay("2023-12-31", diaryGame(online, null, "4"));
+
+        performAs(auth, get("/api/v1/stats/years"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", contains(2024, 2023)));
+
+        performAs(auth, get("/api/v1/stats/by-year"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].year").value(2024))
+                .andExpect(jsonPath("$[0].totalHours").value(14.5))
+                .andExpect(jsonPath("$[0].onlineHours").value(3.0))
+                .andExpect(jsonPath("$[0].experienceCount").value(1))
+                .andExpect(jsonPath("$[1].year").value(2023))
+                .andExpect(jsonPath("$[1].totalHours").value(4.0))
+                .andExpect(jsonPath("$[1].onlineHours").value(4.0))
+                .andExpect(jsonPath("$[1].experienceCount").value(0))
+                .andExpect(jsonPath("$[1].averageRating").value(nullValue()));
+
+        performAs(auth, get("/api/v1/stats/years/2024"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalHours").value(14.5))
+                .andExpect(jsonPath("$.onlineHours").value(3.0))
+                .andExpect(jsonPath("$.experienceCount").value(1))
+                .andExpect(jsonPath("$.hoursWithoutMonth").value(11.5))
+                .andExpect(jsonPath("$.months[2].hours").value(2.0))
+                .andExpect(jsonPath("$.months[4].hours").value(1.0))
+                .andExpect(jsonPath("$.onlineGames", hasSize(1)))
+                .andExpect(jsonPath("$.onlineGames[0].gameId").value(online))
+                .andExpect(jsonPath("$.onlineGames[0].gameName").value("Arena"))
+                .andExpect(jsonPath("$.onlineGames[0].hours").value(3.0))
+                .andExpect(jsonPath("$.onlineGames[0].dayCount").value(2))
+                .andExpect(jsonPath("$.mostPlayed[*].gameName", contains("Story")));
+
+        // All-time totals already hold these hours once: 7h online, 11.5h on the run.
+        performAs(auth, get("/api/v1/stats/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalOnlineHours").value(7.0))
+                .andExpect(jsonPath("$.totalSingleplayerHours").value(11.5));
+    }
+
+    @Test
+    void diaryLinesOfSyncedGamesAreNotOnlineYearHours() throws Exception {
+        Long synced = createOnlineGame("Synced Arena");
+        gamePlatformLinkRepository.save(GamePlatformLink.builder()
+                .userId(user.getId())
+                .game(gameRepository.findById(synced).orElseThrow())
+                .platform(ExternalPlatform.STEAM)
+                .externalId("730")
+                .lastSyncedPlaytimeMinutes(60L)
+                .lastSyncedAt(LocalDateTime.now())
+                .build());
+
+        // The Steam sync counts the real playtime, so the diary line does not count its hours.
+        saveDiaryDay("2024-02-02", diaryGame(synced, null, "5"));
+
+        performAs(auth, get("/api/v1/stats/years"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+        performAs(auth, get("/api/v1/stats/years/2024"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalHours").value(0.0))
+                .andExpect(jsonPath("$.onlineHours").value(0.0))
+                .andExpect(jsonPath("$.onlineGames", hasSize(0)));
+    }
+
+    private Long createOnlineGame(String name) throws Exception {
+        return readId(performAs(auth, post("/api/v1/games"), "{\"name\": \"" + name + "\", \"category\": \"ONLINE\"}")
+                .andExpect(status().isCreated()).andReturn());
+    }
+
+    private void saveDiaryDay(String date, String games) throws Exception {
+        performAs(auth, put("/api/v1/diary/{date}", date), "{\"games\": [" + games + "]}")
+                .andExpect(status().isOk());
+    }
+
+    private static String diaryGame(Long gameId, Long experienceId, String hours) {
+        return "{\"gameId\": " + gameId + ", \"experienceId\": " + experienceId + ", \"hours\": " + hours + "}";
     }
 }

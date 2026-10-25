@@ -30,6 +30,7 @@ import java.util.HashSet;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -467,6 +468,50 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.experienceCount").value(1))
                     .andExpect(jsonPath("$.experiences[0].experienceId").value(aliceExperienceId));
+        }
+
+        @Test
+        void onlineDiaryYearHoursOnlyUseOwnDiary() throws Exception {
+            // Alice logs 3 online hours on a day of 2023, a year without runs of hers.
+            Long aliceOnlineId = readId(perform(post("/api/v1/games"), aliceAuth,
+                    "{\"name\": \"Alice Arena\", \"category\": \"ONLINE\"}")
+                    .andExpect(status().isCreated()).andReturn());
+            perform(put("/api/v1/diary/{date}", "2023-06-01"), aliceAuth,
+                    "{\"games\": [{\"gameId\": " + aliceOnlineId + ", \"hours\": 3}]}")
+                    .andExpect(status().isOk());
+
+            perform(get("/api/v1/stats/years"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(0));
+            perform(get("/api/v1/stats/by-year"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(0));
+            perform(get("/api/v1/stats/years/2023"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.totalHours").value(0.0))
+                    .andExpect(jsonPath("$.onlineHours").value(0.0))
+                    .andExpect(jsonPath("$.onlineGames.length()").value(0));
+
+            // Bob's own online day on the same date only shows up for Bob.
+            Long bobOnlineId = readId(perform(post("/api/v1/games"), bobAuth,
+                    "{\"name\": \"Bob Arena\", \"category\": \"ONLINE\"}")
+                    .andExpect(status().isCreated()).andReturn());
+            perform(put("/api/v1/diary/{date}", "2023-06-01"), bobAuth,
+                    "{\"games\": [{\"gameId\": " + bobOnlineId + ", \"hours\": 1}]}")
+                    .andExpect(status().isOk());
+            MvcResult bobYear = perform(get("/api/v1/stats/years/2023"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.onlineHours").value(1.0))
+                    .andReturn();
+            assertThat(readIds(bobYear, "$.onlineGames[*].gameId")).containsOnly(bobOnlineId);
+
+            perform(get("/api/v1/stats/years/2023"), aliceAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.onlineHours").value(3.0))
+                    .andExpect(jsonPath("$.onlineGames.length()").value(1))
+                    .andExpect(jsonPath("$.onlineGames[0].gameId").value(aliceOnlineId));
+            perform(get("/api/v1/stats/years"), aliceAuth)
+                    .andExpect(jsonPath("$", contains(2024, 2023)));
         }
 
         @Test
