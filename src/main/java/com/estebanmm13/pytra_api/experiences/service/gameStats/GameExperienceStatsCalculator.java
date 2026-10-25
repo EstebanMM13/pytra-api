@@ -61,9 +61,10 @@ public class GameExperienceStatsCalculator {
 
     /**
      * Stats over the runs plus the game's online playtime ({@code online} may be null). Online hours add to
-     * {@code totalHours}, its rating competes for {@code bestRating} and its platforms join {@code platforms};
-     * run-only aggregates (count, status, year, platinum, 100%, last played) ignore it. {@code lastActivityAt} adds the
-     * online playtime's last session to {@code lastPlayedAt}.
+     * {@code totalHours}, its rating competes for {@code bestRating}, its platforms join {@code platforms} and its
+     * platinum / 100% flags count for {@code hasPlatinum} / {@code hasFullCompletion}; run-only aggregates (count,
+     * status, year, last played) ignore it. {@code lastActivityAt} adds the online playtime's last session to
+     * {@code lastPlayedAt}.
      */
     public static GameExperienceStats of(List<Experience> experiences, OnlinePlaytime online) {
         if (experiences.isEmpty() && online == null) {
@@ -104,6 +105,8 @@ public class GameExperienceStatsCalculator {
             if (onlineRating != null && (bestRating == null || onlineRating.compareTo(bestRating) > 0)) {
                 bestRating = onlineRating;
             }
+            hasPlatinum |= Boolean.TRUE.equals(online.getPlatinum());
+            hasFullCompletion |= Boolean.TRUE.equals(online.getFullCompletion());
             if (online.getLastSessionAt() != null) {
                 lastOnlineSession = online.getLastSessionAt().toLocalDate();
             }

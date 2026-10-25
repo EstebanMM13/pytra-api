@@ -17,6 +17,8 @@ public class OnlinePlaytimeResponseDto {
     private LocalDateTime lastSessionAt;
     private BigDecimal generalRating;
     private String notes;
+    private Boolean platinum;
+    private Boolean fullCompletion;
     private LocalDateTime updatedAt;
     /** Catalog platforms played online on, in catalog order (empty when none). */
     private List<PlatformRefDto> platforms;

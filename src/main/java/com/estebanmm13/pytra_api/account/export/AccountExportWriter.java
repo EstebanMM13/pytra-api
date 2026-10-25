@@ -15,6 +15,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /** Renders an {@link ExportData} as CSV or Obsidian-friendly Markdown. Pure, no I/O. */
@@ -22,7 +23,7 @@ public final class AccountExportWriter {
 
     static final List<String> CSV_HEADER = List.of(
             "gameName", "developer", "publisher", "releaseDate", "category", "saga", "genres", "reviewStatus",
-            "onlineHours", "onlinePlatforms", "runLabel", "year", "status", "rating", "hours", "startDate", "endDate", "platform",
+            "onlineHours", "onlinePlatforms", "onlinePlatinum", "onlineFullCompletion", "runLabel", "year", "status", "rating", "hours", "startDate", "endDate", "platform",
             "platinum", "fullCompletion", "replay", "summary", "pros", "cons", "notes");
 
     /** Lets Excel detect UTF-8 (accents in game names). */
@@ -56,7 +57,9 @@ public final class AccountExportWriter {
                     text(genreNames(game)),
                     value(game.getReviewStatus()),
                     number(onlineHours(data, game)),
-                    text(onlinePlatformNames(data, game)));
+                    text(onlinePlatformNames(data, game)),
+                    value(onlineFlag(data, game, OnlinePlaytime::getPlatinum)),
+                    value(onlineFlag(data, game, OnlinePlaytime::getFullCompletion)));
             List<Experience> runs = data.experiencesByGame().getOrDefault(game.getId(), List.of());
             if (runs.isEmpty()) {
                 List<String> row = new ArrayList<>(gameColumns);
@@ -110,6 +113,8 @@ public final class AccountExportWriter {
             Double online = onlineHours(data, game);
             field(out, "Online hours", online != null ? number(online) : null);
             field(out, "Online platforms", onlinePlatformNames(data, game));
+            field(out, "Online platinum", Boolean.TRUE.equals(onlineFlag(data, game, OnlinePlaytime::getPlatinum)) ? "yes" : null);
+            field(out, "Online 100%", Boolean.TRUE.equals(onlineFlag(data, game, OnlinePlaytime::getFullCompletion)) ? "yes" : null);
 
             List<Experience> runs = data.experiencesByGame().getOrDefault(game.getId(), List.of());
             if (runs.isEmpty()) {
@@ -201,6 +206,12 @@ public final class AccountExportWriter {
     private static Double onlineHours(ExportData data, Game game) {
         OnlinePlaytime online = data.onlinePlaytimeByGame().get(game.getId());
         return online != null ? online.getTotalHours() : null;
+    }
+
+    /** A flag of the game's online playtime, or null when the game has none (empty CSV cell). */
+    private static Boolean onlineFlag(ExportData data, Game game, Function<OnlinePlaytime, Boolean> flag) {
+        OnlinePlaytime online = data.onlinePlaytimeByGame().get(game.getId());
+        return online != null ? flag.apply(online) : null;
     }
 
     /** Catalog names of the online playtime's platforms in catalog order, or null when it has none. */

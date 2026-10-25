@@ -65,7 +65,7 @@ class ObsidianExportServiceTest {
         // Online playtime and a run of a pending game (id 99, not returned above) must not leak into the export.
         when(onlineRepository.findAllByUserId(USER)).thenReturn(List.of(
                 OnlinePlaytime.builder().id(1L).userId(USER).gameId(12L).totalHours(120.5)
-                        .generalRating(new BigDecimal("8.50")).platforms(Set.of(ps5, pc)).updatedAt(T2).build(),
+                        .generalRating(new BigDecimal("8.50")).platforms(Set.of(ps5, pc)).platinum(true).updatedAt(T2).build(),
                 OnlinePlaytime.builder().id(2L).userId(USER).gameId(99L).totalHours(3.0).updatedAt(T1).build()));
         when(experienceRepository.findAllByUserId(USER)).thenReturn(List.of(
                 run(41L, 12L, "Run 2", LocalDate.of(2026, 1, 1), new BigDecimal("10.00")),
@@ -98,6 +98,8 @@ class ObsidianExportServiceTest {
         assertThat(game.publisher()).isEqualTo("Activision");
         assertThat(game.releaseDate()).isEqualTo(LocalDate.of(2025, 11, 14));
         assertThat(game.online().totalHours()).isEqualTo(120.5);
+        assertThat(game.online().platinum()).isTrue();
+        assertThat(game.online().fullCompletion()).isFalse();
         assertThat(game.online().platforms()).containsExactly("PC", "PS5");
         assertThat(game.online().rating()).isEqualByComparingTo("8.5");
         assertThat(game.online().rating().toPlainString()).isEqualTo("8.5");

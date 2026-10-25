@@ -124,7 +124,9 @@ public class ObsidianExportService {
         return new OnlineDto(
                 online.getTotalHours(),
                 online.getPlatforms().stream().sorted(PLATFORM_ORDER).map(Platform::getName).toList(),
-                Ratings.normalize(online.getGeneralRating()));
+                Ratings.normalize(online.getGeneralRating()),
+                Boolean.TRUE.equals(online.getPlatinum()),
+                Boolean.TRUE.equals(online.getFullCompletion()));
     }
 
     private ExperienceDto toExperience(Experience experience) {

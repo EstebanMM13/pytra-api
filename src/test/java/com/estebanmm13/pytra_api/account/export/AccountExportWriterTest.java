@@ -46,7 +46,7 @@ class AccountExportWriterTest {
             LocalDateTime.of(2026, 10, 9, 12, 0),
             List.of(elden, empty),
             Map.of(1L, List.of(run)),
-            Map.of(1L, OnlinePlaytime.builder().gameId(1L).totalHours(3.0)
+            Map.of(1L, OnlinePlaytime.builder().gameId(1L).totalHours(3.0).fullCompletion(true)
                     .platforms(new HashSet<>(Set.of(TestPlatforms.PS5, TestPlatforms.PC))).build()),
             List.of(YearNote.builder().year(2024).summary("Great year").highlights("Elden Ring").build()));
 
@@ -56,7 +56,7 @@ class AccountExportWriterTest {
 
         assertThat(csv).startsWith("﻿gameName,developer,");
         String[] lines = csv.substring(1).split("\r\n");
-        assertThat(lines[1]).startsWith("Elden Ring,FromSoftware,,,SINGLEPLAYER,Souls,RPG,CONFIRMED,3,\"PC, PS5\",First run,2024,COMPLETADO,9,120.5,2024-01-02,2024-03-04,PC,true,true,false,");
+        assertThat(lines[1]).startsWith("Elden Ring,FromSoftware,,,SINGLEPLAYER,Souls,RPG,CONFIRMED,3,\"PC, PS5\",false,true,First run,2024,COMPLETADO,9,120.5,2024-01-02,2024-03-04,PC,true,true,false,");
         assertThat(csv).contains("\"Loved it, \"\"truly\"\"\nsecond line\"");
         assertThat(csv).contains("Backlog game,,,,,,,CONFIRMED,,,,,,,,,,,,,,,,");
     }
@@ -126,6 +126,8 @@ class AccountExportWriterTest {
         assertThat(md).contains("- **Saga:** [[Souls]]\n");
         assertThat(md).contains("- **Online hours:** 3\n");
         assertThat(md).contains("- **Online platforms:** PC, PS5\n");
+        assertThat(md).contains("- **Online 100%:** yes\n");
+        assertThat(md).doesNotContain("Online platinum");
         assertThat(md).contains("### First run\n");
         assertThat(md).contains("- **Rating:** 9/10\n");
         assertThat(md).contains("- **Hours:** 120.5\n");

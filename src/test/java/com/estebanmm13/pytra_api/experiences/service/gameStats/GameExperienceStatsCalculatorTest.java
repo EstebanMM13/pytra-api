@@ -166,6 +166,32 @@ class GameExperienceStatsCalculatorTest {
     }
 
     @Test
+    void onlineFlagsCountForTheGameAlongsideTheRunFlags() {
+        OnlinePlaytime online = online(300.0, null, Set.of());
+        online.setFullCompletion(true);
+
+        GameExperienceStats onlineOnly = GameExperienceStatsCalculator.of(List.of(), online);
+        assertThat(onlineOnly.hasFullCompletion()).isTrue();
+        assertThat(onlineOnly.hasPlatinum()).isFalse();
+        assertThat(onlineOnly.experienceCount()).isZero();
+
+        // Hybrid: a platinum run plus a 100% online playtime light both flags.
+        Experience platinumRun = run(TestPlatforms.PS5, LocalDate.of(2024, 1, 1), null);
+        platinumRun.setPlatinum(true);
+        GameExperienceStats hybrid = GameExperienceStatsCalculator.of(List.of(platinumRun), online);
+        assertThat(hybrid.hasPlatinum()).isTrue();
+        assertThat(hybrid.hasFullCompletion()).isTrue();
+    }
+
+    @Test
+    void onlinePlaytimeBuiltWithoutFlagsHasThemFalse() {
+        OnlinePlaytime online = online(1.0, null, Set.of());
+
+        assertThat(online.getPlatinum()).isFalse();
+        assertThat(online.getFullCompletion()).isFalse();
+    }
+
+    @Test
     void noRunsAndNoOnlinePlaytimeGiveEmptyStats() {
         assertThat(GameExperienceStatsCalculator.of(List.of(), null)).isEqualTo(GameExperienceStats.EMPTY);
     }

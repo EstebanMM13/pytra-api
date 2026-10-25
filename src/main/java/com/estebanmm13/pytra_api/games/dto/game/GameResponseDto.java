@@ -36,8 +36,9 @@ public class GameResponseDto {
     private BigDecimal bestRating;
     private ExperienceStatus lastExperienceStatus;
     private Integer lastPlayedYear;
+    /** True when any run or the game's online playtime is flagged platinum. */
     private Boolean hasPlatinum;
-    /** True when any run is flagged 100% (every trophy/achievement obtained). */
+    /** True when any run or the online playtime is flagged 100% (every trophy/achievement obtained). */
     private Boolean hasFullCompletion;
     /**
      * Legacy enum codes of the game's platforms, distinct, in catalog order ("OTHER" for platforms the

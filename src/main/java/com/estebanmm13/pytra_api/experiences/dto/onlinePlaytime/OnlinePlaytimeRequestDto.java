@@ -32,6 +32,15 @@ public class OnlinePlaytimeRequestDto {
     private String notes;
 
     /**
+     * Null keeps the stored flag (false on create): unlike a run's, this PUT is also sent by clients built
+     * before the flag existed, and those must not wipe a platinum the user set from a newer one.
+     */
+    private Boolean platinum;
+
+    /** "100%" flag; null keeps the stored value (false on create), like {@link #platinum}. */
+    private Boolean fullCompletion;
+
+    /**
      * Catalog platform ids played online on. Null keeps the stored platforms (clients that predate the
      * field); an empty set clears them. Unknown ids are rejected with INVALID_PLATFORM.
      */

@@ -129,6 +129,48 @@ class OnlinePlaytimeServiceImplTest {
         assertThat(existing.getTotalHours()).isEqualTo(0.0);
     }
 
+    @Test
+    void newRowWithoutFlagsHasThemFalse() {
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.empty());
+
+        OnlinePlaytimeResponseDto response = service.upsert(GAME_ID, request(null), USER_ID);
+
+        assertThat(response.getPlatinum()).isFalse();
+        assertThat(response.getFullCompletion()).isFalse();
+    }
+
+    @Test
+    void flagsAreStoredIndependentlyAndMissingFlagsKeepTheStoredOnes() {
+        OnlinePlaytime existing = OnlinePlaytime.builder()
+                .id(1L).userId(USER_ID).gameId(GAME_ID).totalHours(5.0).platinum(true).build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(existing));
+
+        OnlinePlaytimeRequestDto oldClient = request(null);
+        OnlinePlaytimeResponseDto kept = service.upsert(GAME_ID, oldClient, USER_ID);
+        assertThat(kept.getPlatinum()).isTrue();
+        assertThat(kept.getFullCompletion()).isFalse();
+
+        OnlinePlaytimeRequestDto toggled = request(null);
+        toggled.setPlatinum(false);
+        toggled.setFullCompletion(true);
+        OnlinePlaytimeResponseDto response = service.upsert(GAME_ID, toggled, USER_ID);
+        assertThat(response.getPlatinum()).isFalse();
+        assertThat(response.getFullCompletion()).isTrue();
+        assertThat(existing.getFullCompletion()).isTrue();
+    }
+
+    @Test
+    void addHoursNeverTouchesTheFlags() {
+        OnlinePlaytime existing = OnlinePlaytime.builder()
+                .id(1L).userId(USER_ID).gameId(GAME_ID).totalHours(5.0).fullCompletion(true).build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(existing));
+
+        service.addHours(GAME_ID, new java.math.BigDecimal("2"), USER_ID);
+
+        assertThat(existing.getFullCompletion()).isTrue();
+        assertThat(existing.getPlatinum()).isFalse();
+    }
+
     private static OnlinePlaytimeRequestDto request(Set<Long> platformIds) {
         OnlinePlaytimeRequestDto dto = new OnlinePlaytimeRequestDto();
         dto.setTotalHours(12.0);

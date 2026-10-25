@@ -57,6 +57,13 @@ public class OnlinePlaytimeServiceImpl implements OnlinePlaytimeService {
         onlinePlaytime.setLastSessionAt(onlinePlaytimeRequestDto.getLastSessionAt());
         onlinePlaytime.setGeneralRating(onlinePlaytimeRequestDto.getGeneralRating());
         onlinePlaytime.setNotes(onlinePlaytimeRequestDto.getNotes());
+        // Absent flag = keep, so an old client saving hours never clears a platinum or 100%.
+        if (onlinePlaytimeRequestDto.getPlatinum() != null) {
+            onlinePlaytime.setPlatinum(onlinePlaytimeRequestDto.getPlatinum());
+        }
+        if (onlinePlaytimeRequestDto.getFullCompletion() != null) {
+            onlinePlaytime.setFullCompletion(onlinePlaytimeRequestDto.getFullCompletion());
+        }
         if (onlinePlaytimeRequestDto.getPlatformIds() != null) {
             // Absent field = keep: clients built before online platforms existed never wipe them.
             onlinePlaytime.setPlatforms(resolvePlatforms(onlinePlaytimeRequestDto.getPlatformIds()));

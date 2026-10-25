@@ -18,6 +18,8 @@ public class OnlinePlaytimeMapper {
                 onlinePlaytime.getLastSessionAt(),
                 Ratings.normalize(onlinePlaytime.getGeneralRating()),
                 onlinePlaytime.getNotes(),
+                Boolean.TRUE.equals(onlinePlaytime.getPlatinum()),
+                Boolean.TRUE.equals(onlinePlaytime.getFullCompletion()),
                 onlinePlaytime.getUpdatedAt(),
                 onlinePlaytime.getPlatforms().stream()
                         .sorted(PlatformMapper.CATALOG_ORDER)

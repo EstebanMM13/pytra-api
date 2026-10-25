@@ -36,7 +36,8 @@ public record ObsidianExportDto(
             Instant updatedAt) {
     }
 
-    public record OnlineDto(Double totalHours, List<String> platforms, BigDecimal rating) {
+    public record OnlineDto(Double totalHours, List<String> platforms, BigDecimal rating,
+                            boolean platinum, boolean fullCompletion) {
     }
 
     public record ExperienceDto(

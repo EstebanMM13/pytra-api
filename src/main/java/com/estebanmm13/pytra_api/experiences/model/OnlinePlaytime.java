@@ -40,6 +40,16 @@ public class OnlinePlaytime {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    /** Set by the user only; the platform syncs never touch it. */
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean platinum = false;
+
+    /** "100%": every trophy/achievement of the game obtained. Independent of {@link #platinum}; user-set only. */
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean fullCompletion = false;
+
     /** Catalog platforms played online on (optional). Lazy: repository methods that map it fetch it. */
     @Builder.Default
     @ManyToMany(fetch = FetchType.LAZY)

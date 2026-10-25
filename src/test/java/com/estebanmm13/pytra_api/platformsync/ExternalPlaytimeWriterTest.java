@@ -98,6 +98,29 @@ class ExternalPlaytimeWriterTest {
     }
 
     @Test
+    void onlineSyncKeepsTheUserFlagsAndCreatesRowsWithoutThem() {
+        Game game = game(GameCategory.ONLINE, ReviewStatus.CONFIRMED);
+        OnlinePlaytime typed = OnlinePlaytime.builder().userId(USER_ID).gameId(GAME_ID).totalHours(2.0)
+                .platinum(true).build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(typed));
+
+        writer.importTotalsOnConfirm(List.of(link(game, ExternalPlatform.STEAM, 600)), game);
+
+        assertThat(typed.getPlatinum()).isTrue();
+        assertThat(typed.getFullCompletion()).isFalse();
+
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.empty());
+        writer.importTotalsOnConfirm(List.of(link(game, ExternalPlatform.STEAM, 60)), game);
+
+        ArgumentCaptor<OnlinePlaytime> created = ArgumentCaptor.forClass(OnlinePlaytime.class);
+        verify(onlinePlaytimeRepository, times(2)).save(created.capture());
+        OnlinePlaytime fresh = created.getValue();
+        assertThat(fresh).isNotSameAs(typed);
+        assertThat(fresh.getPlatinum()).isFalse();
+        assertThat(fresh.getFullCompletion()).isFalse();
+    }
+
+    @Test
     void onlineConfirmKeepsLargerTypedHours() {
         Game game = game(GameCategory.HYBRID, ReviewStatus.CONFIRMED);
         OnlinePlaytime typed = OnlinePlaytime.builder().userId(USER_ID).gameId(GAME_ID).totalHours(50.0).build();
