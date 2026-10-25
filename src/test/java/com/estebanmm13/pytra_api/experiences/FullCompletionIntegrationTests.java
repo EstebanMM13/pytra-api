@@ -56,4 +56,19 @@ class FullCompletionIntegrationTests extends AbstractIntegrationTest {
         performAs(auth, get("/api/v1/games/{id}", gameId))
                 .andExpect(jsonPath("$.hasFullCompletion").value(false));
     }
+
+    @Test
+    void statsCountFullCompletions() throws Exception {
+        createExperienceVia(auth, gameId,
+                run("Both", "COMPLETADO", 9, 10.0, 2024, null, null, ", \"platinum\": true, \"fullCompletion\": true"));
+        createExperienceVia(auth, gameId, run("None", "COMPLETADO", 7, 5.0, 2024, null, null, ""));
+
+        performAs(auth, get("/api/v1/stats/summary"))
+                .andExpect(jsonPath("$.totalFullCompletions").value(1))
+                .andExpect(jsonPath("$.totalPlatinums").value(1));
+        performAs(auth, get("/api/v1/stats/years/2024"))
+                .andExpect(jsonPath("$.fullCompletionCount").value(1))
+                .andExpect(jsonPath("$.experiences[0].fullCompletion").value(true))
+                .andExpect(jsonPath("$.experiences[1].fullCompletion").value(false));
+    }
 }

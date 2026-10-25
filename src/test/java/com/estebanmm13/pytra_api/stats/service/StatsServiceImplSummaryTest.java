@@ -39,6 +39,7 @@ class StatsServiceImplSummaryTest {
         when(runs.getExperienceCount()).thenReturn(20L);
         when(runs.getHoursSum()).thenReturn(310.5);
         when(runs.getPlatinumCount()).thenReturn(4L);
+        when(runs.getFullCompletionCount()).thenReturn(3L);
         when(runs.getReplayCount()).thenReturn(2L);
         when(runs.getCompletedCount()).thenReturn(11L);
         when(runs.getAbandonedCount()).thenReturn(5L);
@@ -60,6 +61,7 @@ class StatsServiceImplSummaryTest {
         assertThat(summary.getTotalSingleplayerHours()).isEqualTo(310.5);
         assertThat(summary.getTotalOnlineHours()).isEqualTo(99.5);
         assertThat(summary.getTotalPlatinums()).isEqualTo(4);
+        assertThat(summary.getTotalFullCompletions()).isEqualTo(3);
         assertThat(summary.getReplayCount()).isEqualTo(2);
         assertThat(summary.getCompletedCount()).isEqualTo(11);
         assertThat(summary.getAbandonedCount()).isEqualTo(5);
@@ -84,6 +86,7 @@ class StatsServiceImplSummaryTest {
 
         assertThat(summary.getTotalExperiences()).isZero();
         assertThat(summary.getTotalPlatinums()).isZero();
+        assertThat(summary.getTotalFullCompletions()).isZero();
         assertThat(summary.getTotalSingleplayerHours()).isZero();
         assertThat(summary.getAverageRating()).isNull();
     }

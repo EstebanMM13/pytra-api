@@ -26,6 +26,7 @@ public interface ExperienceRepository extends JpaRepository<Experience, Long> {
             SELECT COUNT(e) AS experienceCount,
                    COALESCE(SUM(e.hours), 0.0) AS hoursSum,
                    COALESCE(SUM(CASE WHEN e.platinum = true THEN 1 ELSE 0 END), 0) AS platinumCount,
+                   COALESCE(SUM(CASE WHEN e.fullCompletion = true THEN 1 ELSE 0 END), 0) AS fullCompletionCount,
                    COALESCE(SUM(CASE WHEN e.replay = true THEN 1 ELSE 0 END), 0) AS replayCount,
                    COALESCE(SUM(CASE WHEN e.status = com.estebanmm13.pytra_api.experiences.model.ExperienceStatus.COMPLETADO
                                      THEN 1 ELSE 0 END), 0) AS completedCount,

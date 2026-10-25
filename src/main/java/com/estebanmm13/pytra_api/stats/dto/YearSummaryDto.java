@@ -23,6 +23,7 @@ public class YearSummaryDto {
     /** Mean rating of the year's rated experiences, 2 decimals; null when none is rated. */
     private BigDecimal averageRating;
     private long platinumCount;
+    private long fullCompletionCount;
     /** Hours of runs that belong to the year but have no date inside it, so no month bucket. */
     private double hoursWithoutMonth;
     /** Always 12 entries, January first; months without hours are 0. */

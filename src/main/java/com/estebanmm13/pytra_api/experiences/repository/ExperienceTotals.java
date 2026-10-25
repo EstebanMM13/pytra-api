@@ -15,6 +15,8 @@ public interface ExperienceTotals {
 
     Number getPlatinumCount();
 
+    Number getFullCompletionCount();
+
     Number getReplayCount();
 
     Number getCompletedCount();

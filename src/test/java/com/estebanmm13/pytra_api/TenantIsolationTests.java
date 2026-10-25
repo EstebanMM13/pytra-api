@@ -388,7 +388,8 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                     .andExpect(jsonPath("$.totalExperiences").value(0))
                     .andExpect(jsonPath("$.totalSingleplayerHours").value(0.0))
                     .andExpect(jsonPath("$.totalOnlineHours").value(0.0))
-                    .andExpect(jsonPath("$.totalPlatinums").value(0));
+                    .andExpect(jsonPath("$.totalPlatinums").value(0))
+                    .andExpect(jsonPath("$.totalFullCompletions").value(0));
 
             perform(get("/api/v1/stats/summary"), aliceAuth)
                     .andExpect(status().isOk())

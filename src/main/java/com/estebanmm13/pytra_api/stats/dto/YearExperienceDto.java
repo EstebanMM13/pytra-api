@@ -19,6 +19,7 @@ public class YearExperienceDto {
     private Double hours;
     private BigDecimal rating;
     private Boolean platinum;
+    private Boolean fullCompletion;
     /** Legacy enum code for old clients ("OTHER" for platforms the enum did not have). */
     private String platform;
     private Long platformId;

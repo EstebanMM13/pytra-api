@@ -59,6 +59,7 @@ public class StatsServiceImpl implements StatsService {
                 doubleOf(runs.getHoursSum()),
                 doubleOf(online.getHoursSum()),
                 longOf(runs.getPlatinumCount()),
+                longOf(runs.getFullCompletionCount()),
                 averageRating(runs, online),
                 longOf(runs.getReplayCount()),
                 longOf(runs.getCompletedCount()),
@@ -123,6 +124,7 @@ public class StatsServiceImpl implements StatsService {
         long completed = 0;
         long abandoned = 0;
         long platinums = 0;
+        long fullCompletions = 0;
         List<YearExperienceDto> rows = new ArrayList<>();
 
         for (Experience experience : experiences) {
@@ -136,6 +138,7 @@ public class StatsServiceImpl implements StatsService {
             if (experience.getStatus() == ExperienceStatus.COMPLETADO) completed++;
             if (experience.getStatus() == ExperienceStatus.ABANDONADO) abandoned++;
             if (Boolean.TRUE.equals(experience.getPlatinum())) platinums++;
+            if (Boolean.TRUE.equals(experience.getFullCompletion())) fullCompletions++;
 
             Game game = games.get(experience.getGameId());
             rows.add(new YearExperienceDto(
@@ -148,6 +151,7 @@ public class StatsServiceImpl implements StatsService {
                     hours,
                     Ratings.normalize(experience.getRating()),
                     Boolean.TRUE.equals(experience.getPlatinum()),
+                    Boolean.TRUE.equals(experience.getFullCompletion()),
                     PlatformMapper.legacyCodeOf(experience.getPlatform()),
                     PlatformMapper.idOf(experience.getPlatform()),
                     PlatformMapper.nameOf(experience.getPlatform()),
@@ -176,6 +180,7 @@ public class StatsServiceImpl implements StatsService {
                 abandoned,
                 StatsMath.averageRating(experiences.stream().map(Experience::getRating).toList()),
                 platinums,
+                fullCompletions,
                 hoursWithoutMonth,
                 months,
                 rows,
