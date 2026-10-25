@@ -132,6 +132,11 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/years/2024"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/stats/years/2024/note"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/in-progress"),
+                Arguments.of(HttpMethod.GET, "/api/v1/diary?from=2024-05-01&to=2024-05-31"),
+                Arguments.of(HttpMethod.GET, "/api/v1/diary/2024-05-01"),
+                Arguments.of(HttpMethod.PUT, "/api/v1/diary/2024-05-01"),
+                Arguments.of(HttpMethod.DELETE, "/api/v1/diary/2024-05-01"),
+                Arguments.of(HttpMethod.GET, "/api/v1/games/1/diary"),
                 Arguments.of(HttpMethod.GET, "/api/v1/users/me"),
                 Arguments.of(HttpMethod.PATCH, "/api/v1/users/me"),
                 Arguments.of(HttpMethod.GET, "/api/v1/users/me/export"),
@@ -474,6 +479,117 @@ class TenantIsolationTests extends AbstractIntegrationTest {
 
             perform(get("/api/v1/stats/years/2024"), aliceAuth)
                     .andExpect(jsonPath("$.note.summary").value("Alice note"));
+        }
+    }
+
+    @Nested
+    class Diary {
+
+        private static final String DAY = "2024-05-01";
+        private static final String DIARY_DAY_JSON = """
+                {"note": %s, "games": [%s]}""";
+        private static final String DIARY_GAME_JSON = """
+                {"gameId": %d, "experienceId": %s, "hours": %s}""";
+
+        @BeforeEach
+        void logAliceDay() throws Exception {
+            // 2 hours on Alice's run (42.5h), so the run ends at 44.5h.
+            perform(put("/api/v1/diary/{date}", DAY), aliceAuth, DIARY_DAY_JSON.formatted(
+                    "\"Alice day\"", DIARY_GAME_JSON.formatted(aliceGameId, aliceExperienceId, "2")))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        void otherUserCannotReadForeignDay() throws Exception {
+            perform(get("/api/v1/diary/{date}", DAY), bobAuth).andExpect(status().isNotFound());
+        }
+
+        @Test
+        void otherUsersDaysAreNotInRange() throws Exception {
+            perform(get("/api/v1/diary").param("from", "2024-05-01").param("to", "2024-05-31"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(0));
+
+            perform(get("/api/v1/diary").param("from", "2024-05-01").param("to", "2024-05-31"), aliceAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(1))
+                    .andExpect(jsonPath("$[0].date").value(DAY));
+        }
+
+        @Test
+        void savingTheSameDateOnlyWritesTheCallersOwnDay() throws Exception {
+            perform(put("/api/v1/diary/{date}", DAY), bobAuth, DIARY_DAY_JSON.formatted("\"Bob day\"", ""))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.note").value("Bob day"))
+                    .andExpect(jsonPath("$.games.length()").value(0));
+            // An empty day deletes the caller's day: Bob's, never Alice's.
+            perform(put("/api/v1/diary/{date}", DAY), bobAuth, DIARY_DAY_JSON.formatted("null", ""))
+                    .andExpect(status().isNoContent());
+
+            assertAliceDayUnchanged();
+        }
+
+        @Test
+        void otherUserCannotDeleteForeignDay() throws Exception {
+            perform(delete("/api/v1/diary/{date}", DAY), bobAuth).andExpect(status().isNotFound());
+
+            assertAliceDayUnchanged();
+        }
+
+        @Test
+        void otherUserCannotLogForeignGame() throws Exception {
+            perform(put("/api/v1/diary/{date}", DAY), bobAuth, DIARY_DAY_JSON.formatted(
+                    "null", DIARY_GAME_JSON.formatted(aliceGameId, "null", "1")))
+                    .andExpect(status().isNotFound());
+
+            perform(get("/api/v1/diary/{date}", DAY), bobAuth).andExpect(status().isNotFound());
+            assertAliceDayUnchanged();
+        }
+
+        @Test
+        void otherUserCannotLogHoursOnForeignRun() throws Exception {
+            Long bobGameId = readId(perform(post("/api/v1/games"), bobAuth, GAME_JSON.formatted("Bob Game", ""))
+                    .andExpect(status().isCreated()).andReturn());
+            Long bobExperienceId = readId(perform(post("/api/v1/games/{gameId}/experiences", bobGameId), bobAuth,
+                    EXPERIENCE_JSON.formatted("Bob run"))
+                    .andExpect(status().isCreated()).andReturn());
+
+            // Bob's own game with Alice's run: the run is not one of the game's runs for Bob.
+            perform(put("/api/v1/diary/{date}", DAY), bobAuth, DIARY_DAY_JSON.formatted(
+                    "null", DIARY_GAME_JSON.formatted(bobGameId, aliceExperienceId, "1")))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value("INVALID_DIARY_RUN"))
+                    .andExpect(jsonPath("$.fieldErrors['games[0].experienceId']").value("INVALID_DIARY_RUN"));
+
+            perform(get("/api/v1/diary/{date}", DAY), bobAuth).andExpect(status().isNotFound());
+            perform(get("/api/v1/experiences/{id}", bobExperienceId), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.hours").value(42.5));
+            assertAliceDayUnchanged();
+        }
+
+        @Test
+        void otherUserCannotReadForeignGameDiary() throws Exception {
+            perform(get("/api/v1/games/{gameId}/diary", aliceGameId), bobAuth).andExpect(status().isNotFound());
+
+            perform(get("/api/v1/games/{gameId}/diary", aliceGameId), aliceAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(1))
+                    .andExpect(jsonPath("$[0].date").value(DAY));
+        }
+
+        /** Alice's day still has her note and line, and her run still carries exactly the day's 2 hours. */
+        private void assertAliceDayUnchanged() throws Exception {
+            perform(get("/api/v1/diary/{date}", DAY), aliceAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.note").value("Alice day"))
+                    .andExpect(jsonPath("$.games.length()").value(1))
+                    .andExpect(jsonPath("$.games[0].gameId").value(aliceGameId))
+                    .andExpect(jsonPath("$.games[0].experienceId").value(aliceExperienceId))
+                    .andExpect(jsonPath("$.games[0].hours").value(2));
+            perform(get("/api/v1/experiences/{id}", aliceExperienceId), aliceAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.hours").value(44.5));
         }
     }
 
