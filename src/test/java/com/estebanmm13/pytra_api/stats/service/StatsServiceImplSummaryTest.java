@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.stats.service;
 
+import com.estebanmm13.pytra_api.diary.repository.DiaryEntryGameRepository;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
@@ -27,7 +28,8 @@ class StatsServiceImplSummaryTest {
     private final ExperienceRepository experienceRepository = mock(ExperienceRepository.class);
     private final OnlinePlaytimeRepository onlinePlaytimeRepository = mock(OnlinePlaytimeRepository.class);
     private final StatsServiceImpl service = new StatsServiceImpl(gameRepository, sagaRepository,
-            experienceRepository, onlinePlaytimeRepository, mock(YearNoteRepository.class));
+            experienceRepository, onlinePlaytimeRepository, mock(YearNoteRepository.class),
+            mock(DiaryEntryGameRepository.class));
 
     @Test
     void mapsEveryAggregateToItsField() {

@@ -10,7 +10,8 @@ import java.util.List;
 /**
  * Year in review. Totals, months and {@link #experiences} use ExperiencePeriod (explicit year, else
  * endDate, else startDate); the highlights use the Obsidian attributions documented in
- * YearHighlightsCalculator ("completed in year" / "played in year").
+ * YearHighlightsCalculator ("completed in year" / "played in year"). {@link #totalHours} and the months also
+ * include {@link #onlineHours} (dated by the diary); every count, the rating and the highlights only use runs.
  */
 @Getter
 @AllArgsConstructor
@@ -41,4 +42,8 @@ public class YearSummaryDto {
     private List<RatedGameBriefDto> disappointments;
     /** Never null: texts are null when the user has not written a note for the year. */
     private YearNoteDto note;
+    /** Diary hours of the year counted into online playtime; 0 without online diary lines. */
+    private double onlineHours;
+    /** Online games with diary hours in the year (their share of {@link #onlineHours}), most hours first. */
+    private List<YearOnlineGameDto> onlineGames;
 }

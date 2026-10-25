@@ -1,5 +1,8 @@
 package com.estebanmm13.pytra_api.stats.service;
 
+import com.estebanmm13.pytra_api.diary.repository.DiaryEntryGameRepository;
+import com.estebanmm13.pytra_api.diary.repository.OnlineDiaryMonthHours;
+import com.estebanmm13.pytra_api.diary.repository.OnlineDiaryYearHours;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperiencePeriod;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
@@ -29,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.Year;
 import java.util.*;
 
@@ -45,6 +49,7 @@ public class StatsServiceImpl implements StatsService {
     private final ExperienceRepository experienceRepository;
     private final OnlinePlaytimeRepository onlinePlaytimeRepository;
     private final YearNoteRepository yearNoteRepository;
+    private final DiaryEntryGameRepository diaryEntryGameRepository;
 
     @Override
     public StatsSummaryDto getSummary(Long userId) {
@@ -84,16 +89,28 @@ public class StatsServiceImpl implements StatsService {
         return value != null ? value.doubleValue() : 0.0;
     }
 
+    /**
+     * Runs per year plus the online hours the diary dates in each year: a year with only online diary
+     * hours has no runs, so its counts are 0 and its rating null.
+     */
     @Override
     public List<YearStatDto> getByYear(Long userId) {
+        SortedMap<Integer, List<Experience>> runsByYear = experiencesByYear(userId);
+        Map<Integer, Double> onlineByYear = onlineDiaryHoursByYear(userId);
+        SortedSet<Integer> years = new TreeSet<>(Comparator.reverseOrder());
+        years.addAll(runsByYear.keySet());
+        years.addAll(onlineByYear.keySet());
+
         List<YearStatDto> result = new ArrayList<>();
-        for (Map.Entry<Integer, List<Experience>> entry : experiencesByYear(userId).entrySet()) {
-            List<Experience> experiences = entry.getValue();
+        for (Integer year : years) {
+            List<Experience> experiences = runsByYear.getOrDefault(year, List.of());
+            double onlineHours = onlineByYear.getOrDefault(year, 0.0);
             result.add(new YearStatDto(
-                    entry.getKey(),
-                    sumHours(experiences),
+                    year,
+                    sumHours(experiences) + onlineHours,
                     experiences.size(),
-                    StatsMath.averageRating(experiences.stream().map(Experience::getRating).toList())
+                    StatsMath.averageRating(experiences.stream().map(Experience::getRating).toList()),
+                    onlineHours
             ));
         }
         return result;
@@ -101,7 +118,22 @@ public class StatsServiceImpl implements StatsService {
 
     @Override
     public List<Integer> getYears(Long userId) {
-        return new ArrayList<>(experiencesByYear(userId).keySet());
+        SortedSet<Integer> years = new TreeSet<>(Comparator.reverseOrder());
+        years.addAll(experiencesByYear(userId).keySet());
+        years.addAll(onlineDiaryHoursByYear(userId).keySet());
+        return new ArrayList<>(years);
+    }
+
+    /** Diary hours counted into online playtime, per entry year (online playtime itself is undated). */
+    private Map<Integer, Double> onlineDiaryHoursByYear(Long userId) {
+        Map<Integer, Double> byYear = new HashMap<>();
+        for (OnlineDiaryYearHours row : diaryEntryGameRepository.sumCountedOnlineHoursByYear(userId)) {
+            double hours = doubleOf(row.hours());
+            if (row.year() != null && hours > 0) {
+                byYear.merge(row.year(), hours, Double::sum);
+            }
+        }
+        return byYear;
     }
 
     @Override
@@ -163,6 +195,12 @@ public class StatsServiceImpl implements StatsService {
             ));
         }
 
+        // Online hours dated by the diary: they add to the hours and months, never to the run counts.
+        YearOnline online = yearOnline(userId, year, games);
+        for (int month = 0; month < 12; month++) {
+            hoursByMonth[month] += online.hoursByMonth()[month];
+        }
+
         rows.sort(Comparator
                 .comparing(YearExperienceDto::getRating, Comparator.nullsLast(Comparator.reverseOrder()))
                 .thenComparing(YearExperienceDto::getHours, Comparator.reverseOrder())
@@ -175,7 +213,7 @@ public class StatsServiceImpl implements StatsService {
 
         return new YearSummaryDto(
                 year,
-                sumHours(experiences),
+                sumHours(experiences) + online.hours(),
                 experiences.size(),
                 completed,
                 abandoned,
@@ -194,8 +232,46 @@ public class StatsServiceImpl implements StatsService {
                 highlights.disappointments(),
                 yearNoteRepository.findByUserIdAndYear(userId, year)
                         .map(StatsServiceImpl::toNoteDto)
-                        .orElse(new YearNoteDto(null, null, null))
+                        .orElse(new YearNoteDto(null, null, null)),
+                online.hours(),
+                online.games()
         );
+    }
+
+    /** A year's online diary hours: in total, per month (January first) and per game. */
+    private record YearOnline(double hours, double[] hoursByMonth, List<YearOnlineGameDto> games) {
+    }
+
+    private YearOnline yearOnline(Long userId, int year, Map<Long, Game> games) {
+        double total = 0;
+        double[] byMonth = new double[12];
+        // Per game: hours and diary days (Accumulator.count).
+        Map<Long, Accumulator> byGame = new LinkedHashMap<>();
+        for (OnlineDiaryMonthHours row : diaryEntryGameRepository.sumCountedOnlineHoursByMonthAndGame(
+                userId, LocalDate.of(year, 1, 1), LocalDate.of(year, 12, 31))) {
+            double hours = doubleOf(row.hours());
+            total += hours;
+            if (row.month() != null) {
+                byMonth[row.month() - 1] += hours;
+            }
+            Game game = games.get(row.gameId());
+            Accumulator acc = byGame.computeIfAbsent(row.gameId(),
+                    id -> new Accumulator(game != null ? game.getName() : "Unknown"));
+            acc.hours += hours;
+            acc.count += longOf(row.dayCount());
+        }
+
+        List<YearOnlineGameDto> onlineGames = new ArrayList<>();
+        for (Map.Entry<Long, Accumulator> entry : byGame.entrySet()) {
+            Game game = games.get(entry.getKey());
+            Accumulator acc = entry.getValue();
+            onlineGames.add(new YearOnlineGameDto(entry.getKey(), acc.name,
+                    game != null ? game.getCoverImageUrl() : null, acc.hours, acc.count));
+        }
+        onlineGames.sort(Comparator
+                .comparingDouble(YearOnlineGameDto::getHours).reversed()
+                .thenComparing(YearOnlineGameDto::getGameId));
+        return new YearOnline(total, byMonth, onlineGames);
     }
 
     @Override

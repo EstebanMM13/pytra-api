@@ -257,9 +257,9 @@ Ratings (`rating` here, `generalRating` in online playtime) are `0`–`10` with 
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/summary` | Totals: games, sagas, experiences, hours (singleplayer/online separate), platinums, `averageRating`, `replayCount`, `completedCount`, `abandonedCount`, `inProgressCount` |
-| GET | `/by-year` | Hours, experience count and `averageRating` per year |
-| GET | `/years` | Years with data, newest first (`[2025, 2024]`) |
-| GET | `/years/{year}` | Year in review: totals, `months` (always 12), `hoursWithoutMonth`, the year's runs by rating, automatic highlights (`goty`, `topRated`, `mostPlayed`, `topSagas`, `topGenres`, `surprises`, `disappointments`) and `note` |
+| GET | `/by-year` | Hours (runs plus `onlineHours`), experience count and `averageRating` per year |
+| GET | `/years` | Years with runs or online diary hours, newest first (`[2025, 2024]`) |
+| GET | `/years/{year}` | Year in review: totals, `months` (always 12), `hoursWithoutMonth`, the year's runs by rating, automatic highlights (`goty`, `topRated`, `mostPlayed`, `topSagas`, `topGenres`, `surprises`, `disappointments`), `note`, `onlineHours` and `onlineGames` (`[{gameId, gameName, coverImageUrl, hours, dayCount}]`, most hours first) |
 | PUT | `/years/{year}/note` | Upsert the yearly free-text note `{summary, highlights}` (max 10 000 chars each, blank = null) |
 | GET | `/in-progress` | `EN_CURSO` runs across all games, most recently started first |
 | GET | `/by-saga` | Hours and game count per saga (includes a "no saga" bucket) |
@@ -271,6 +271,8 @@ Ratings (`rating` here, `generalRating` in online playtime) are `0`–`10` with 
 Averages are over rated experiences only, computed exactly (`BigDecimal`) and rounded to 2 decimals half up (`[9.25, 8.5]` → `8.88`), `null` when nothing is rated. Highlight thresholds are inclusive and applied to the rounded average (surprise `>= 8.5`, disappointment `<= 6`). Year endpoints accept 1970 to next year (`400 INVALID_YEAR` otherwise).
 
 Year attribution (`ExperiencePeriod`, used by `/by-year`, `/years`, year totals, months and library aggregates): the explicit `year` field, else the year of `endDate`, else of `startDate`; runs with none are left out. Month: `endDate` if it falls in that year, else `startDate` if it does, else no month (counted in `hoursWithoutMonth`).
+
+Online playtime has no date, so its hours reach a year only through the diary: `onlineHours` sums the year's diary lines counted into online playtime (`countsHours` and no run). They add to `totalHours` and to the diary day's month, and list the game in `onlineGames`; run counts, ratings and highlights stay run-only. Diary lines counted into a run are already in that run's hours, and lines of Steam/PSN-synced games (not counted) are left out, so nothing is counted twice. The all-time `/summary` keeps the undated online total.
 
 Highlights (`YearHighlightsCalculator`) use two different attributions:
 - **Completed in year**: `COMPLETADO` with `endDate` in the year. Feeds `goty` (best average per game), `topRated` (top 5), `topSagas` / `topGenres` (top 5 by run count; games without a saga are skipped, a run counts once per genre of its game), `surprises` (average >= 8.5, max 3, excluding the goty) and `disappointments` (average <= 6, worst first, max 3).

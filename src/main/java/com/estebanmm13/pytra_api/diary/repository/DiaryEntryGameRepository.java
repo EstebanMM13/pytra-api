@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Repository
@@ -19,6 +20,33 @@ public interface DiaryEntryGameRepository extends JpaRepository<DiaryEntryGame, 
             ORDER BY e.entryDate DESC
             """)
     List<DiaryEntryGame> findAllByUserIdAndGameIdLatestFirst(@Param("userId") Long userId, @Param("gameId") Long gameId);
+
+    /**
+     * Online diary hours per year: lines whose hours were added to the game's online playtime
+     * ({@code countsHours} and no run). Lines added to a run are already in that run's hours, and lines of
+     * synced games that never counted are left out, so the year stats never count an hour twice.
+     */
+    @Query("""
+            SELECT new com.estebanmm13.pytra_api.diary.repository.OnlineDiaryYearHours(
+                       extract(year from e.entryDate), SUM(g.hours))
+            FROM DiaryEntryGame g JOIN g.entry e
+            WHERE e.userId = :userId AND g.countsHours = true AND g.experienceId IS NULL
+            GROUP BY extract(year from e.entryDate)
+            """)
+    List<OnlineDiaryYearHours> sumCountedOnlineHoursByYear(@Param("userId") Long userId);
+
+    /** Same lines as {@link #sumCountedOnlineHoursByYear}, between two dates, per month and game. */
+    @Query("""
+            SELECT new com.estebanmm13.pytra_api.diary.repository.OnlineDiaryMonthHours(
+                       extract(month from e.entryDate), g.gameId, SUM(g.hours), COUNT(g))
+            FROM DiaryEntryGame g JOIN g.entry e
+            WHERE e.userId = :userId AND g.countsHours = true AND g.experienceId IS NULL
+              AND e.entryDate BETWEEN :from AND :to
+            GROUP BY extract(month from e.entryDate), g.gameId
+            """)
+    List<OnlineDiaryMonthHours> sumCountedOnlineHoursByMonthAndGame(@Param("userId") Long userId,
+                                                                    @Param("from") LocalDate from,
+                                                                    @Param("to") LocalDate to);
 
     /**
      * Before a run is deleted: its diary lines stop pointing at it and stop counting, since the run's hours
