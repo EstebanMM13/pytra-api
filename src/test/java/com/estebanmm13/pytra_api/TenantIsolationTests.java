@@ -374,6 +374,21 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.totalHours").value(100.0));
         }
+
+        @Test
+        void otherUserCannotFlagForeignOnlinePlaytime() throws Exception {
+            perform(put("/api/v1/games/{gameId}/online-playtime", aliceGameId), bobAuth,
+                    "{\"totalHours\": 1.0, \"platinum\": true, \"fullCompletion\": true}")
+                    .andExpect(status().isNotFound());
+
+            perform(get("/api/v1/games/{gameId}/online-playtime", aliceGameId), aliceAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.platinum").value(false))
+                    .andExpect(jsonPath("$.fullCompletion").value(false));
+            perform(get("/api/v1/stats/summary"), bobAuth)
+                    .andExpect(jsonPath("$.totalPlatinums").value(0))
+                    .andExpect(jsonPath("$.totalFullCompletions").value(0));
+        }
     }
 
     @Nested

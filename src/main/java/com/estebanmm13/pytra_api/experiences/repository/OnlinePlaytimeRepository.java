@@ -24,7 +24,9 @@ public interface OnlinePlaytimeRepository extends JpaRepository<OnlinePlaytime, 
     @Query("""
             SELECT COALESCE(SUM(o.totalHours), 0.0) AS hoursSum,
                    SUM(o.generalRating) AS ratingSum,
-                   COUNT(o.generalRating) AS ratedCount
+                   COUNT(o.generalRating) AS ratedCount,
+                   COALESCE(SUM(CASE WHEN o.platinum = true THEN 1 ELSE 0 END), 0) AS platinumCount,
+                   COALESCE(SUM(CASE WHEN o.fullCompletion = true THEN 1 ELSE 0 END), 0) AS fullCompletionCount
             FROM OnlinePlaytime o
             WHERE o.userId = :userId
             """)

@@ -13,4 +13,8 @@ public interface OnlinePlaytimeTotals {
     BigDecimal getRatingSum();
 
     Number getRatedCount();
+
+    Number getPlatinumCount();
+
+    Number getFullCompletionCount();
 }

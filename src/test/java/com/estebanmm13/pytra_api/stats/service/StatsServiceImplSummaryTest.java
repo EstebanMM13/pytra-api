@@ -51,6 +51,8 @@ class StatsServiceImplSummaryTest {
         when(online.getHoursSum()).thenReturn(99.5);
         when(online.getRatingSum()).thenReturn(new BigDecimal("6.00"));
         when(online.getRatedCount()).thenReturn(1L);
+        when(online.getPlatinumCount()).thenReturn(2L);
+        when(online.getFullCompletionCount()).thenReturn(1L);
         when(onlinePlaytimeRepository.totalsByUserId(USER_ID)).thenReturn(online);
 
         StatsSummaryDto summary = service.getSummary(USER_ID);
@@ -60,8 +62,9 @@ class StatsServiceImplSummaryTest {
         assertThat(summary.getTotalExperiences()).isEqualTo(20);
         assertThat(summary.getTotalSingleplayerHours()).isEqualTo(310.5);
         assertThat(summary.getTotalOnlineHours()).isEqualTo(99.5);
-        assertThat(summary.getTotalPlatinums()).isEqualTo(4);
-        assertThat(summary.getTotalFullCompletions()).isEqualTo(3);
+        // Run flags plus online playtime flags.
+        assertThat(summary.getTotalPlatinums()).isEqualTo(6);
+        assertThat(summary.getTotalFullCompletions()).isEqualTo(4);
         assertThat(summary.getReplayCount()).isEqualTo(2);
         assertThat(summary.getCompletedCount()).isEqualTo(11);
         assertThat(summary.getAbandonedCount()).isEqualTo(5);

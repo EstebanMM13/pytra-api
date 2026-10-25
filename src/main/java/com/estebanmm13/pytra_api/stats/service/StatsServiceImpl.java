@@ -58,8 +58,9 @@ public class StatsServiceImpl implements StatsService {
                 longOf(runs.getExperienceCount()),
                 doubleOf(runs.getHoursSum()),
                 doubleOf(online.getHoursSum()),
-                longOf(runs.getPlatinumCount()),
-                longOf(runs.getFullCompletionCount()),
+                // Online playtime has no year: its flags count in these all-time totals, not in year summaries.
+                longOf(runs.getPlatinumCount()) + longOf(online.getPlatinumCount()),
+                longOf(runs.getFullCompletionCount()) + longOf(online.getFullCompletionCount()),
                 averageRating(runs, online),
                 longOf(runs.getReplayCount()),
                 longOf(runs.getCompletedCount()),
