@@ -38,7 +38,7 @@ class AccountExportWriterTest {
     private final Experience run = Experience.builder()
             .id(10L).gameId(1L).runLabel("First run").year(2024).status(ExperienceStatus.COMPLETADO)
             .rating(new BigDecimal("9.00")).hours(120.5).startDate(LocalDate.of(2024, 1, 2)).endDate(LocalDate.of(2024, 3, 4))
-            .platform(TestPlatforms.PC).platinum(true).replay(false)
+            .platform(TestPlatforms.PC).platinum(true).fullCompletion(true).replay(false)
             .summary("Loved it, \"truly\"\nsecond line").pros("=open world").build();
 
     private final ExportData data = new ExportData(
@@ -56,7 +56,7 @@ class AccountExportWriterTest {
 
         assertThat(csv).startsWith("﻿gameName,developer,");
         String[] lines = csv.substring(1).split("\r\n");
-        assertThat(lines[1]).startsWith("Elden Ring,FromSoftware,,,SINGLEPLAYER,Souls,RPG,CONFIRMED,3,\"PC, PS5\",First run,2024,COMPLETADO,9,120.5,2024-01-02,2024-03-04,PC,true,false,");
+        assertThat(lines[1]).startsWith("Elden Ring,FromSoftware,,,SINGLEPLAYER,Souls,RPG,CONFIRMED,3,\"PC, PS5\",First run,2024,COMPLETADO,9,120.5,2024-01-02,2024-03-04,PC,true,true,false,");
         assertThat(csv).contains("\"Loved it, \"\"truly\"\"\nsecond line\"");
         assertThat(csv).contains("Backlog game,,,,,,,CONFIRMED,,,,,,,,,,,,,,,,");
     }
@@ -65,17 +65,17 @@ class AccountExportWriterTest {
     void platformIsExportedByCatalogNameAndNeutralized() {
         Experience handheld = Experience.builder()
                 .id(11L).gameId(1L).runLabel("Handheld").status(ExperienceStatus.COMPLETADO).hours(1.0)
-                .platform(TestPlatforms.DS).platinum(false).replay(false).build();
+                .platform(TestPlatforms.DS).platinum(false).fullCompletion(false).replay(false).build();
         Experience injected = Experience.builder()
                 .id(12L).gameId(1L).runLabel("Injected").status(ExperienceStatus.COMPLETADO).hours(1.0)
                 .platform(Platform.builder().id(99L).name("=HYPERLINK(1)").sortOrder(1000).build())
-                .platinum(false).replay(false).build();
+                .platinum(false).fullCompletion(false).replay(false).build();
         ExportData withPlatforms = new ExportData("Esteban", LocalDateTime.of(2026, 10, 9, 12, 0), List.of(elden),
                 Map.of(1L, List.of(handheld, injected)), Map.of(), List.of());
 
         String csv = AccountExportWriter.csv(withPlatforms);
-        assertThat(csv).contains(",DS,false,false,");
-        assertThat(csv).contains(",'=HYPERLINK(1),false,false,");
+        assertThat(csv).contains(",DS,false,false,false,");
+        assertThat(csv).contains(",'=HYPERLINK(1),false,false,false,");
         assertThat(AccountExportWriter.markdown(withPlatforms)).contains("DS");
     }
 
@@ -130,6 +130,7 @@ class AccountExportWriterTest {
         assertThat(md).contains("- **Rating:** 9/10\n");
         assertThat(md).contains("- **Hours:** 120.5\n");
         assertThat(md).contains("- **Platinum:** yes\n");
+        assertThat(md).contains("- **100%:** yes\n");
         assertThat(md).contains("**Summary**\n\nLoved it, \"truly\"\nsecond line\n");
         assertThat(md).contains("## Backlog game\n");
         assertThat(md).contains("_No runs logged._");

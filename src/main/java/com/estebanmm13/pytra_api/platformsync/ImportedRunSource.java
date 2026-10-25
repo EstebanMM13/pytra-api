@@ -40,7 +40,7 @@ public record ImportedRunSource(String runLabel, String note, String platformLeg
     /**
      * True when the run is this source's canonical run exactly as the sync created it: still in progress on
      * this source's platform, with the import label and note, and nothing the user typed (rating, year,
-     * dates, platinum, replay, summary, pros, cons, other notes).
+     * dates, platinum, 100%, replay, summary, pros, cons, other notes).
      */
     public boolean isUntouchedImportedRun(Experience run) {
         return runLabel.equals(run.getRunLabel())
@@ -52,6 +52,7 @@ public record ImportedRunSource(String runLabel, String note, String platformLeg
                 && run.getStartDate() == null
                 && run.getEndDate() == null
                 && !Boolean.TRUE.equals(run.getPlatinum())
+                && !Boolean.TRUE.equals(run.getFullCompletion())
                 && !Boolean.TRUE.equals(run.getReplay())
                 && isBlank(run.getSummary())
                 && isBlank(run.getPros())

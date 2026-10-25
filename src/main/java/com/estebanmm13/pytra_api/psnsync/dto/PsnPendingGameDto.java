@@ -43,6 +43,7 @@ public record PsnPendingGameDto(
         ExperienceStatus lastExperienceStatus,
         Integer lastPlayedYear,
         Boolean hasPlatinum,
+        Boolean hasFullCompletion,
         List<String> platforms,
         List<PlatformRefDto> platformRefs,
         String titleId,
@@ -58,7 +59,7 @@ public record PsnPendingGameDto(
                 game.getCategory(), game.getSagaId(), game.getSagaName(), game.getCoverImageUrl(),
                 game.getReviewStatus(), game.getGenres(), game.getUpdatedAt(),
                 game.getExperienceCount(), game.getTotalHours(), game.getBestRating(),
-                game.getLastExperienceStatus(), game.getLastPlayedYear(), game.getHasPlatinum(),
+                game.getLastExperienceStatus(), game.getLastPlayedYear(), game.getHasPlatinum(), game.getHasFullCompletion(),
                 game.getPlatforms(), game.getPlatformRefs(),
                 titleId, psnPlatform, psnPlaytimeMinutes, lastPlayedAt);
     }

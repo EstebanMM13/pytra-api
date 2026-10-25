@@ -201,6 +201,7 @@ public class ExternalPlaytimeWriter {
                 .hours(hours)
                 .platform(platformService.requireByLegacyCode(source.platformLegacyCode()))
                 .platinum(false)
+                .fullCompletion(false)
                 .replay(false)
                 .notes(source.note())
                 .build());

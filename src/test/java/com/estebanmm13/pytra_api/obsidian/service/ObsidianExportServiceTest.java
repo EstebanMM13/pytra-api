@@ -114,6 +114,7 @@ class ObsidianExportServiceTest {
         assertThat(first.hours()).isEqualTo(14.5);
         assertThat(first.platform()).isEqualTo("PS5");
         assertThat(first.platinum()).isTrue();
+        assertThat(first.fullCompletion()).isTrue();
         assertThat(first.replay()).isFalse();
         assertThat(export.experiences().get(1).rating().toPlainString()).isEqualTo("10");
     }
@@ -131,7 +132,7 @@ class ObsidianExportServiceTest {
         return Experience.builder().id(id).userId(USER).gameId(gameId).runLabel(label)
                 .status(ExperienceStatus.COMPLETADO).rating(rating).hours(14.5)
                 .startDate(startDate).endDate(startDate != null ? startDate.plusDays(6) : null)
-                .platform(ps5).platinum(true).replay(false).updatedAt(T2).build();
+                .platform(ps5).platinum(true).fullCompletion(true).replay(false).updatedAt(T2).build();
     }
 
     private static Instant instant(LocalDateTime dateTime) {

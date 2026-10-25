@@ -55,6 +55,10 @@ public class Experience {
     @Column(nullable = false)
     private Boolean platinum;
 
+    /** "100%": every trophy/achievement of the game obtained. Independent of {@link #platinum}. */
+    @Column(nullable = false)
+    private Boolean fullCompletion;
+
     @Column(nullable = false)
     private Boolean replay;
 

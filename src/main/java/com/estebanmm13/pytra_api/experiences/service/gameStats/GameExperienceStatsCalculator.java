@@ -62,7 +62,7 @@ public class GameExperienceStatsCalculator {
     /**
      * Stats over the runs plus the game's online playtime ({@code online} may be null). Online hours add to
      * {@code totalHours}, its rating competes for {@code bestRating} and its platforms join {@code platforms};
-     * run-only aggregates (count, status, year, platinum, last played) ignore it. {@code lastActivityAt} adds the
+     * run-only aggregates (count, status, year, platinum, 100%, last played) ignore it. {@code lastActivityAt} adds the
      * online playtime's last session to {@code lastPlayedAt}.
      */
     public static GameExperienceStats of(List<Experience> experiences, OnlinePlaytime online) {
@@ -73,6 +73,7 @@ public class GameExperienceStatsCalculator {
         BigDecimal bestRating = null;
         Integer lastPlayedYear = null;
         boolean hasPlatinum = false;
+        boolean hasFullCompletion = false;
         Experience latest = null;
         Map<Long, Platform> platformsById = new LinkedHashMap<>();
         LocalDate lastPlayedAt = null;
@@ -88,6 +89,7 @@ public class GameExperienceStatsCalculator {
                 lastPlayedYear = year;
             }
             hasPlatinum |= Boolean.TRUE.equals(experience.getPlatinum());
+            hasFullCompletion |= Boolean.TRUE.equals(experience.getFullCompletion());
             if (experience.getPlatform() != null) {
                 platformsById.putIfAbsent(experience.getPlatform().getId(), experience.getPlatform());
             }
@@ -113,7 +115,7 @@ public class GameExperienceStatsCalculator {
         }
         return new GameExperienceStats(
                 experiences.size(), totalHours, Ratings.normalize(bestRating),
-                latest != null ? latest.getStatus() : null, lastPlayedYear, hasPlatinum,
+                latest != null ? latest.getStatus() : null, lastPlayedYear, hasPlatinum, hasFullCompletion,
                 platformsById.values().stream().sorted(PlatformMapper.CATALOG_ORDER).toList(), lastPlayedAt,
                 latestOf(lastPlayedAt, lastOnlineSession));
     }

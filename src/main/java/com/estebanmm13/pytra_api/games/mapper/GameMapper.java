@@ -42,6 +42,7 @@ public class GameMapper {
                 stats != null ? stats.lastExperienceStatus() : null,
                 stats != null ? stats.lastPlayedYear() : null,
                 stats != null ? stats.hasPlatinum() : null,
+                stats != null ? stats.hasFullCompletion() : null,
                 stats != null ? stats.platforms().stream().map(PlatformMapper::legacyCodeOf).distinct().toList() : null,
                 stats != null ? stats.platforms().stream().map(PlatformMapper::toRefDto).toList() : null,
                 stats != null ? stats.lastPlayedAt() : null,

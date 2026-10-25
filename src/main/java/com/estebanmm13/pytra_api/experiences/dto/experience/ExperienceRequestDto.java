@@ -50,6 +50,9 @@ public class ExperienceRequestDto {
 
     private Boolean platinum = false;
 
+    /** Optional for clients built before the flag existed; absent means false. */
+    private Boolean fullCompletion = false;
+
     private Boolean replay = false;
 
     private String summary;

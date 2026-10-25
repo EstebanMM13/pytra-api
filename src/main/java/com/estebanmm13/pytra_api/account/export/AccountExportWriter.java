@@ -23,7 +23,7 @@ public final class AccountExportWriter {
     static final List<String> CSV_HEADER = List.of(
             "gameName", "developer", "publisher", "releaseDate", "category", "saga", "genres", "reviewStatus",
             "onlineHours", "onlinePlatforms", "runLabel", "year", "status", "rating", "hours", "startDate", "endDate", "platform",
-            "platinum", "replay", "summary", "pros", "cons", "notes");
+            "platinum", "fullCompletion", "replay", "summary", "pros", "cons", "notes");
 
     /** Lets Excel detect UTF-8 (accents in game names). */
     private static final String UTF8_BOM = "﻿";
@@ -76,6 +76,7 @@ public final class AccountExportWriter {
                         // Catalog names are user-editable: neutralize formulas like any other free text.
                         text(PlatformMapper.nameOf(run.getPlatform())),
                         value(run.getPlatinum()),
+                        value(run.getFullCompletion()),
                         value(run.getReplay()),
                         text(run.getSummary()),
                         text(run.getPros()),
@@ -124,6 +125,7 @@ public final class AccountExportWriter {
                 field(out, "End", value(run.getEndDate()));
                 field(out, "Platform", value(PlatformMapper.nameOf(run.getPlatform())));
                 field(out, "Platinum", Boolean.TRUE.equals(run.getPlatinum()) ? "yes" : null);
+                field(out, "100%", Boolean.TRUE.equals(run.getFullCompletion()) ? "yes" : null);
                 field(out, "Replay", Boolean.TRUE.equals(run.getReplay()) ? "yes" : null);
                 block(out, "Summary", run.getSummary());
                 block(out, "Pros", run.getPros());

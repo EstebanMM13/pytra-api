@@ -26,10 +26,11 @@ public record GameExperienceStats(
         ExperienceStatus lastExperienceStatus,
         Integer lastPlayedYear,
         boolean hasPlatinum,
+        boolean hasFullCompletion,
         List<Platform> platforms,
         LocalDate lastPlayedAt,
         LocalDate lastActivityAt) {
 
     public static final GameExperienceStats EMPTY =
-            new GameExperienceStats(0, 0.0, null, null, null, false, List.of(), null, null);
+            new GameExperienceStats(0, 0.0, null, null, null, false, false, List.of(), null, null);
 }

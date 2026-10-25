@@ -140,6 +140,7 @@ public class ObsidianExportService {
                 experience.getEndDate(),
                 experience.getPlatform() != null ? experience.getPlatform().getName() : null,
                 Boolean.TRUE.equals(experience.getPlatinum()),
+                Boolean.TRUE.equals(experience.getFullCompletion()),
                 Boolean.TRUE.equals(experience.getReplay()),
                 toInstant(experience.getUpdatedAt()));
     }

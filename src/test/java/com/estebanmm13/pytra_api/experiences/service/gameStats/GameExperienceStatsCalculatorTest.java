@@ -74,11 +74,13 @@ class GameExperienceStatsCalculatorTest {
                 Experience.builder().gameId(1L).status(ExperienceStatus.COMPLETADO).platform(TestPlatforms.PC)
                         .hours(10.0).rating(new BigDecimal("7.50")).platinum(true).year(2022).build(),
                 Experience.builder().gameId(1L).status(ExperienceStatus.EN_CURSO).platform(TestPlatforms.PC)
-                        .hours(2.5).platinum(false).startDate(LocalDate.of(2024, 1, 1)).build()));
+                        .hours(2.5).platinum(false).fullCompletion(true).startDate(LocalDate.of(2024, 1, 1)).build()));
 
         assertThat(stats.totalHours()).isEqualTo(12.5);
         assertThat(stats.bestRating()).isEqualByComparingTo("7.5");
         assertThat(stats.hasPlatinum()).isTrue();
+        // 100% on a different run than the platinum: both flags aggregate independently.
+        assertThat(stats.hasFullCompletion()).isTrue();
         assertThat(stats.lastPlayedYear()).isEqualTo(2024);
     }
 
@@ -128,6 +130,7 @@ class GameExperienceStatsCalculatorTest {
         assertThat(stats.lastPlayedYear()).isNull();
         assertThat(stats.lastPlayedAt()).isNull();
         assertThat(stats.hasPlatinum()).isFalse();
+        assertThat(stats.hasFullCompletion()).isFalse();
     }
 
     @Test

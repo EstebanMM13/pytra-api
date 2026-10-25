@@ -43,13 +43,15 @@ class GameLibraryAggregatesTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[0].lastExperienceStatus").value("EN_CURSO"))
                 .andExpect(jsonPath("$[0].lastPlayedYear").value(2024))
                 .andExpect(jsonPath("$[0].hasPlatinum").value(true))
+                .andExpect(jsonPath("$[0].hasFullCompletion").value(false))
                 .andExpect(jsonPath("$[1].id").value(untouchedId))
                 .andExpect(jsonPath("$[1].experienceCount").value(0))
                 .andExpect(jsonPath("$[1].totalHours").value(0.0))
                 .andExpect(jsonPath("$[1].bestRating").value(nullValue()))
                 .andExpect(jsonPath("$[1].lastExperienceStatus").value(nullValue()))
                 .andExpect(jsonPath("$[1].lastPlayedYear").value(nullValue()))
-                .andExpect(jsonPath("$[1].hasPlatinum").value(false));
+                .andExpect(jsonPath("$[1].hasPlatinum").value(false))
+                .andExpect(jsonPath("$[1].hasFullCompletion").value(false));
     }
 
     @Test
@@ -65,11 +67,12 @@ class GameLibraryAggregatesTests extends AbstractIntegrationTest {
     void aggregatesNeverIncludeOtherUsersExperiences() throws Exception {
         String otherAuth = bearer(createVerifiedUser("libother"));
         Long otherGame = createGameVia(otherAuth, "Played", "");
-        createExperienceVia(otherAuth, otherGame, run("Other", "COMPLETADO", 10, 99.0, 2025, null, null, ", \"platinum\": true"));
+        createExperienceVia(otherAuth, otherGame, run("Other", "COMPLETADO", 10, 99.0, 2025, null, null, ", \"platinum\": true, \"fullCompletion\": true"));
 
         performAs(auth, get("/api/v1/games/{id}", playedId))
                 .andExpect(jsonPath("$.totalHours").value(13.5))
-                .andExpect(jsonPath("$.bestRating").value(7));
+                .andExpect(jsonPath("$.bestRating").value(7))
+                .andExpect(jsonPath("$.hasFullCompletion").value(false));
         performAs(otherAuth, get("/api/v1/games"))
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].experienceCount").value(1))

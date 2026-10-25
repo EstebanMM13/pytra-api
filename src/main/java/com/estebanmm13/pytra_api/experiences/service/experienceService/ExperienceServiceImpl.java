@@ -79,6 +79,7 @@ public class ExperienceServiceImpl implements ExperienceService {
                 .platform(platformService.resolve(
                         experienceRequestDto.getPlatformId(), experienceRequestDto.getPlatform(), null))
                 .platinum(experienceRequestDto.getPlatinum() != null ? experienceRequestDto.getPlatinum() : false)
+                .fullCompletion(experienceRequestDto.getFullCompletion() != null ? experienceRequestDto.getFullCompletion() : false)
                 .replay(experienceRequestDto.getReplay() != null ? experienceRequestDto.getReplay() : false)
                 .summary(experienceRequestDto.getSummary())
                 .pros(experienceRequestDto.getPros())
@@ -105,6 +106,7 @@ public class ExperienceServiceImpl implements ExperienceService {
             experience.setPlatform(platformService.resolve(
                     experienceRequestDto.getPlatformId(), experienceRequestDto.getPlatform(), experience.getPlatform()));
             experience.setPlatinum(experienceRequestDto.getPlatinum() != null ? experienceRequestDto.getPlatinum() : false);
+            experience.setFullCompletion(experienceRequestDto.getFullCompletion() != null ? experienceRequestDto.getFullCompletion() : false);
             experience.setReplay(experienceRequestDto.getReplay() != null ? experienceRequestDto.getReplay() : false);
             experience.setSummary(experienceRequestDto.getSummary());
             experience.setPros(experienceRequestDto.getPros());

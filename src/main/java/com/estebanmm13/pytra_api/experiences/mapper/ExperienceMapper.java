@@ -26,6 +26,7 @@ public class ExperienceMapper {
                 PlatformMapper.nameOf(experience.getPlatform()),
                 PlatformMapper.colorOf(experience.getPlatform()),
                 experience.getPlatinum(),
+                experience.getFullCompletion(),
                 experience.getReplay(),
                 experience.getSummary(),
                 experience.getPros(),

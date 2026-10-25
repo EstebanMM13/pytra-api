@@ -37,6 +37,8 @@ public class GameResponseDto {
     private ExperienceStatus lastExperienceStatus;
     private Integer lastPlayedYear;
     private Boolean hasPlatinum;
+    /** True when any run is flagged 100% (every trophy/achievement obtained). */
+    private Boolean hasFullCompletion;
     /**
      * Legacy enum codes of the game's platforms, distinct, in catalog order ("OTHER" for platforms the
      * old enum did not have). Kept for clients built before the catalog; new clients use platformRefs.

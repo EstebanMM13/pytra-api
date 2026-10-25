@@ -44,6 +44,7 @@ public record SteamPendingGameDto(
         ExperienceStatus lastExperienceStatus,
         Integer lastPlayedYear,
         Boolean hasPlatinum,
+        Boolean hasFullCompletion,
         List<String> platforms,
         List<PlatformRefDto> platformRefs,
         String appId,
@@ -57,7 +58,7 @@ public record SteamPendingGameDto(
                 game.getCategory(), game.getSagaId(), game.getSagaName(), game.getCoverImageUrl(),
                 game.getReviewStatus(), game.getGenres(), game.getUpdatedAt(),
                 game.getExperienceCount(), game.getTotalHours(), game.getBestRating(),
-                game.getLastExperienceStatus(), game.getLastPlayedYear(), game.getHasPlatinum(),
+                game.getLastExperienceStatus(), game.getLastPlayedYear(), game.getHasPlatinum(), game.getHasFullCompletion(),
                 game.getPlatforms(), game.getPlatformRefs(),
                 appId, steamPlaytimeMinutes, lastPlayedAt);
     }

@@ -51,6 +51,7 @@ public record ObsidianExportDto(
             LocalDate endDate,
             String platform,
             boolean platinum,
+            boolean fullCompletion,
             boolean replay,
             Instant updatedAt) {
     }

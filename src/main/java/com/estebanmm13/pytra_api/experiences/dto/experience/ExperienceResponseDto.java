@@ -26,6 +26,7 @@ public class ExperienceResponseDto {
     private String platformName;
     private String platformColor;
     private Boolean platinum;
+    private Boolean fullCompletion;
     private Boolean replay;
     private String summary;
     private String pros;

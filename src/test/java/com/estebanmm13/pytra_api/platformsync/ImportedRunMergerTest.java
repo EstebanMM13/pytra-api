@@ -110,6 +110,7 @@ class ImportedRunMergerTest {
         assertNoMerge(() -> imported.setNotes("My own note"));
         assertNoMerge(() -> imported.setStartDate(LocalDate.of(2026, 1, 1)));
         assertNoMerge(() -> imported.setPlatinum(true));
+        assertNoMerge(() -> imported.setFullCompletion(true));
         assertNoMerge(() -> imported.setReplay(true));
         assertNoMerge(() -> imported.setStatus(ExperienceStatus.COMPLETADO));
         assertNoMerge(() -> imported.setRunLabel("Partida PS5"));
