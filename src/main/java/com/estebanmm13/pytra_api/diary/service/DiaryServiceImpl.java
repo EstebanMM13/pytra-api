@@ -47,7 +47,8 @@ import java.util.stream.Collectors;
  * The play diary. Hours of a diary game are ADDED to the game's data, inside the same transaction:
  * <ul>
  *   <li>ONLINE games: to the online playtime (row created when missing).</li>
- *   <li>Steam/PSN-synced games: not added at all (the sync counts the real playtime); kept in the diary only.</li>
+ *   <li>Steam/PSN-synced games: not added at all (the sync counts the real playtime); kept in the diary only.
+ *   A line already counted before the game was linked keeps counting.</li>
  *   <li>Other games: to one run: the one sent, else the one the line already used, else the only run in
  *   progress; otherwise 400 {@value InvalidRequestException#DIARY_RUN_REQUIRED}.</li>
  * </ul>
@@ -163,8 +164,11 @@ public class DiaryServiceImpl implements DiaryService {
             DiaryGameRequestDto game = requested.get(i);
             Game owned = requireOwnedGame(game.getGameId(), userId);
             String field = "games[" + i + "].experienceId";
+            DiaryEntryGame oldLine = oldLines.get(game.getGameId());
 
-            if (syncedGameIds.contains(game.getGameId())) {
+            // A line counted before the game was linked keeps counting: the link absorbed those hours
+            // (max on confirm, then only later deltas), so giving them back would lose them.
+            if (syncedGameIds.contains(game.getGameId()) && (oldLine == null || !oldLine.isCountsHours())) {
                 Long run = game.getExperienceId();
                 if (run != null && !isRunOf(run, game.getGameId(), userId)) {
                     runErrors.put(field, InvalidRequestException.INVALID_DIARY_RUN);
@@ -178,7 +182,7 @@ public class DiaryServiceImpl implements DiaryService {
             }
 
             List<Experience> runs = experienceRepository.findAllByGameIdAndUserId(game.getGameId(), userId);
-            Long run = pickRun(game, oldLines.get(game.getGameId()), runs);
+            Long run = pickRun(game, oldLine, runs);
             if (run == null) {
                 runErrors.put(field, game.getExperienceId() != null
                         ? InvalidRequestException.INVALID_DIARY_RUN

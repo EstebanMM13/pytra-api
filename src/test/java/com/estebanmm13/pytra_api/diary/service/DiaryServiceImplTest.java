@@ -203,14 +203,41 @@ class DiaryServiceImplTest {
     }
 
     @Test
-    void aGameSyncedAfterItsLineWasCountedGivesTheCountedHoursBack() {
+    void aGameSyncedAfterItsLineWasCountedKeepsTheCountedHours() {
         ownedGame(GameCategory.SINGLEPLAYER);
-        existingDay(line(RUN_A, "2", true));
+        runs(run(RUN_A, ExperienceStatus.EN_CURSO));
+        DiaryEntry entry = existingDay(line(RUN_A, "2", true));
         when(gamePlatformLinkRepository.findGameIdsByUserIdAndPlatformIn(eq(USER_ID), any())).thenReturn(Set.of(GAME_ID));
 
         service.saveDay(DAY, day(game(null, "2")), USER_ID);
 
-        verify(experienceService).addHours(RUN_A, new BigDecimal("-2"), USER_ID);
+        verifyNoInteractions(experienceService);
+        assertThat(entry.getGames()).singleElement().satisfies(line -> assertThat(line.isCountsHours()).isTrue());
+    }
+
+    @Test
+    void editingALineCountedBeforeTheGameWasSyncedAppliesTheDifference() {
+        ownedGame(GameCategory.SINGLEPLAYER);
+        runs(run(RUN_A, ExperienceStatus.EN_CURSO));
+        existingDay(line(RUN_A, "2", true));
+        when(gamePlatformLinkRepository.findGameIdsByUserIdAndPlatformIn(eq(USER_ID), any())).thenReturn(Set.of(GAME_ID));
+
+        service.saveDay(DAY, day(game(null, "3")), USER_ID);
+
+        verify(experienceService).addHours(RUN_A, new BigDecimal("1"), USER_ID);
+    }
+
+    @Test
+    void aLineNotCountedForASyncedGameStaysUncounted() {
+        ownedGame(GameCategory.SINGLEPLAYER);
+        DiaryEntry entry = existingDay(line(RUN_A, "2", false));
+        when(gamePlatformLinkRepository.findGameIdsByUserIdAndPlatformIn(eq(USER_ID), any())).thenReturn(Set.of(GAME_ID));
+        when(experienceRepository.findByIdAndUserId(RUN_A, USER_ID)).thenReturn(Optional.of(run(RUN_A, ExperienceStatus.EN_CURSO)));
+
+        service.saveDay(DAY, day(game(RUN_A, "4")), USER_ID);
+
+        verifyNoInteractions(experienceService, onlinePlaytimeService);
+        assertThat(entry.getGames()).singleElement().satisfies(line -> assertThat(line.isCountsHours()).isFalse());
     }
 
     @Test
