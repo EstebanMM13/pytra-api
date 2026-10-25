@@ -26,9 +26,12 @@ spring:
     # Small pool for a small container and a shared Postgres (Hikari's default keeps 10 open).
     # Hikari setters take milliseconds, so the timeouts are plain numbers, not Spring durations.
     hikari:
+      # Fixed-size pool (minimum-idle = maximum-pool-size, as Hikari recommends). With fewer idle connections
+      # the pool shrinks while the app is quiet, and the dashboard's ~11 parallel requests then wait for new
+      # connections that Hikari opens one at a time (single "connection adder" thread). With a fixed pool
+      # idle-timeout never applies, so it is not set.
       maximum-pool-size: 5
-      minimum-idle: 1
-      idle-timeout: 120000 # 2 min: release idle connections above minimum-idle
+      minimum-idle: 5
       max-lifetime: 900000 # 15 min: recycle connections before any proxy/server idle cut
   jackson:
     deserialization:

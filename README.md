@@ -88,8 +88,8 @@ The service runs in a small single-CPU container next to a shared Postgres, so `
 
 | Setting | Value | Why |
 |---|---|---|
-| Hikari `maximum-pool-size` / `minimum-idle` | `5` / `1` | Hikari's default keeps 10 connections open |
-| Hikari `idle-timeout` / `max-lifetime` | 2 min / 15 min | Release idle connections; recycle them before any proxy idle cut |
+| Hikari `maximum-pool-size` / `minimum-idle` | `5` / `5` | Hikari's default keeps 10 connections open; a fixed pool stays warm, so a burst of parallel requests never waits for connections opened one at a time |
+| Hikari `max-lifetime` | 15 min | Recycle connections before any proxy idle cut |
 | Tomcat `threads.max` | `30` | More threads than pool connections would only queue on the pool |
 | Response compression | On, from 1 KB | Library and stats lists are JSON-heavy |
 
