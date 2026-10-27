@@ -24,4 +24,7 @@ public interface StatsInsightsService {
 
     /** All-time CONFIRMED games grouped by release decade and release year. */
     ReleaseEraStatsDto getReleaseEras(Long userId);
+
+    /** Time to finish, abandonment per genre, hours versus rating and replays of the runs in scope. */
+    CompletionStatsDto getCompletion(Long userId, Integer year);
 }

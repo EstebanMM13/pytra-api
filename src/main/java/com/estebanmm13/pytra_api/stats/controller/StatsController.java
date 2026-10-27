@@ -118,4 +118,10 @@ public class StatsController {
     public ResponseEntity<ReleaseEraStatsDto> getByReleaseEra() {
         return ResponseEntity.ok(statsInsightsService.getReleaseEras(currentUserResolver.getCurrentUserId()));
     }
+
+    /** Completion habits of the runs (all-time when year is omitted). */
+    @GetMapping("/completion")
+    public ResponseEntity<CompletionStatsDto> getCompletion(@RequestParam(required = false) Integer year) {
+        return ResponseEntity.ok(statsInsightsService.getCompletion(currentUserResolver.getCurrentUserId(), year));
+    }
 }

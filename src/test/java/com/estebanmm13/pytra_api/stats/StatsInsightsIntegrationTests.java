@@ -261,4 +261,67 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.byYear[0].year").value(1991))
                 .andExpect(jsonPath("$.byYear[2].year").value(2004));
     }
+
+    // ---------------------------------------------------------------- completion habits
+
+    private Long createGenre(String name) throws Exception {
+        return readId(performAs(auth, post("/api/v1/genres"), "{\"name\": \"" + name + "\"}")
+                .andExpect(status().isCreated()).andReturn());
+    }
+
+    @Test
+    void completionReportsTimeToFinishAbandonmentAndHoursBuckets() throws Exception {
+        String suffix = Long.toString(System.nanoTime());
+        Long rpg = createGenre("Completion RPG " + suffix);
+        Long fast = createGameVia(auth, "Completion Fast", ", \"genreIds\": [" + rpg + "]");
+        createExperienceVia(auth, fast, run("A", "COMPLETADO", 9, 5.0, null, "2024-01-01", "2024-01-03", ""));
+        createExperienceVia(auth, fast, run("B", "ABANDONADO", null, 2.0, null, "2024-02-01", null, ""));
+        Long slow = createGameVia(auth, "Completion Slow", ", \"genreIds\": [" + rpg + "]");
+        createExperienceVia(auth, slow, run("A", "COMPLETADO", 7, 45.0, null, "2024-01-01", "2024-03-01", ", \"replay\": true"));
+        createExperienceVia(auth, slow, run("B", "COMPLETADO", null, 70.0, 2023, null, null, ""));
+
+        performAs(auth, get("/api/v1/stats/completion"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.year").value(nullValue()))
+                .andExpect(jsonPath("$.completedCount").value(3))
+                .andExpect(jsonPath("$.abandonedCount").value(1))
+                .andExpect(jsonPath("$.replayCount").value(1))
+                .andExpect(jsonPath("$.timeToFinish.sampleSize").value(2))
+                .andExpect(jsonPath("$.timeToFinish.averageDays").value(31.0))
+                .andExpect(jsonPath("$.timeToFinish.medianDays").value(31.0))
+                .andExpect(jsonPath("$.timeToFinish.fastest.gameId").value(fast))
+                .andExpect(jsonPath("$.timeToFinish.fastest.gameName").value("Completion Fast"))
+                .andExpect(jsonPath("$.timeToFinish.fastest.runLabel").value("A"))
+                .andExpect(jsonPath("$.timeToFinish.fastest.days").value(2))
+                .andExpect(jsonPath("$.timeToFinish.slowest.gameId").value(slow))
+                .andExpect(jsonPath("$.timeToFinish.slowest.days").value(60))
+                .andExpect(jsonPath("$.timeToFinish.buckets.length()").value(6))
+                .andExpect(jsonPath("$.timeToFinish.buckets[0].label").value("0-7"))
+                .andExpect(jsonPath("$.timeToFinish.buckets[0].count").value(1))
+                .andExpect(jsonPath("$.timeToFinish.buckets[2].label").value("31-90"))
+                .andExpect(jsonPath("$.timeToFinish.buckets[2].count").value(1))
+                .andExpect(jsonPath("$.timeToFinish.buckets[5].maxDays").value(nullValue()))
+                .andExpect(jsonPath("$.abandonmentByGenre.length()").value(1))
+                .andExpect(jsonPath("$.abandonmentByGenre[0].genreId").value(rpg))
+                .andExpect(jsonPath("$.abandonmentByGenre[0].completedCount").value(3))
+                .andExpect(jsonPath("$.abandonmentByGenre[0].abandonedCount").value(1))
+                .andExpect(jsonPath("$.abandonmentByGenre[0].abandonmentRate").value(0.25))
+                .andExpect(jsonPath("$.hoursBuckets.length()").value(4))
+                .andExpect(jsonPath("$.hoursBuckets[0].label").value("<10"))
+                .andExpect(jsonPath("$.hoursBuckets[0].runCount").value(1))
+                .andExpect(jsonPath("$.hoursBuckets[0].averageRating").value(9))
+                .andExpect(jsonPath("$.hoursBuckets[2].runCount").value(1))
+                .andExpect(jsonPath("$.hoursBuckets[2].averageRating").value(7))
+                .andExpect(jsonPath("$.hoursBuckets[3].runCount").value(1))
+                .andExpect(jsonPath("$.hoursBuckets[3].ratedCount").value(0))
+                .andExpect(jsonPath("$.hoursBuckets[3].maxHours").value(nullValue()));
+
+        performAs(auth, get("/api/v1/stats/completion").param("year", "2023"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.year").value(2023))
+                .andExpect(jsonPath("$.completedCount").value(1))
+                .andExpect(jsonPath("$.abandonedCount").value(0))
+                .andExpect(jsonPath("$.timeToFinish.sampleSize").value(0))
+                .andExpect(jsonPath("$.timeToFinish.fastest").value(nullValue()));
+    }
 }

@@ -137,6 +137,7 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/by-platform"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/by-developer"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/by-release-era"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/completion"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary?from=2024-05-01&to=2024-05-31"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary/2024-05-01"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/diary/2024-05-01"),
@@ -603,6 +604,36 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                     .andExpect(jsonPath("$.byDecade[0].gameCount").value(1))
                     // "Alice Game" from the setup has no release date.
                     .andExpect(jsonPath("$.undatedGameCount").value(1));
+        }
+
+        @Test
+        void completionOnlyUsesOwnRuns() throws Exception {
+            // Alice: one COMPLETADO run (42.5h, rated 9), undated except for its year.
+            perform(get("/api/v1/stats/completion"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.completedCount").value(0))
+                    .andExpect(jsonPath("$.replayCount").value(0))
+                    .andExpect(jsonPath("$.timeToFinish.sampleSize").value(0))
+                    .andExpect(jsonPath("$.abandonmentByGenre.length()").value(0))
+                    .andExpect(jsonPath("$.hoursBuckets[2].runCount").value(0));
+
+            Long bobGameId = readId(perform(post("/api/v1/games"), bobAuth, GAME_JSON.formatted("Bob Completion", ""))
+                    .andExpect(status().isCreated()).andReturn());
+            perform(post("/api/v1/games/{gameId}/experiences", bobGameId), bobAuth,
+                    "{\"runLabel\": \"Bob run\", \"status\": \"COMPLETADO\", \"platform\": \"PC\", \"hours\": 3,"
+                            + " \"startDate\": \"2024-01-01\", \"endDate\": \"2024-01-05\"}")
+                    .andExpect(status().isCreated());
+
+            perform(get("/api/v1/stats/completion"), bobAuth)
+                    .andExpect(jsonPath("$.completedCount").value(1))
+                    .andExpect(jsonPath("$.timeToFinish.sampleSize").value(1))
+                    .andExpect(jsonPath("$.timeToFinish.fastest.gameId").value(bobGameId))
+                    .andExpect(jsonPath("$.hoursBuckets[0].runCount").value(1))
+                    .andExpect(jsonPath("$.hoursBuckets[2].runCount").value(0));
+            perform(get("/api/v1/stats/completion"), aliceAuth)
+                    .andExpect(jsonPath("$.completedCount").value(1))
+                    .andExpect(jsonPath("$.timeToFinish.sampleSize").value(0))
+                    .andExpect(jsonPath("$.hoursBuckets[2].runCount").value(1));
         }
 
         @Test

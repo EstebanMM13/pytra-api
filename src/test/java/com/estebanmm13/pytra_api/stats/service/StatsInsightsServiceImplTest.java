@@ -11,7 +11,10 @@ import com.estebanmm13.pytra_api.experiences.repository.GameRunTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRow;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
+import com.estebanmm13.pytra_api.games.repository.GameGenreRow;
+import com.estebanmm13.pytra_api.games.repository.GameLabel;
 import com.estebanmm13.pytra_api.games.repository.GameReleaseRow;
+import com.estebanmm13.pytra_api.stats.dto.CompletionStatsDto;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.stats.dto.DeveloperStatsDto;
 import com.estebanmm13.pytra_api.stats.dto.ReleaseEraStatsDto;
@@ -198,5 +201,95 @@ class StatsInsightsServiceImplTest {
         assertThat(nineties.averageRating()).isEqualByComparingTo("6.5");
         assertThat(eras.byYear()).extracting(ReleaseEraStatsDto.YearStat::year).containsExactly(1998, 2011, 2022);
         assertThat(eras.byYear().get(0).gameCount()).isEqualTo(2);
+    }
+
+    // ---------------------------------------------------------------- completion habits
+
+    private Experience dated(Long gameId, ExperienceStatus status, String rating, double hours, Integer year,
+                             String start, String end, boolean replay) {
+        Experience run = run(gameId, TestPlatforms.PC, status, rating, hours, year);
+        run.setStartDate(start != null ? LocalDate.parse(start) : null);
+        run.setEndDate(end != null ? LocalDate.parse(end) : null);
+        run.setReplay(replay);
+        return run;
+    }
+
+    private void stubGenres() {
+        when(gameRepository.findGenreRowsByUserIdAndReviewStatus(USER_ID, ReviewStatus.CONFIRMED)).thenReturn(List.of(
+                new GameGenreRow(1L, 10L, "RPG"),
+                new GameGenreRow(2L, 10L, "RPG"),
+                new GameGenreRow(2L, 11L, "Shooter")));
+        when(gameRepository.findLabelsByUserId(USER_ID)).thenReturn(List.of(
+                new GameLabel(1L, "Quick Game", null), new GameLabel(2L, "Long Game", null)));
+    }
+
+    @Test
+    void completionMeasuresTimeToFinishAbandonmentAndHoursBuckets() {
+        Experience sameDay = dated(1L, ExperienceStatus.COMPLETADO, "9", 5.0, 2024, "2024-01-01", "2024-01-01", false);
+        Experience twoMonths = dated(2L, ExperienceStatus.COMPLETADO, "7", 40.0, 2024, "2024-01-01", "2024-03-01", true);
+        when(experienceRepository.findAllByUserId(USER_ID)).thenReturn(List.of(
+                sameDay,
+                twoMonths,
+                dated(1L, ExperienceStatus.COMPLETADO, null, 12.0, 2024, "2024-02-01", "2024-02-11", false),
+                dated(2L, ExperienceStatus.ABANDONADO, null, 3.0, 2024, null, null, false),
+                dated(3L, ExperienceStatus.ABANDONADO, null, 1.0, 2024, null, null, false),
+                // No end date: completed but not timed.
+                dated(1L, ExperienceStatus.COMPLETADO, "10", 100.0, 2023, "2023-01-01", null, false),
+                dated(2L, ExperienceStatus.EN_CURSO, null, 1.0, 2024, null, null, true),
+                // End before start: ignored by the time to finish.
+                dated(1L, ExperienceStatus.COMPLETADO, null, 0.0, 2022, "2022-05-01", "2022-04-01", false)));
+        stubGenres();
+
+        CompletionStatsDto completion = service.getCompletion(USER_ID, null);
+
+        assertThat(completion.year()).isNull();
+        assertThat(completion.completedCount()).isEqualTo(5);
+        assertThat(completion.abandonedCount()).isEqualTo(2);
+        assertThat(completion.replayCount()).isEqualTo(2);
+
+        CompletionStatsDto.TimeToFinish time = completion.timeToFinish();
+        assertThat(time.sampleSize()).isEqualTo(3);
+        assertThat(time.averageDays()).isEqualTo(23.3);
+        assertThat(time.medianDays()).isEqualTo(10.0);
+        assertThat(time.fastest().experienceId()).isEqualTo(sameDay.getId());
+        assertThat(time.fastest().gameName()).isEqualTo("Quick Game");
+        assertThat(time.fastest().days()).isZero();
+        assertThat(time.slowest().experienceId()).isEqualTo(twoMonths.getId());
+        assertThat(time.slowest().days()).isEqualTo(60);
+        assertThat(time.buckets()).extracting(CompletionStatsDto.DaysBucket::count).containsExactly(1L, 1L, 1L, 0L, 0L, 0L);
+        assertThat(time.buckets().getLast().maxDays()).isNull();
+
+        // RPG: 5 completed, 1 abandoned; Shooter: 1 and 1.
+        assertThat(completion.abandonmentByGenre()).extracting(CompletionStatsDto.GenreAbandonment::genreName)
+                .containsExactly("Shooter", "RPG");
+        assertThat(completion.abandonmentByGenre().get(0).abandonmentRate()).isEqualTo(0.5);
+        assertThat(completion.abandonmentByGenre().get(1).completedCount()).isEqualTo(5);
+        assertThat(completion.abandonmentByGenre().get(1).abandonmentRate()).isEqualTo(0.1667);
+
+        assertThat(completion.hoursBuckets()).extracting(CompletionStatsDto.HoursBucket::label)
+                .containsExactly("<10", "10-30", "30-60", "60+");
+        assertThat(completion.hoursBuckets()).extracting(CompletionStatsDto.HoursBucket::runCount)
+                .containsExactly(2L, 1L, 1L, 1L);
+        assertThat(completion.hoursBuckets().get(0).averageRating()).isEqualByComparingTo("9");
+        assertThat(completion.hoursBuckets().get(1).ratedCount()).isZero();
+        assertThat(completion.hoursBuckets().get(1).averageRating()).isNull();
+        assertThat(completion.hoursBuckets().get(3).maxHours()).isNull();
+    }
+
+    @Test
+    void completionOfAYearWithoutTimedRunsHasEmptyTimeToFinish() {
+        when(experienceRepository.findAllByUserId(USER_ID)).thenReturn(List.of(
+                dated(1L, ExperienceStatus.COMPLETADO, "10", 100.0, 2023, "2023-01-01", null, false),
+                dated(1L, ExperienceStatus.COMPLETADO, "8", 1.0, 2024, "2024-01-01", "2024-01-03", false)));
+        stubGenres();
+
+        CompletionStatsDto completion = service.getCompletion(USER_ID, 2023);
+
+        assertThat(completion.year()).isEqualTo(2023);
+        assertThat(completion.completedCount()).isEqualTo(1);
+        assertThat(completion.timeToFinish().sampleSize()).isZero();
+        assertThat(completion.timeToFinish().averageDays()).isNull();
+        assertThat(completion.timeToFinish().fastest()).isNull();
+        assertThat(completion.timeToFinish().buckets()).hasSize(6);
     }
 }
