@@ -49,4 +49,28 @@ class StatsMathTest {
         assertThat(StatsMath.sum(null, bd("8"))).isEqualTo(bd("8"));
         assertThat(StatsMath.sum(bd("7.5"), bd("8.25"))).isEqualTo(bd("15.75"));
     }
+
+    @Test
+    void medianTakesTheMiddleOrTheMeanOfTheTwoMiddleRatings() {
+        assertThat(StatsMath.medianRating(Arrays.asList(bd("9"), null, bd("6"), bd("8")))).isEqualTo(bd("8"));
+        assertThat(StatsMath.medianRating(List.of(bd("9.25"), bd("6"), bd("8.5"), bd("7")))).isEqualTo(bd("7.75"));
+        // (8.25 + 8.5) / 2 = 8.375, rounded half up.
+        assertThat(StatsMath.medianRating(List.of(bd("8.25"), bd("8.5")))).isEqualTo(bd("8.38"));
+        assertThat(StatsMath.medianRating(List.of())).isNull();
+    }
+
+    @Test
+    void standardDeviationIsThePopulationOne() {
+        // Mean 5, squared deviations 9 + 1 + 1 + 9 = 20, / 4 = 5, sqrt = 2.236...
+        assertThat(StatsMath.standardDeviation(List.of(bd("2"), bd("4"), bd("6"), bd("8")))).isEqualTo(bd("2.24"));
+        assertThat(StatsMath.standardDeviation(List.of(bd("7.5")))).isEqualTo(bd("0"));
+        assertThat(StatsMath.standardDeviation(Arrays.asList(null, bd("9"), bd("9")))).isEqualTo(bd("0"));
+        assertThat(StatsMath.standardDeviation(List.of())).isNull();
+    }
+
+    @Test
+    void round2HidesFloatingPointNoise() {
+        assertThat(StatsMath.round2(10.0 / 3)).isEqualTo(3.33);
+        assertThat(StatsMath.round2(0.1 + 0.2)).isEqualTo(0.3);
+    }
 }

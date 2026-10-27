@@ -124,4 +124,10 @@ public class StatsController {
     public ResponseEntity<CompletionStatsDto> getCompletion(@RequestParam(required = false) Integer year) {
         return ResponseEntity.ok(statsInsightsService.getCompletion(currentUserResolver.getCurrentUserId(), year));
     }
+
+    /** Rating profile of the runs (all-time when year is omitted). */
+    @GetMapping("/ratings")
+    public ResponseEntity<RatingStatsDto> getRatings(@RequestParam(required = false) Integer year) {
+        return ResponseEntity.ok(statsInsightsService.getRatings(currentUserResolver.getCurrentUserId(), year));
+    }
 }

@@ -27,4 +27,7 @@ public interface StatsInsightsService {
 
     /** Time to finish, abandonment per genre, hours versus rating and replays of the runs in scope. */
     CompletionStatsDto getCompletion(Long userId, Integer year);
+
+    /** Histogram, mean, median and standard deviation of the run ratings in scope, by genre and platform. */
+    RatingStatsDto getRatings(Long userId, Integer year);
 }

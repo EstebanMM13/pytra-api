@@ -17,6 +17,7 @@ import com.estebanmm13.pytra_api.games.repository.GameReleaseRow;
 import com.estebanmm13.pytra_api.stats.dto.CompletionStatsDto;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.stats.dto.DeveloperStatsDto;
+import com.estebanmm13.pytra_api.stats.dto.RatingStatsDto;
 import com.estebanmm13.pytra_api.stats.dto.ReleaseEraStatsDto;
 import com.estebanmm13.pytra_api.platforms.TestPlatforms;
 import com.estebanmm13.pytra_api.platforms.model.Platform;
@@ -291,5 +292,74 @@ class StatsInsightsServiceImplTest {
         assertThat(completion.timeToFinish().averageDays()).isNull();
         assertThat(completion.timeToFinish().fastest()).isNull();
         assertThat(completion.timeToFinish().buckets()).hasSize(6);
+    }
+
+    // ---------------------------------------------------------------- rating profile
+
+    @Test
+    void ratingBucketsAreHalfPointsWithPerfectScoresApart() {
+        assertThat(StatsInsightsServiceImpl.ratingBucketOf(new BigDecimal("0"))).isZero();
+        assertThat(StatsInsightsServiceImpl.ratingBucketOf(new BigDecimal("0.49"))).isZero();
+        assertThat(StatsInsightsServiceImpl.ratingBucketOf(new BigDecimal("0.5"))).isEqualTo(1);
+        assertThat(StatsInsightsServiceImpl.ratingBucketOf(new BigDecimal("9.99"))).isEqualTo(19);
+        assertThat(StatsInsightsServiceImpl.ratingBucketOf(new BigDecimal("10.00"))).isEqualTo(20);
+    }
+
+    @Test
+    void ratingsProfileRatedRunsByGenreAndPlatform() {
+        when(experienceRepository.findAllByUserId(USER_ID)).thenReturn(List.of(
+                run(1L, TestPlatforms.PC, ExperienceStatus.COMPLETADO, "10", 1.0, 2024),
+                run(1L, TestPlatforms.PC, ExperienceStatus.COMPLETADO, "8.5", 1.0, 2024),
+                run(2L, TestPlatforms.PS5, ExperienceStatus.ABANDONADO, "6", 1.0, 2024),
+                run(2L, TestPlatforms.PS5, ExperienceStatus.COMPLETADO, "7.25", 1.0, 2023),
+                run(3L, TestPlatforms.SWITCH, ExperienceStatus.COMPLETADO, null, 1.0, 2024)));
+        stubGenres();
+
+        RatingStatsDto ratings = service.getRatings(USER_ID, null);
+
+        assertThat(ratings.year()).isNull();
+        assertThat(ratings.bucketSize()).isEqualByComparingTo("0.5");
+        assertThat(ratings.ratedCount()).isEqualTo(4);
+        assertThat(ratings.mean()).isEqualByComparingTo("7.94");
+        assertThat(ratings.median()).isEqualByComparingTo("7.88");
+        assertThat(ratings.standardDeviation()).isEqualByComparingTo("1.48");
+        assertThat(ratings.histogram()).hasSize(21);
+        assertThat(ratings.histogram().get(12).from()).isEqualByComparingTo("6");
+        assertThat(ratings.histogram().get(12).to()).isEqualByComparingTo("6.5");
+        assertThat(ratings.histogram().get(12).count()).isEqualTo(1);
+        assertThat(ratings.histogram().get(14).count()).isEqualTo(1);
+        assertThat(ratings.histogram().get(17).count()).isEqualTo(1);
+        assertThat(ratings.histogram().get(20).from()).isEqualByComparingTo("10");
+        assertThat(ratings.histogram().get(20).to()).isEqualByComparingTo("10");
+        assertThat(ratings.histogram().get(20).count()).isEqualTo(1);
+        assertThat(ratings.histogram()).extracting(RatingStatsDto.RatingBucket::count)
+                .containsOnly(0L, 1L);
+
+        // RPG: games 1 and 2 (all four ratings); Shooter: game 2 only.
+        assertThat(ratings.byGenre()).extracting(RatingStatsDto.GenreRating::genreName).containsExactly("RPG", "Shooter");
+        assertThat(ratings.byGenre().get(0).ratedCount()).isEqualTo(4);
+        assertThat(ratings.byGenre().get(1).averageRating()).isEqualByComparingTo("6.63");
+        assertThat(ratings.byPlatform()).extracting(RatingStatsDto.PlatformRating::name).containsExactly("PC", "PS5");
+        assertThat(ratings.byPlatform().get(0).averageRating()).isEqualByComparingTo("9.25");
+        assertThat(ratings.byPlatform().get(1).ratedCount()).isEqualTo(2);
+
+        RatingStatsDto year2023 = service.getRatings(USER_ID, 2023);
+        assertThat(year2023.ratedCount()).isEqualTo(1);
+        assertThat(year2023.standardDeviation()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void ratingsOfNothingRatedAreNull() {
+        when(experienceRepository.findAllByUserId(USER_ID)).thenReturn(List.of());
+
+        RatingStatsDto ratings = service.getRatings(USER_ID, null);
+
+        assertThat(ratings.ratedCount()).isZero();
+        assertThat(ratings.mean()).isNull();
+        assertThat(ratings.median()).isNull();
+        assertThat(ratings.standardDeviation()).isNull();
+        assertThat(ratings.histogram()).hasSize(21).allMatch(bucket -> bucket.count() == 0);
+        assertThat(ratings.byGenre()).isEmpty();
+        assertThat(ratings.byPlatform()).isEmpty();
     }
 }

@@ -32,6 +32,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -138,6 +139,7 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/by-developer"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/by-release-era"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/completion"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/ratings"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary?from=2024-05-01&to=2024-05-31"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary/2024-05-01"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/diary/2024-05-01"),
@@ -634,6 +636,34 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                     .andExpect(jsonPath("$.completedCount").value(1))
                     .andExpect(jsonPath("$.timeToFinish.sampleSize").value(0))
                     .andExpect(jsonPath("$.hoursBuckets[2].runCount").value(1));
+        }
+
+        @Test
+        void ratingsProfileOnlyUsesOwnRuns() throws Exception {
+            // Alice: one run rated 9.
+            perform(get("/api/v1/stats/ratings"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.ratedCount").value(0))
+                    .andExpect(jsonPath("$.mean").value(nullValue()))
+                    .andExpect(jsonPath("$.histogram[18].count").value(0))
+                    .andExpect(jsonPath("$.byPlatform.length()").value(0));
+
+            Long bobGameId = readId(perform(post("/api/v1/games"), bobAuth, GAME_JSON.formatted("Bob Ratings", ""))
+                    .andExpect(status().isCreated()).andReturn());
+            perform(post("/api/v1/games/{gameId}/experiences", bobGameId), bobAuth,
+                    "{\"runLabel\": \"Bob run\", \"status\": \"COMPLETADO\", \"platform\": \"PC\", \"rating\": 4}")
+                    .andExpect(status().isCreated());
+
+            perform(get("/api/v1/stats/ratings"), bobAuth)
+                    .andExpect(jsonPath("$.ratedCount").value(1))
+                    .andExpect(jsonPath("$.mean").value(4))
+                    .andExpect(jsonPath("$.histogram[8].count").value(1))
+                    .andExpect(jsonPath("$.histogram[18].count").value(0))
+                    .andExpect(jsonPath("$.byPlatform[0].ratedCount").value(1));
+            perform(get("/api/v1/stats/ratings"), aliceAuth)
+                    .andExpect(jsonPath("$.ratedCount").value(1))
+                    .andExpect(jsonPath("$.mean").value(9))
+                    .andExpect(jsonPath("$.histogram[18].count").value(1));
         }
 
         @Test

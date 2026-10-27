@@ -324,4 +324,64 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.timeToFinish.sampleSize").value(0))
                 .andExpect(jsonPath("$.timeToFinish.fastest").value(nullValue()));
     }
+
+    // ---------------------------------------------------------------- rating profile
+
+    @Test
+    void ratingsProfileHistogramStatsGenresAndPlatforms() throws Exception {
+        Long action = createGenre("Ratings Action " + System.nanoTime());
+        Long game = createGameVia(auth, "Ratings Game", ", \"genreIds\": [" + action + "]");
+        createExperienceVia(auth, game, runOn("PC", "COMPLETADO", 10, 1.0, 2024));
+        createExperienceVia(auth, game, runOn("PC", "COMPLETADO", 8.5, 1.0, 2024));
+        createExperienceVia(auth, game, runOn("PS5", "ABANDONADO", 6, 1.0, 2024));
+        createExperienceVia(auth, game, runOn("PS5", "COMPLETADO", 7.25, 1.0, 2023));
+        createExperienceVia(auth, game, runOn("PS5", "EN_CURSO", null, 1.0, 2024));
+        // Online general ratings are not part of the run rating profile.
+        performAs(auth, put("/api/v1/games/{gameId}/online-playtime", game), "{\"totalHours\": 1, \"generalRating\": 1}")
+                .andExpect(status().isOk());
+
+        performAs(auth, get("/api/v1/stats/ratings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.year").value(nullValue()))
+                .andExpect(jsonPath("$.bucketSize").value(0.5))
+                .andExpect(jsonPath("$.ratedCount").value(4))
+                .andExpect(jsonPath("$.mean").value(7.94))
+                .andExpect(jsonPath("$.median").value(7.88))
+                .andExpect(jsonPath("$.standardDeviation").value(1.48))
+                .andExpect(jsonPath("$.histogram.length()").value(21))
+                .andExpect(jsonPath("$.histogram[12].from").value(6))
+                .andExpect(jsonPath("$.histogram[12].to").value(6.5))
+                .andExpect(jsonPath("$.histogram[12].count").value(1))
+                .andExpect(jsonPath("$.histogram[2].count").value(0))
+                .andExpect(jsonPath("$.histogram[20].from").value(10))
+                .andExpect(jsonPath("$.histogram[20].to").value(10))
+                .andExpect(jsonPath("$.histogram[20].count").value(1))
+                .andExpect(jsonPath("$.byGenre.length()").value(1))
+                .andExpect(jsonPath("$.byGenre[0].genreId").value(action))
+                .andExpect(jsonPath("$.byGenre[0].ratedCount").value(4))
+                .andExpect(jsonPath("$.byGenre[0].averageRating").value(7.94))
+                .andExpect(jsonPath("$.byPlatform.length()").value(2))
+                .andExpect(jsonPath("$.byPlatform[0].platformId").value(pcId))
+                .andExpect(jsonPath("$.byPlatform[0].name").value("PC"))
+                .andExpect(jsonPath("$.byPlatform[0].averageRating").value(9.25))
+                .andExpect(jsonPath("$.byPlatform[1].platformId").value(ps5Id))
+                .andExpect(jsonPath("$.byPlatform[1].ratedCount").value(2));
+
+        performAs(auth, get("/api/v1/stats/ratings").param("year", "2023"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ratedCount").value(1))
+                .andExpect(jsonPath("$.mean").value(7.25))
+                .andExpect(jsonPath("$.standardDeviation").value(0));
+    }
+
+    @Test
+    void ratingsProfileOfNothingRatedHasNullFigures() throws Exception {
+        performAs(auth, get("/api/v1/stats/ratings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ratedCount").value(0))
+                .andExpect(jsonPath("$.mean").value(nullValue()))
+                .andExpect(jsonPath("$.median").value(nullValue()))
+                .andExpect(jsonPath("$.standardDeviation").value(nullValue()))
+                .andExpect(jsonPath("$.histogram.length()").value(21));
+    }
 }
