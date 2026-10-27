@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.stats.controller;
 
 import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
 import com.estebanmm13.pytra_api.stats.dto.*;
+import com.estebanmm13.pytra_api.stats.service.StatsInsightsService;
 import com.estebanmm13.pytra_api.stats.service.StatsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +25,7 @@ import java.util.List;
 public class StatsController {
 
     private final StatsService statsService;
+    private final StatsInsightsService statsInsightsService;
     private final CurrentUserResolver currentUserResolver;
 
     @GetMapping("/summary")
@@ -88,5 +90,11 @@ public class StatsController {
     public ResponseEntity<List<MostPlayedGameDto>> getMostPlayedOnline(
             @RequestParam(defaultValue = "10") int limit) {
         return ResponseEntity.ok(statsService.getMostPlayedOnline(currentUserResolver.getCurrentUserId(), limit));
+    }
+
+    /** Diary heatmap and weekday split of a year (current year when omitted) plus all-time streaks. */
+    @GetMapping("/activity")
+    public ResponseEntity<ActivityStatsDto> getActivity(@RequestParam(required = false) Integer year) {
+        return ResponseEntity.ok(statsInsightsService.getActivity(currentUserResolver.getCurrentUserId(), year));
     }
 }

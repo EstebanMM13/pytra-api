@@ -133,6 +133,7 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/years/2024"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/stats/years/2024/note"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/in-progress"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/activity"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary?from=2024-05-01&to=2024-05-31"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary/2024-05-01"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/diary/2024-05-01"),
@@ -540,6 +541,43 @@ class TenantIsolationTests extends AbstractIntegrationTest {
 
             perform(get("/api/v1/stats/years/2024"), aliceAuth)
                     .andExpect(jsonPath("$.note.summary").value("Alice note"));
+        }
+
+        @Test
+        void activityOnlyUsesOwnDiary() throws Exception {
+            // Alice plays two consecutive days; Bob plays one day of his own on the second date.
+            Long aliceOnlineId = readId(perform(post("/api/v1/games"), aliceAuth,
+                    "{\"name\": \"Alice Activity\", \"category\": \"ONLINE\"}")
+                    .andExpect(status().isCreated()).andReturn());
+            perform(put("/api/v1/diary/{date}", "2022-03-01"), aliceAuth,
+                    "{\"games\": [{\"gameId\": " + aliceOnlineId + ", \"hours\": 3}]}")
+                    .andExpect(status().isOk());
+            perform(put("/api/v1/diary/{date}", "2022-03-02"), aliceAuth,
+                    "{\"games\": [{\"gameId\": " + aliceOnlineId + ", \"hours\": 2}]}")
+                    .andExpect(status().isOk());
+
+            perform(get("/api/v1/stats/activity").param("year", "2022"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.days.length()").value(0))
+                    .andExpect(jsonPath("$.totalHours").value(0.0))
+                    .andExpect(jsonPath("$.longestStreak.length").value(0));
+
+            Long bobOnlineId = readId(perform(post("/api/v1/games"), bobAuth,
+                    "{\"name\": \"Bob Activity\", \"category\": \"ONLINE\"}")
+                    .andExpect(status().isCreated()).andReturn());
+            perform(put("/api/v1/diary/{date}", "2022-03-02"), bobAuth,
+                    "{\"games\": [{\"gameId\": " + bobOnlineId + ", \"hours\": 1}]}")
+                    .andExpect(status().isOk());
+
+            perform(get("/api/v1/stats/activity").param("year", "2022"), bobAuth)
+                    .andExpect(jsonPath("$.days.length()").value(1))
+                    .andExpect(jsonPath("$.days[0].hours").value(1.0))
+                    .andExpect(jsonPath("$.days[0].gameCount").value(1))
+                    .andExpect(jsonPath("$.longestStreak.length").value(1));
+            perform(get("/api/v1/stats/activity").param("year", "2022"), aliceAuth)
+                    .andExpect(jsonPath("$.days.length()").value(2))
+                    .andExpect(jsonPath("$.totalHours").value(5.0))
+                    .andExpect(jsonPath("$.longestStreak.length").value(2));
         }
     }
 
