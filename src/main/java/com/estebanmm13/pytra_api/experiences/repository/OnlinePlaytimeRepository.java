@@ -32,6 +32,10 @@ public interface OnlinePlaytimeRepository extends JpaRepository<OnlinePlaytime, 
             """)
     OnlinePlaytimeTotals totalsByUserId(@Param("userId") Long userId);
 
+    @Query("SELECT new com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRow(o.gameId, o.totalHours, o.generalRating) "
+            + "FROM OnlinePlaytime o WHERE o.userId = :userId")
+    List<OnlinePlaytimeRow> findRowsByUserId(@Param("userId") Long userId);
+
     @Query("SELECT o.gameId, COALESCE(SUM(o.totalHours), 0.0) FROM OnlinePlaytime o WHERE o.userId = :userId GROUP BY o.gameId")
     List<Object[]> sumTotalHoursGroupedByGameId(@Param("userId") Long userId);
 

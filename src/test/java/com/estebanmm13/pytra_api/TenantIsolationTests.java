@@ -135,6 +135,8 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/in-progress"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/activity"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/by-platform"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/by-developer"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/by-release-era"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary?from=2024-05-01&to=2024-05-31"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary/2024-05-01"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/diary/2024-05-01"),
@@ -568,6 +570,39 @@ class TenantIsolationTests extends AbstractIntegrationTest {
             perform(get("/api/v1/stats/by-platform"), aliceAuth)
                     .andExpect(jsonPath("$.platforms[0].hours").value(42.5))
                     .andExpect(jsonPath("$.unassignedOnlineHours").value(100.0));
+        }
+
+        @Test
+        void developerAndReleaseEraStatsOnlyUseOwnGames() throws Exception {
+            perform(post("/api/v1/games"), aliceAuth, GAME_JSON.formatted("Alice Dev Game",
+                    ", \"developer\": \"Shared Studio\", \"releaseDate\": \"1999-01-01\""))
+                    .andExpect(status().isCreated());
+
+            perform(get("/api/v1/stats/by-developer"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.topByHours.length()").value(0))
+                    .andExpect(jsonPath("$.topByRating.length()").value(0));
+            perform(get("/api/v1/stats/by-release-era"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.byDecade.length()").value(0))
+                    .andExpect(jsonPath("$.byYear.length()").value(0))
+                    .andExpect(jsonPath("$.undatedGameCount").value(0));
+
+            // Bob's own game by the same developer only counts Bob's data.
+            perform(post("/api/v1/games"), bobAuth, GAME_JSON.formatted("Bob Dev Game",
+                    ", \"developer\": \"shared studio\", \"releaseDate\": \"1999-06-01\""))
+                    .andExpect(status().isCreated());
+            perform(get("/api/v1/stats/by-developer"), bobAuth)
+                    .andExpect(jsonPath("$.topByHours.length()").value(1))
+                    .andExpect(jsonPath("$.topByHours[0].developer").value("shared studio"))
+                    .andExpect(jsonPath("$.topByHours[0].gameCount").value(1));
+            perform(get("/api/v1/stats/by-release-era"), bobAuth)
+                    .andExpect(jsonPath("$.byDecade[0].gameCount").value(1))
+                    .andExpect(jsonPath("$.undatedGameCount").value(0));
+            perform(get("/api/v1/stats/by-release-era"), aliceAuth)
+                    .andExpect(jsonPath("$.byDecade[0].gameCount").value(1))
+                    // "Alice Game" from the setup has no release date.
+                    .andExpect(jsonPath("$.undatedGameCount").value(1));
         }
 
         @Test

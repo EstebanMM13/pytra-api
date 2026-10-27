@@ -197,4 +197,68 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 // byYear always covers every year.
                 .andExpect(jsonPath("$.byYear.length()").value(2));
     }
+
+    // ---------------------------------------------------------------- developers & release eras
+
+    @Test
+    void byDeveloperGroupsTrimmedNamesCaseInsensitivelyAndHonorsTheThreshold() throws Exception {
+        Long souls = createGameVia(auth, "Dev Souls", ", \"developer\": \"FromSoftware\", \"releaseDate\": \"2011-10-04\"");
+        createExperienceVia(auth, souls, run("A", "COMPLETADO", 9, 50.0, 2020, null, null, ""));
+        Long ring = createGameVia(auth, "Dev Ring", ", \"developer\": \"  fromsoftware \", \"releaseDate\": \"2022-02-25\"");
+        createExperienceVia(auth, ring, run("A", "COMPLETADO", 8, 100.0, 2022, null, null, ""));
+        Long zelda = createGameVia(auth, "Dev Zelda", ", \"developer\": \"Nintendo\", \"releaseDate\": \"1998-11-21\"");
+        createExperienceVia(auth, zelda, run("A", "COMPLETADO", null, 20.0, 2021, null, null, ""));
+        performAs(auth, put("/api/v1/games/{gameId}/online-playtime", zelda), "{\"totalHours\": 5, \"generalRating\": 7}")
+                .andExpect(status().isOk());
+        createGameVia(auth, "Dev Undated", "");
+
+        performAs(auth, get("/api/v1/stats/by-developer"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minRatedGames").value(2))
+                .andExpect(jsonPath("$.topByHours.length()").value(2))
+                .andExpect(jsonPath("$.topByHours[0].developer").value("FromSoftware"))
+                .andExpect(jsonPath("$.topByHours[0].gameCount").value(2))
+                .andExpect(jsonPath("$.topByHours[0].hours").value(150.0))
+                .andExpect(jsonPath("$.topByHours[0].ratedGameCount").value(2))
+                .andExpect(jsonPath("$.topByHours[0].averageRating").value(8.5))
+                .andExpect(jsonPath("$.topByHours[1].developer").value("Nintendo"))
+                .andExpect(jsonPath("$.topByHours[1].hours").value(25.0))
+                .andExpect(jsonPath("$.topByHours[1].averageRating").value(7))
+                .andExpect(jsonPath("$.topByRating.length()").value(1))
+                .andExpect(jsonPath("$.topByRating[0].developer").value("FromSoftware"));
+
+        performAs(auth, get("/api/v1/stats/by-developer").param("minRatedGames", "1").param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minRatedGames").value(1))
+                .andExpect(jsonPath("$.topByHours.length()").value(1))
+                .andExpect(jsonPath("$.topByRating.length()").value(1))
+                .andExpect(jsonPath("$.topByRating[0].developer").value("FromSoftware"));
+    }
+
+    @Test
+    void byReleaseEraGroupsConfirmedGamesByDecadeAndYear() throws Exception {
+        Long a = createGameVia(auth, "Era A", ", \"releaseDate\": \"1998-01-10\"");
+        createExperienceVia(auth, a, run("A", "COMPLETADO", 6, 10.0, 2020, null, null, ""));
+        Long b = createGameVia(auth, "Era B", ", \"releaseDate\": \"1991-05-01\"");
+        createExperienceVia(auth, b, run("A", "COMPLETADO", 9, 5.0, 2020, null, null, ""));
+        Long c = createGameVia(auth, "Era C", ", \"releaseDate\": \"2004-03-01\"");
+        createExperienceVia(auth, c, run("A", "ABANDONADO", null, 2.0, 2020, null, null, ""));
+        createGameVia(auth, "Era Undated", "");
+
+        performAs(auth, get("/api/v1/stats/by-release-era"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.undatedGameCount").value(1))
+                .andExpect(jsonPath("$.byDecade.length()").value(2))
+                .andExpect(jsonPath("$.byDecade[0].decade").value(1990))
+                .andExpect(jsonPath("$.byDecade[0].gameCount").value(2))
+                .andExpect(jsonPath("$.byDecade[0].hours").value(15.0))
+                .andExpect(jsonPath("$.byDecade[0].ratedGameCount").value(2))
+                .andExpect(jsonPath("$.byDecade[0].averageRating").value(7.5))
+                .andExpect(jsonPath("$.byDecade[1].decade").value(2000))
+                .andExpect(jsonPath("$.byDecade[1].ratedGameCount").value(0))
+                .andExpect(jsonPath("$.byDecade[1].averageRating").value(nullValue()))
+                .andExpect(jsonPath("$.byYear.length()").value(3))
+                .andExpect(jsonPath("$.byYear[0].year").value(1991))
+                .andExpect(jsonPath("$.byYear[2].year").value(2004));
+    }
 }

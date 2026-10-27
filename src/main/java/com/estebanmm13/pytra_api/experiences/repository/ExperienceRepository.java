@@ -47,6 +47,16 @@ public interface ExperienceRepository extends JpaRepository<Experience, Long> {
     @EntityGraph(attributePaths = "platform")
     List<Experience> findAllByUserIdAndRatingIsNotNullOrderByRatingDesc(Long userId);
 
+    /** Hours and rating totals of the user's runs, one row per game. */
+    @Query("""
+            SELECT new com.estebanmm13.pytra_api.experiences.repository.GameRunTotals(
+                       e.gameId, COALESCE(SUM(e.hours), 0.0), SUM(e.rating), COUNT(e.rating))
+            FROM Experience e
+            WHERE e.userId = :userId
+            GROUP BY e.gameId
+            """)
+    List<GameRunTotals> totalsGroupedByGameId(@Param("userId") Long userId);
+
     @Query("SELECT e.gameId, COALESCE(SUM(e.hours), 0.0) FROM Experience e WHERE e.userId = :userId GROUP BY e.gameId")
     List<Object[]> sumHoursGroupedByGameId(@Param("userId") Long userId);
 }

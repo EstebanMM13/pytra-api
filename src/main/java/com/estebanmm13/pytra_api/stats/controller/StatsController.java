@@ -103,4 +103,19 @@ public class StatsController {
     public ResponseEntity<PlatformStatsDto> getByPlatform(@RequestParam(required = false) Integer year) {
         return ResponseEntity.ok(statsInsightsService.getPlatforms(currentUserResolver.getCurrentUserId(), year));
     }
+
+    /** All-time top developers by hours and by average rating (developers with minRatedGames rated games). */
+    @GetMapping("/by-developer")
+    public ResponseEntity<DeveloperStatsDto> getByDeveloper(
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(defaultValue = "2") int minRatedGames) {
+        return ResponseEntity.ok(statsInsightsService.getDevelopers(
+                currentUserResolver.getCurrentUserId(), limit, minRatedGames));
+    }
+
+    /** All-time games grouped by release decade and by release year. */
+    @GetMapping("/by-release-era")
+    public ResponseEntity<ReleaseEraStatsDto> getByReleaseEra() {
+        return ResponseEntity.ok(statsInsightsService.getReleaseEras(currentUserResolver.getCurrentUserId()));
+    }
 }

@@ -15,4 +15,13 @@ public interface StatsInsightsService {
 
     /** Per-platform hours, games, runs and ratings in scope, plus every year's hours per platform. */
     PlatformStatsDto getPlatforms(Long userId, Integer year);
+
+    /**
+     * All-time developers of the CONFIRMED games: top {@code limit} (1-50) by hours, and top {@code limit} by
+     * average rating among those with at least {@code minRatedGames} (min 1) rated games.
+     */
+    DeveloperStatsDto getDevelopers(Long userId, int limit, int minRatedGames);
+
+    /** All-time CONFIRMED games grouped by release decade and release year. */
+    ReleaseEraStatsDto getReleaseEras(Long userId);
 }

@@ -7,7 +7,14 @@ import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
+import com.estebanmm13.pytra_api.experiences.repository.GameRunTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
+import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRow;
+import com.estebanmm13.pytra_api.games.model.ReviewStatus;
+import com.estebanmm13.pytra_api.games.repository.GameReleaseRow;
+import com.estebanmm13.pytra_api.games.repository.GameRepository;
+import com.estebanmm13.pytra_api.stats.dto.DeveloperStatsDto;
+import com.estebanmm13.pytra_api.stats.dto.ReleaseEraStatsDto;
 import com.estebanmm13.pytra_api.platforms.TestPlatforms;
 import com.estebanmm13.pytra_api.platforms.model.Platform;
 import com.estebanmm13.pytra_api.stats.dto.ActivityStatsDto;
@@ -35,8 +42,9 @@ class StatsInsightsServiceImplTest {
     private final DiaryEntryGameRepository diaryEntryGameRepository = mock(DiaryEntryGameRepository.class);
     private final ExperienceRepository experienceRepository = mock(ExperienceRepository.class);
     private final OnlinePlaytimeRepository onlinePlaytimeRepository = mock(OnlinePlaytimeRepository.class);
+    private final GameRepository gameRepository = mock(GameRepository.class);
     private final StatsInsightsServiceImpl service = new StatsInsightsServiceImpl(
-            diaryEntryGameRepository, experienceRepository, onlinePlaytimeRepository,
+            diaryEntryGameRepository, experienceRepository, onlinePlaytimeRepository, gameRepository,
             Clock.fixed(TODAY.atStartOfDay().toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
 
     private final AtomicLong ids = new AtomicLong();
@@ -124,5 +132,71 @@ class StatsInsightsServiceImplTest {
         assertThat(year2024.platforms().get(0).hours()).isEqualTo(11.0);
         assertThat(year2024.platforms().get(0).runCount()).isEqualTo(1);
         assertThat(year2024.platforms().get(2).runCount()).isZero();
+    }
+
+    // ---------------------------------------------------------------- developers & release eras
+
+    private void stubGameFacts() {
+        when(gameRepository.findReleaseRowsByUserIdAndReviewStatus(USER_ID, ReviewStatus.CONFIRMED)).thenReturn(List.of(
+                new GameReleaseRow(1L, "FromSoftware", LocalDate.of(2011, 10, 4)),
+                new GameReleaseRow(2L, "  fromsoftware ", LocalDate.of(2022, 2, 25)),
+                new GameReleaseRow(3L, "Nintendo", LocalDate.of(1998, 11, 21)),
+                new GameReleaseRow(4L, "   ", LocalDate.of(1998, 1, 1)),
+                new GameReleaseRow(5L, "Solo Studio", null)));
+        when(experienceRepository.totalsGroupedByGameId(USER_ID)).thenReturn(List.of(
+                new GameRunTotals(1L, 50.0, new BigDecimal("18.00"), 2L),
+                new GameRunTotals(2L, 100.0, new BigDecimal("8.00"), 1L),
+                new GameRunTotals(3L, 20.0, null, 0L),
+                new GameRunTotals(4L, 10.0, new BigDecimal("6.00"), 1L),
+                new GameRunTotals(5L, 1.0, new BigDecimal("10.00"), 1L),
+                // A pending game's runs: no CONFIRMED row, so never counted.
+                new GameRunTotals(99L, 500.0, new BigDecimal("1.00"), 1L)));
+        when(onlinePlaytimeRepository.findRowsByUserId(USER_ID)).thenReturn(List.of(
+                new OnlinePlaytimeRow(3L, 5.0, new BigDecimal("7.00"))));
+    }
+
+    @Test
+    void developersGroupCaseInsensitivelyAndApplyTheRatedGamesThreshold() {
+        stubGameFacts();
+
+        DeveloperStatsDto developers = service.getDevelopers(USER_ID, 10, 2);
+
+        assertThat(developers.minRatedGames()).isEqualTo(2);
+        assertThat(developers.topByHours()).extracting(DeveloperStatsDto.DeveloperStat::developer)
+                .containsExactly("FromSoftware", "Nintendo", "Solo Studio");
+        DeveloperStatsDto.DeveloperStat fromSoftware = developers.topByHours().get(0);
+        assertThat(fromSoftware.gameCount()).isEqualTo(2);
+        assertThat(fromSoftware.hours()).isEqualTo(150.0);
+        assertThat(fromSoftware.ratedGameCount()).isEqualTo(2);
+        // Per game: 9 and 8, each game weighs once.
+        assertThat(fromSoftware.averageRating()).isEqualByComparingTo("8.5");
+        // Run hours plus online hours; the online rating is the only one.
+        assertThat(developers.topByHours().get(1).hours()).isEqualTo(25.0);
+        assertThat(developers.topByHours().get(1).averageRating()).isEqualByComparingTo("7");
+        assertThat(developers.topByRating()).extracting(DeveloperStatsDto.DeveloperStat::developer)
+                .containsExactly("FromSoftware");
+
+        DeveloperStatsDto anyRated = service.getDevelopers(USER_ID, 2, 0);
+        assertThat(anyRated.minRatedGames()).isEqualTo(1);
+        assertThat(anyRated.topByRating()).extracting(DeveloperStatsDto.DeveloperStat::developer)
+                .containsExactly("Solo Studio", "FromSoftware");
+        assertThat(anyRated.topByHours()).hasSize(2);
+    }
+
+    @Test
+    void releaseErasGroupByDecadeAndYearAndCountUndatedGames() {
+        stubGameFacts();
+
+        ReleaseEraStatsDto eras = service.getReleaseEras(USER_ID);
+
+        assertThat(eras.undatedGameCount()).isEqualTo(1);
+        assertThat(eras.byDecade()).extracting(ReleaseEraStatsDto.DecadeStat::decade).containsExactly(1990, 2010, 2020);
+        ReleaseEraStatsDto.DecadeStat nineties = eras.byDecade().get(0);
+        assertThat(nineties.gameCount()).isEqualTo(2);
+        assertThat(nineties.hours()).isEqualTo(35.0);
+        assertThat(nineties.ratedGameCount()).isEqualTo(2);
+        assertThat(nineties.averageRating()).isEqualByComparingTo("6.5");
+        assertThat(eras.byYear()).extracting(ReleaseEraStatsDto.YearStat::year).containsExactly(1998, 2011, 2022);
+        assertThat(eras.byYear().get(0).gameCount()).isEqualTo(2);
     }
 }
