@@ -12,4 +12,7 @@ public interface StatsInsightsService {
 
     /** Diary activity of {@code year} (current year when null) plus all-time streaks. */
     ActivityStatsDto getActivity(Long userId, Integer year);
+
+    /** Per-platform hours, games, runs and ratings in scope, plus every year's hours per platform. */
+    PlatformStatsDto getPlatforms(Long userId, Integer year);
 }

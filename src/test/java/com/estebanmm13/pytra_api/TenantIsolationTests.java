@@ -134,6 +134,7 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.PUT, "/api/v1/stats/years/2024/note"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/in-progress"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/activity"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/by-platform"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary?from=2024-05-01&to=2024-05-31"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary/2024-05-01"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/diary/2024-05-01"),
@@ -541,6 +542,32 @@ class TenantIsolationTests extends AbstractIntegrationTest {
 
             perform(get("/api/v1/stats/years/2024"), aliceAuth)
                     .andExpect(jsonPath("$.note.summary").value("Alice note"));
+        }
+
+        @Test
+        void byPlatformOnlyUsesOwnRunsAndOnlinePlaytime() throws Exception {
+            // Alice: a 42.5h PC run of 2024 and 100 online hours without platform.
+            perform(get("/api/v1/stats/by-platform"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.platforms.length()").value(0))
+                    .andExpect(jsonPath("$.unassignedOnlineHours").value(0.0))
+                    .andExpect(jsonPath("$.byYear.length()").value(0));
+
+            Long bobGameId = readId(perform(post("/api/v1/games"), bobAuth, GAME_JSON.formatted("Bob Platform", ""))
+                    .andExpect(status().isCreated()).andReturn());
+            perform(post("/api/v1/games/{gameId}/experiences", bobGameId), bobAuth,
+                    "{\"runLabel\": \"Bob run\", \"status\": \"COMPLETADO\", \"platform\": \"PC\", \"hours\": 3, \"year\": 2024}")
+                    .andExpect(status().isCreated());
+
+            perform(get("/api/v1/stats/by-platform"), bobAuth)
+                    .andExpect(jsonPath("$.platforms.length()").value(1))
+                    .andExpect(jsonPath("$.platforms[0].hours").value(3.0))
+                    .andExpect(jsonPath("$.platforms[0].gameCount").value(1))
+                    .andExpect(jsonPath("$.unassignedOnlineHours").value(0.0))
+                    .andExpect(jsonPath("$.byYear[0].totalHours").value(3.0));
+            perform(get("/api/v1/stats/by-platform"), aliceAuth)
+                    .andExpect(jsonPath("$.platforms[0].hours").value(42.5))
+                    .andExpect(jsonPath("$.unassignedOnlineHours").value(100.0));
         }
 
         @Test

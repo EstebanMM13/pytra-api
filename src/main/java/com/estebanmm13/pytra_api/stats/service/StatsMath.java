@@ -32,6 +32,11 @@ public final class StatsMath {
         return a.add(b);
     }
 
+    /** Hours (or any double figure) rounded to 2 decimals, half up, to hide floating-point noise of splits. */
+    public static double round2(double value) {
+        return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
+
     /** {@code sum / count} rounded to 2 decimals (half up) without trailing zeros, or null when count is 0. */
     public static BigDecimal average(BigDecimal sum, long count) {
         if (count == 0 || sum == null) {

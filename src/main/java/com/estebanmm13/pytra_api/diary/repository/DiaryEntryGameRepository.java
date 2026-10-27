@@ -35,6 +35,16 @@ public interface DiaryEntryGameRepository extends JpaRepository<DiaryEntryGame, 
             """)
     List<OnlineDiaryYearHours> sumCountedOnlineHoursByYear(@Param("userId") Long userId);
 
+    /** Same lines as {@link #sumCountedOnlineHoursByYear}, per year and game. */
+    @Query("""
+            SELECT new com.estebanmm13.pytra_api.diary.repository.OnlineDiaryYearGameHours(
+                       extract(year from e.entryDate), g.gameId, SUM(g.hours))
+            FROM DiaryEntryGame g JOIN g.entry e
+            WHERE e.userId = :userId AND g.countsHours = true AND g.experienceId IS NULL
+            GROUP BY extract(year from e.entryDate), g.gameId
+            """)
+    List<OnlineDiaryYearGameHours> sumCountedOnlineHoursByYearAndGame(@Param("userId") Long userId);
+
     /** Same lines as {@link #sumCountedOnlineHoursByYear}, between two dates, per month and game. */
     @Query("""
             SELECT new com.estebanmm13.pytra_api.diary.repository.OnlineDiaryMonthHours(

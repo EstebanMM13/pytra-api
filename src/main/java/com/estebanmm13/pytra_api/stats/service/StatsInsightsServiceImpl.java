@@ -2,9 +2,19 @@ package com.estebanmm13.pytra_api.stats.service;
 
 import com.estebanmm13.pytra_api.diary.repository.DiaryDayTotals;
 import com.estebanmm13.pytra_api.diary.repository.DiaryEntryGameRepository;
+import com.estebanmm13.pytra_api.diary.repository.OnlineDiaryYearGameHours;
+import com.estebanmm13.pytra_api.experiences.model.Experience;
+import com.estebanmm13.pytra_api.experiences.model.ExperiencePeriod;
+import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
+import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
+import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
+import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
+import com.estebanmm13.pytra_api.platforms.mapper.PlatformMapper;
+import com.estebanmm13.pytra_api.platforms.model.Platform;
 import com.estebanmm13.pytra_api.stats.dto.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -12,25 +22,44 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.*;
 
+/**
+ * Loads each breakdown with a few whole-user queries (runs, online playtimes, diary aggregates, projections)
+ * and aggregates in memory, so no endpoint issues one query per game, run or platform. Read-only
+ * transactions keep each request on a single pooled connection.
+ *
+ * <p>Counting rules shared with the other stats: run figures cover every run of the user (like the summary);
+ * game-grouped figures (genres, developers, release eras) cover CONFIRMED games only (like by-genre and
+ * by-saga), since pending imports are not in the library yet.
+ */
 @Service
 public class StatsInsightsServiceImpl implements StatsInsightsService {
 
     private final DiaryEntryGameRepository diaryEntryGameRepository;
+    private final ExperienceRepository experienceRepository;
+    private final OnlinePlaytimeRepository onlinePlaytimeRepository;
     private final Clock clock;
 
     @Autowired
-    public StatsInsightsServiceImpl(DiaryEntryGameRepository diaryEntryGameRepository) {
-        this(diaryEntryGameRepository, Clock.systemDefaultZone());
+    public StatsInsightsServiceImpl(DiaryEntryGameRepository diaryEntryGameRepository,
+                                    ExperienceRepository experienceRepository,
+                                    OnlinePlaytimeRepository onlinePlaytimeRepository) {
+        this(diaryEntryGameRepository, experienceRepository, onlinePlaytimeRepository, Clock.systemDefaultZone());
     }
 
-    StatsInsightsServiceImpl(DiaryEntryGameRepository diaryEntryGameRepository, Clock clock) {
+    StatsInsightsServiceImpl(DiaryEntryGameRepository diaryEntryGameRepository,
+                             ExperienceRepository experienceRepository,
+                             OnlinePlaytimeRepository onlinePlaytimeRepository,
+                             Clock clock) {
         this.diaryEntryGameRepository = diaryEntryGameRepository;
+        this.experienceRepository = experienceRepository;
+        this.onlinePlaytimeRepository = onlinePlaytimeRepository;
         this.clock = clock;
     }
 
     // ---------------------------------------------------------------- activity
 
     @Override
+    @Transactional(readOnly = true)
     public ActivityStatsDto getActivity(Long userId, Integer year) {
         LocalDate today = LocalDate.now(clock);
         int effectiveYear = year != null ? year : today.getYear();
@@ -70,5 +99,177 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
                 ActivityStreaks.current(playedDates, today),
                 ActivityStreaks.longest(playedDates),
                 weekdays);
+    }
+
+    // ---------------------------------------------------------------- platforms
+
+    @Override
+    @Transactional(readOnly = true)
+    public PlatformStatsDto getPlatforms(Long userId, Integer year) {
+        requireValidYearIfPresent(year);
+        List<Experience> runs = experienceRepository.findAllByUserId(userId);
+        List<OnlinePlaytime> onlinePlaytimes = onlinePlaytimeRepository.findAllByUserId(userId);
+        List<OnlineDiaryYearGameHours> onlineDiary = diaryEntryGameRepository.sumCountedOnlineHoursByYearAndGame(userId);
+
+        Map<Long, Platform> catalog = new HashMap<>();
+        Map<Long, List<Platform>> onlinePlatformsByGame = new HashMap<>();
+        for (OnlinePlaytime playtime : onlinePlaytimes) {
+            List<Platform> platforms = new ArrayList<>(playtime.getPlatforms());
+            platforms.sort(PlatformMapper.CATALOG_ORDER);
+            platforms.forEach(platform -> catalog.put(platform.getId(), platform));
+            onlinePlatformsByGame.put(playtime.getGameId(), platforms);
+        }
+
+        // Platforms in scope.
+        Map<Long, PlatformAccumulator> byPlatform = new HashMap<>();
+        double unassigned = 0;
+        for (Experience run : runs) {
+            if (year != null && !year.equals(ExperiencePeriod.yearOf(run))) {
+                continue;
+            }
+            Platform platform = run.getPlatform();
+            catalog.put(platform.getId(), platform);
+            PlatformAccumulator acc = byPlatform.computeIfAbsent(platform.getId(), id -> new PlatformAccumulator());
+            acc.runHours += hoursOf(run);
+            acc.gameIds.add(run.getGameId());
+            acc.runCount++;
+            if (run.getStatus() == ExperienceStatus.COMPLETADO) acc.completedRunCount++;
+            acc.ratings.add(run.getRating());
+        }
+        if (year == null) {
+            for (OnlinePlaytime playtime : onlinePlaytimes) {
+                unassigned += splitOnline(playtime.getGameId(), doubleOf(playtime.getTotalHours()),
+                        onlinePlatformsByGame, byPlatform);
+            }
+        } else {
+            for (OnlineDiaryYearGameHours row : onlineDiary) {
+                if (year.equals(row.year())) {
+                    unassigned += splitOnline(row.gameId(), doubleOf(row.hours()), onlinePlatformsByGame, byPlatform);
+                }
+            }
+        }
+
+        List<PlatformStatsDto.PlatformStat> platforms = new ArrayList<>();
+        for (Map.Entry<Long, PlatformAccumulator> entry : byPlatform.entrySet()) {
+            Platform platform = catalog.get(entry.getKey());
+            PlatformAccumulator acc = entry.getValue();
+            platforms.add(new PlatformStatsDto.PlatformStat(
+                    platform.getId(),
+                    platform.getName(),
+                    PlatformMapper.colorOf(platform),
+                    platform.getFamily() != null ? platform.getFamily().name() : null,
+                    StatsMath.round2(acc.runHours + acc.onlineHours),
+                    StatsMath.round2(acc.runHours),
+                    StatsMath.round2(acc.onlineHours),
+                    acc.gameIds.size(),
+                    acc.runCount,
+                    acc.completedRunCount,
+                    acc.ratings.stream().filter(Objects::nonNull).count(),
+                    StatsMath.averageRating(acc.ratings)));
+        }
+        platforms.sort(Comparator
+                .comparingDouble(PlatformStatsDto.PlatformStat::hours).reversed()
+                .thenComparing(stat -> catalog.get(stat.platformId()), PlatformMapper.CATALOG_ORDER));
+
+        return new PlatformStatsDto(year, platforms, StatsMath.round2(unassigned),
+                platformHoursByYear(runs, onlineDiary, onlinePlatformsByGame, catalog));
+    }
+
+    /** Every year's hours per platform: runs by their year, online by the diary year (same split rule). */
+    private static List<PlatformStatsDto.YearPlatforms> platformHoursByYear(
+            List<Experience> runs, List<OnlineDiaryYearGameHours> onlineDiary,
+            Map<Long, List<Platform>> onlinePlatformsByGame, Map<Long, Platform> catalog) {
+        SortedMap<Integer, Map<Long, PlatformAccumulator>> byYear = new TreeMap<>();
+        Map<Integer, Double> unassignedByYear = new HashMap<>();
+        for (Experience run : runs) {
+            Integer year = ExperiencePeriod.yearOf(run);
+            double hours = hoursOf(run);
+            if (year == null || hours <= 0) {
+                continue;
+            }
+            byYear.computeIfAbsent(year, y -> new HashMap<>())
+                    .computeIfAbsent(run.getPlatform().getId(), id -> new PlatformAccumulator())
+                    .runHours += hours;
+        }
+        for (OnlineDiaryYearGameHours row : onlineDiary) {
+            if (row.year() == null) {
+                continue;
+            }
+            double unassigned = splitOnline(row.gameId(), doubleOf(row.hours()), onlinePlatformsByGame,
+                    byYear.computeIfAbsent(row.year(), y -> new HashMap<>()));
+            if (unassigned > 0) {
+                unassignedByYear.merge(row.year(), unassigned, Double::sum);
+            }
+        }
+
+        List<PlatformStatsDto.YearPlatforms> result = new ArrayList<>();
+        for (Map.Entry<Integer, Map<Long, PlatformAccumulator>> entry : byYear.entrySet()) {
+            double unassigned = unassignedByYear.getOrDefault(entry.getKey(), 0.0);
+            double total = unassigned;
+            List<PlatformStatsDto.PlatformHours> platforms = new ArrayList<>();
+            for (Map.Entry<Long, PlatformAccumulator> platformEntry : entry.getValue().entrySet()) {
+                Platform platform = catalog.get(platformEntry.getKey());
+                double hours = platformEntry.getValue().runHours + platformEntry.getValue().onlineHours;
+                total += hours;
+                platforms.add(new PlatformStatsDto.PlatformHours(platform.getId(), platform.getName(),
+                        PlatformMapper.colorOf(platform), StatsMath.round2(hours)));
+            }
+            if (platforms.isEmpty() && unassigned <= 0) {
+                continue;
+            }
+            platforms.sort(Comparator
+                    .comparingDouble(PlatformStatsDto.PlatformHours::hours).reversed()
+                    .thenComparing(hours -> catalog.get(hours.platformId()), PlatformMapper.CATALOG_ORDER));
+            result.add(new PlatformStatsDto.YearPlatforms(entry.getKey(), StatsMath.round2(total),
+                    StatsMath.round2(unassigned), platforms));
+        }
+        return result;
+    }
+
+    /**
+     * Splits a game's online hours evenly across the platforms of its online playtime (the documented rule).
+     * Returns the hours that have no platform to go to.
+     */
+    private static double splitOnline(Long gameId, double hours, Map<Long, List<Platform>> onlinePlatformsByGame,
+                                      Map<Long, PlatformAccumulator> byPlatform) {
+        if (hours <= 0) {
+            return 0;
+        }
+        List<Platform> platforms = onlinePlatformsByGame.getOrDefault(gameId, List.of());
+        if (platforms.isEmpty()) {
+            return hours;
+        }
+        double share = hours / platforms.size();
+        for (Platform platform : platforms) {
+            PlatformAccumulator acc = byPlatform.computeIfAbsent(platform.getId(), id -> new PlatformAccumulator());
+            acc.onlineHours += share;
+            acc.gameIds.add(gameId);
+        }
+        return 0;
+    }
+
+    private static final class PlatformAccumulator {
+        double runHours;
+        double onlineHours;
+        final Set<Long> gameIds = new HashSet<>();
+        long runCount;
+        long completedRunCount;
+        final List<BigDecimal> ratings = new ArrayList<>();
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private static void requireValidYearIfPresent(Integer year) {
+        if (year != null) {
+            StatsServiceImpl.requireValidYear(year);
+        }
+    }
+
+    private static double hoursOf(Experience experience) {
+        return experience.getHours() != null ? experience.getHours() : 0.0;
+    }
+
+    private static double doubleOf(Number value) {
+        return value != null ? value.doubleValue() : 0.0;
     }
 }

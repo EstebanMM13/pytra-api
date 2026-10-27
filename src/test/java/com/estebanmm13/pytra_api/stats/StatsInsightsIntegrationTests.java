@@ -2,8 +2,10 @@ package com.estebanmm13.pytra_api.stats;
 
 import com.estebanmm13.pytra_api.AbstractIntegrationTest;
 import com.estebanmm13.pytra_api.auth.model.User;
+import com.estebanmm13.pytra_api.platforms.repository.PlatformRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.LocalDate;
 
@@ -17,12 +19,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Activity, platform, developer, release era, completion and rating breakdowns. */
 class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
 
+    @Autowired
+    private PlatformRepository platformRepository;
+
     private String auth;
+    private Long pcId;
+    private Long ps5Id;
 
     @BeforeEach
     void createUser() {
         User user = createVerifiedUser("insights");
         auth = bearer(user);
+        pcId = platformRepository.findByLegacyCodeIgnoreCase("PC").orElseThrow().getId();
+        ps5Id = platformRepository.findByLegacyCodeIgnoreCase("PS5").orElseThrow().getId();
     }
 
     private Long createOnlineGame(String name) throws Exception {
@@ -32,6 +41,19 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
 
     private void logDay(String date, String gamesJson) throws Exception {
         performAs(auth, put("/api/v1/diary/{date}", date), "{\"games\": [" + gamesJson + "]}")
+                .andExpect(status().isOk());
+    }
+
+    /** A run on a legacy-coded platform (PC, PS5, ...); null rating is omitted. */
+    private static String runOn(String platform, String status, Number rating, double hours, int year) {
+        return "{\"runLabel\": \"" + platform + " " + status + " " + year + "\", \"status\": \"" + status
+                + "\", \"platform\": \"" + platform + "\", \"hours\": " + hours + ", \"year\": " + year
+                + (rating != null ? ", \"rating\": " + rating : "") + "}";
+    }
+
+    private void putOnlinePlaytime(Long gameId, String totalHours, String platformIdsJson) throws Exception {
+        performAs(auth, put("/api/v1/games/{gameId}/online-playtime", gameId),
+                "{\"totalHours\": " + totalHours + ", \"platformIds\": [" + platformIdsJson + "]}")
                 .andExpect(status().isOk());
     }
 
@@ -111,5 +133,68 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
 
         performAs(auth, get("/api/v1/stats/activity").param("year", "1900"))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ---------------------------------------------------------------- platforms
+
+    @Test
+    void byPlatformSplitsOnlineHoursAcrossItsPlatforms() throws Exception {
+        Long quest = createGameVia(auth, "Platform Quest", "");
+        createExperienceVia(auth, quest, runOn("PC", "COMPLETADO", 8, 10.0, 2023));
+        createExperienceVia(auth, quest, runOn("PS5", "ABANDONADO", 6, 4.0, 2024));
+        Long arena = createOnlineGame("Platform Arena");
+        putOnlinePlaytime(arena, "30", pcId + ", " + ps5Id);
+        // +2 online hours dated 2024 (the playtime ends at 32h, 16h per platform).
+        logDay("2024-02-01", line(arena, "2"));
+        Long lobby = createOnlineGame("Platform Lobby");
+        putOnlinePlaytime(lobby, "5", "");
+
+        performAs(auth, get("/api/v1/stats/by-platform"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.year").value(nullValue()))
+                .andExpect(jsonPath("$.unassignedOnlineHours").value(5.0))
+                .andExpect(jsonPath("$.platforms.length()").value(2))
+                .andExpect(jsonPath("$.platforms[0].platformId").value(pcId))
+                .andExpect(jsonPath("$.platforms[0].name").value("PC"))
+                .andExpect(jsonPath("$.platforms[0].family").value("PC"))
+                .andExpect(jsonPath("$.platforms[0].hours").value(26.0))
+                .andExpect(jsonPath("$.platforms[0].runHours").value(10.0))
+                .andExpect(jsonPath("$.platforms[0].onlineHours").value(16.0))
+                .andExpect(jsonPath("$.platforms[0].gameCount").value(2))
+                .andExpect(jsonPath("$.platforms[0].runCount").value(1))
+                .andExpect(jsonPath("$.platforms[0].completedRunCount").value(1))
+                .andExpect(jsonPath("$.platforms[0].ratedRunCount").value(1))
+                .andExpect(jsonPath("$.platforms[0].averageRating").value(8))
+                .andExpect(jsonPath("$.platforms[1].platformId").value(ps5Id))
+                .andExpect(jsonPath("$.platforms[1].hours").value(20.0))
+                .andExpect(jsonPath("$.platforms[1].completedRunCount").value(0))
+                .andExpect(jsonPath("$.platforms[1].averageRating").value(6))
+                // byYear: oldest first; 2024 has the PS5 run plus the dated online hours split in two.
+                .andExpect(jsonPath("$.byYear.length()").value(2))
+                .andExpect(jsonPath("$.byYear[0].year").value(2023))
+                .andExpect(jsonPath("$.byYear[0].totalHours").value(10.0))
+                .andExpect(jsonPath("$.byYear[0].platforms[0].platformId").value(pcId))
+                .andExpect(jsonPath("$.byYear[1].year").value(2024))
+                .andExpect(jsonPath("$.byYear[1].totalHours").value(6.0))
+                .andExpect(jsonPath("$.byYear[1].unassignedOnlineHours").value(0.0))
+                .andExpect(jsonPath("$.byYear[1].platforms[0].platformId").value(ps5Id))
+                .andExpect(jsonPath("$.byYear[1].platforms[0].hours").value(5.0))
+                .andExpect(jsonPath("$.byYear[1].platforms[1].platformId").value(pcId))
+                .andExpect(jsonPath("$.byYear[1].platforms[1].hours").value(1.0));
+
+        performAs(auth, get("/api/v1/stats/by-platform").param("year", "2024"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.year").value(2024))
+                .andExpect(jsonPath("$.unassignedOnlineHours").value(0.0))
+                .andExpect(jsonPath("$.platforms.length()").value(2))
+                .andExpect(jsonPath("$.platforms[0].platformId").value(ps5Id))
+                .andExpect(jsonPath("$.platforms[0].hours").value(5.0))
+                .andExpect(jsonPath("$.platforms[0].runHours").value(4.0))
+                .andExpect(jsonPath("$.platforms[0].onlineHours").value(1.0))
+                .andExpect(jsonPath("$.platforms[1].platformId").value(pcId))
+                .andExpect(jsonPath("$.platforms[1].runCount").value(0))
+                .andExpect(jsonPath("$.platforms[1].averageRating").value(nullValue()))
+                // byYear always covers every year.
+                .andExpect(jsonPath("$.byYear.length()").value(2));
     }
 }

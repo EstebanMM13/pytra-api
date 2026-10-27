@@ -97,4 +97,10 @@ public class StatsController {
     public ResponseEntity<ActivityStatsDto> getActivity(@RequestParam(required = false) Integer year) {
         return ResponseEntity.ok(statsInsightsService.getActivity(currentUserResolver.getCurrentUserId(), year));
     }
+
+    /** Hours, games, runs and ratings per platform (all-time when year is omitted) and hours per year. */
+    @GetMapping("/by-platform")
+    public ResponseEntity<PlatformStatsDto> getByPlatform(@RequestParam(required = false) Integer year) {
+        return ResponseEntity.ok(statsInsightsService.getPlatforms(currentUserResolver.getCurrentUserId(), year));
+    }
 }
