@@ -61,4 +61,10 @@ class ActivityStreaksTest {
         List<LocalDate> dates = List.of(day("2025-03-09"), TODAY, day("2025-03-20"));
         assertThat(ActivityStreaks.current(dates, TODAY)).isEqualTo(new Streak(2, day("2025-03-09"), TODAY));
     }
+
+    @Test
+    void entryDatedTomorrowCountsForUsersAheadOfTheServerTimezone() {
+        List<LocalDate> dates = List.of(day("2025-03-09"), TODAY, day("2025-03-11"));
+        assertThat(ActivityStreaks.current(dates, TODAY)).isEqualTo(new Streak(3, day("2025-03-09"), day("2025-03-11")));
+    }
 }
