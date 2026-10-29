@@ -143,11 +143,12 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
         Map<Long, PlatformAccumulator> byPlatform = new HashMap<>();
         double unassigned = 0;
         for (Experience run : runs) {
+            // Catalog every run's platform before the year filter: the per-year breakdown covers all years.
+            Platform platform = run.getPlatform();
+            catalog.put(platform.getId(), platform);
             if (year != null && !year.equals(ExperiencePeriod.yearOf(run))) {
                 continue;
             }
-            Platform platform = run.getPlatform();
-            catalog.put(platform.getId(), platform);
             PlatformAccumulator acc = byPlatform.computeIfAbsent(platform.getId(), id -> new PlatformAccumulator());
             acc.runHours += hoursOf(run);
             acc.gameIds.add(run.getGameId());

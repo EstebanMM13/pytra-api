@@ -138,6 +138,22 @@ class StatsInsightsServiceImplTest {
         assertThat(year2024.platforms().get(2).runCount()).isZero();
     }
 
+    @Test
+    void platformsForAYearStillNameThePlatformsOfOtherYearsInTheYearlyBreakdown() {
+        when(experienceRepository.findAllByUserId(USER_ID)).thenReturn(List.of(
+                run(1L, TestPlatforms.PC, ExperienceStatus.COMPLETADO, "9", 10.0, 2024),
+                run(2L, TestPlatforms.SWITCH, ExperienceStatus.COMPLETADO, "7", 4.0, 2023)));
+        when(onlinePlaytimeRepository.findAllByUserId(USER_ID)).thenReturn(List.of());
+        when(diaryEntryGameRepository.sumCountedOnlineHoursByYearAndGame(USER_ID)).thenReturn(List.of());
+
+        PlatformStatsDto year2024 = service.getPlatforms(USER_ID, 2024);
+
+        assertThat(year2024.platforms()).extracting(PlatformStatsDto.PlatformStat::name).containsExactly("PC");
+        assertThat(year2024.byYear()).extracting(PlatformStatsDto.YearPlatforms::year).containsExactly(2023, 2024);
+        assertThat(year2024.byYear().get(0).platforms()).extracting(PlatformStatsDto.PlatformHours::name)
+                .containsExactly("Switch");
+    }
+
     // ---------------------------------------------------------------- developers & release eras
 
     private void stubGameFacts() {
