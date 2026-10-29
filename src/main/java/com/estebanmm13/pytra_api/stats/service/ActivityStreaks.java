@@ -29,8 +29,9 @@ final class ActivityStreaks {
 
     /**
      * The streak ending on the latest play day up to today, when that day is today or yesterday; otherwise
-     * none. Entries dated tomorrow still count (and end the streak): "today" is the server's date, and a user
-     * ahead of the server's timezone already logs their own today under it. Later entries are ignored.
+     * none. {@code today} is taken in the app's time zone ({@code AppTimeZone}). Entries dated tomorrow still
+     * count (and end the streak): the diary accepts tomorrow's date, and a user travelling ahead of the app's
+     * zone already logs their own today under it. Later entries are ignored.
      */
     static Streak current(List<LocalDate> dates, LocalDate today) {
         int end = dates.size() - 1;

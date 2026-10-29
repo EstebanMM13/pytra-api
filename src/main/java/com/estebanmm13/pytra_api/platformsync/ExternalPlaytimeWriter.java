@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.platformsync;
 
+import com.estebanmm13.pytra_api.config.AppTimeZone;
 import com.estebanmm13.pytra_api.diary.service.SyncedPlayRecorder;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
@@ -53,6 +54,7 @@ public class ExternalPlaytimeWriter {
     private final PlatformService platformService;
     private final HybridPlaytimeReconciler hybridPlaytimeReconciler;
     private final SyncedPlayRecorder syncedPlayRecorder;
+    private final AppTimeZone appTimeZone;
 
     /**
      * Moves the link's baseline to the platform's current total. Managed entities are dirty-checked,
@@ -91,7 +93,8 @@ public class ExternalPlaytimeWriter {
     /**
      * Records the observed play in the diary (record only: the hours were just added above). Only deltas of a
      * confirmed, categorised game reach this point, so the first import of a title (its link created with
-     * the whole history as baseline, or the confirm-time import) never lands in the diary.
+     * the whole history as baseline, or the confirm-time import) never lands in the diary. The recorder
+     * writes after the sync's transaction commits, in its own one: a diary failure never undoes the sync.
      */
     private void recordInDiary(GamePlatformLink link, Game game, long deltaMinutes,
                                LocalDateTime previousSyncAt, LocalDateTime now) {
@@ -101,22 +104,29 @@ public class ExternalPlaytimeWriter {
         // SINGLEPLAYER hours went to the link's canonical run (set by addDelta); ONLINE/HYBRID ones to the
         // online playtime.
         Long run = game.getCategory() == GameCategory.SINGLEPLAYER ? link.getExperienceId() : null;
-        syncedPlayRecorder.record(link.getUserId(), game.getId(), run,
-                playDate(link.getLastPlayedAt(), previousSyncAt, now), deltaMinutes);
+        LocalDate day = playDate(link.getLastPlayedAt(), previousSyncAt, now, ZoneId.systemDefault(),
+                appTimeZone.zone());
+        syncedPlayRecorder.record(link.getUserId(), game.getId(), run, day, deltaMinutes);
     }
 
     /**
-     * The day the play happened: the platform's last-played time when it falls between the previous sync
-     * and now (a stale or skewed value says nothing about this delta), otherwise the sync day. Server time
-     * zone, like every other LocalDateTime of the sync.
+     * The calendar day (in {@code appZone}, the users' zone) the play happened: the platform's last-played
+     * time when it falls between the previous sync and now (a stale or skewed value says nothing about this
+     * delta), otherwise the sync time. {@code previousSyncAt} and {@code now} are server-zone LocalDateTimes,
+     * like every other timestamp of the sync.
      */
-    static LocalDate playDate(Instant lastPlayedAt, LocalDateTime previousSyncAt, LocalDateTime now) {
-        if (lastPlayedAt == null) {
-            return now.toLocalDate();
+    static LocalDate playDate(Instant lastPlayedAt, LocalDateTime previousSyncAt, LocalDateTime now,
+                              ZoneId serverZone, ZoneId appZone) {
+        Instant syncedAt = now.atZone(serverZone).toInstant();
+        Instant playedAt = syncedAt;
+        if (lastPlayedAt != null) {
+            boolean afterPreviousSync = previousSyncAt == null
+                    || !lastPlayedAt.isBefore(previousSyncAt.atZone(serverZone).toInstant());
+            if (afterPreviousSync && !lastPlayedAt.isAfter(syncedAt)) {
+                playedAt = lastPlayedAt;
+            }
         }
-        LocalDateTime playedAt = LocalDateTime.ofInstant(lastPlayedAt, ZoneId.systemDefault());
-        boolean afterPreviousSync = previousSyncAt == null || !playedAt.isBefore(previousSyncAt);
-        return afterPreviousSync && !playedAt.isAfter(now) ? playedAt.toLocalDate() : now.toLocalDate();
+        return LocalDate.ofInstant(playedAt, appZone);
     }
 
     /**

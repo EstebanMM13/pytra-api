@@ -61,6 +61,8 @@ psn:
     # Pause between two accounts in the scheduled sync (spreads requests of the shared service account).
     pause-between-accounts: ${PSN_SCHEDULER_PAUSE:3s}
 app:
+  # Users' time zone: calendar days of sync-written diary lines and of the activity streaks' "today".
+  time-zone: ${APP_TIME_ZONE:Europe/Madrid}
   frontend-url: ${FRONTEND_URL:http://localhost:4200}
   public-api-url: ${PUBLIC_API_URL:http://localhost:8080}
   # Final redirect for login/link flows started from the Android app (custom scheme).

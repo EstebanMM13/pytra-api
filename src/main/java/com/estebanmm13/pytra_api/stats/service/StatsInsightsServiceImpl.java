@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.stats.service;
 
+import com.estebanmm13.pytra_api.config.AppTimeZone;
 import com.estebanmm13.pytra_api.diary.repository.DiaryDayTotals;
 import com.estebanmm13.pytra_api.diary.repository.DiaryEntryGameRepository;
 import com.estebanmm13.pytra_api.diary.repository.OnlineDiaryYearGameHours;
@@ -58,9 +59,11 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
     public StatsInsightsServiceImpl(DiaryEntryGameRepository diaryEntryGameRepository,
                                     ExperienceRepository experienceRepository,
                                     OnlinePlaytimeRepository onlinePlaytimeRepository,
-                                    GameRepository gameRepository) {
+                                    GameRepository gameRepository,
+                                    AppTimeZone appTimeZone) {
+        // "Today" of the activity streaks is the users' day, not the server's (UTC in production).
         this(diaryEntryGameRepository, experienceRepository, onlinePlaytimeRepository, gameRepository,
-                Clock.systemDefaultZone());
+                appTimeZone.clock());
     }
 
     StatsInsightsServiceImpl(DiaryEntryGameRepository diaryEntryGameRepository,

@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.platformsync;
 
+import com.estebanmm13.pytra_api.config.AppTimeZone;
 import com.estebanmm13.pytra_api.diary.service.SyncedPlayRecorder;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
@@ -49,8 +50,13 @@ class ExternalPlaytimeWriterTest {
     private final HybridPlaytimeReconciler hybridPlaytimeReconciler =
             new HybridPlaytimeReconciler(experienceRepository, onlinePlaytimeRepository, gamePlatformLinkRepository);
     private final SyncedPlayRecorder syncedPlayRecorder = mock(SyncedPlayRecorder.class);
+    private static final ZoneId UTC = ZoneId.of("UTC");
+    private static final ZoneId MADRID = ZoneId.of("Europe/Madrid");
+
+    // App zone = server zone here, so the play day is now.toLocalDate() in the recording tests.
     private final ExternalPlaytimeWriter writer = new ExternalPlaytimeWriter(
-            experienceRepository, onlinePlaytimeRepository, platformService, hybridPlaytimeReconciler, syncedPlayRecorder);
+            experienceRepository, onlinePlaytimeRepository, platformService, hybridPlaytimeReconciler, syncedPlayRecorder,
+            AppTimeZone.of(ZoneId.systemDefault()));
 
     @BeforeEach
     void setUp() {
@@ -349,17 +355,35 @@ class ExternalPlaytimeWriterTest {
     void playDateUsesLastPlayedOnlyWhenItFallsBetweenThePreviousSyncAndNow() {
         LocalDateTime previousSync = LocalDateTime.of(2026, 10, 27, 22, 0);
         LocalDateTime now = LocalDateTime.of(2026, 10, 29, 9, 0);
-        ZoneId zone = ZoneId.systemDefault();
-        Instant yesterday = LocalDateTime.of(2026, 10, 28, 23, 30).atZone(zone).toInstant();
-        Instant beforePreviousSync = LocalDateTime.of(2026, 10, 20, 12, 0).atZone(zone).toInstant();
-        Instant future = LocalDateTime.of(2026, 10, 30, 12, 0).atZone(zone).toInstant();
+        Instant yesterday = LocalDateTime.of(2026, 10, 28, 20, 30).atZone(UTC).toInstant();
+        Instant beforePreviousSync = LocalDateTime.of(2026, 10, 20, 12, 0).atZone(UTC).toInstant();
+        Instant future = LocalDateTime.of(2026, 10, 30, 12, 0).atZone(UTC).toInstant();
 
-        assertThat(ExternalPlaytimeWriter.playDate(yesterday, previousSync, now))
+        assertThat(ExternalPlaytimeWriter.playDate(yesterday, previousSync, now, UTC, UTC))
                 .isEqualTo(LocalDate.of(2026, 10, 28));
-        assertThat(ExternalPlaytimeWriter.playDate(null, previousSync, now)).isEqualTo(now.toLocalDate());
-        assertThat(ExternalPlaytimeWriter.playDate(beforePreviousSync, previousSync, now)).isEqualTo(now.toLocalDate());
-        assertThat(ExternalPlaytimeWriter.playDate(future, previousSync, now)).isEqualTo(now.toLocalDate());
-        assertThat(ExternalPlaytimeWriter.playDate(yesterday, null, now))
+        assertThat(ExternalPlaytimeWriter.playDate(null, previousSync, now, UTC, UTC)).isEqualTo(now.toLocalDate());
+        assertThat(ExternalPlaytimeWriter.playDate(beforePreviousSync, previousSync, now, UTC, UTC))
+                .isEqualTo(now.toLocalDate());
+        assertThat(ExternalPlaytimeWriter.playDate(future, previousSync, now, UTC, UTC)).isEqualTo(now.toLocalDate());
+        assertThat(ExternalPlaytimeWriter.playDate(yesterday, null, now, UTC, UTC))
+                .isEqualTo(LocalDate.of(2026, 10, 28));
+    }
+
+    @Test
+    void playDateIsTheUsersCalendarDayNotTheServers() {
+        // UTC server, user in Madrid (UTC+1 on 29 Oct 2026): 23:30 UTC on the 28th is 00:30 on the 29th there.
+        LocalDateTime previousSync = LocalDateTime.of(2026, 10, 28, 12, 0);
+        LocalDateTime now = LocalDateTime.of(2026, 10, 28, 23, 45);
+        Instant lateNight = LocalDateTime.of(2026, 10, 28, 23, 30).atZone(UTC).toInstant();
+
+        assertThat(ExternalPlaytimeWriter.playDate(lateNight, previousSync, now, UTC, MADRID))
+                .isEqualTo(LocalDate.of(2026, 10, 29));
+        // No last-played time: the sync instant, also read in Madrid.
+        assertThat(ExternalPlaytimeWriter.playDate(null, previousSync, now, UTC, MADRID))
+                .isEqualTo(LocalDate.of(2026, 10, 29));
+        // 22:30 UTC = 23:30 in Madrid: still the 28th.
+        Instant evening = LocalDateTime.of(2026, 10, 28, 22, 30).atZone(UTC).toInstant();
+        assertThat(ExternalPlaytimeWriter.playDate(evening, previousSync, now, UTC, MADRID))
                 .isEqualTo(LocalDate.of(2026, 10, 28));
     }
 
