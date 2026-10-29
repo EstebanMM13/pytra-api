@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.config;
 
+import jakarta.servlet.DispatcherType;
 import com.estebanmm13.pytra_api.auth.security.DemoReadOnlyFilter;
 import com.estebanmm13.pytra_api.auth.security.JwtFilter;
 import com.estebanmm13.pytra_api.auth.security.MobileAwareAuthorizationRequestResolver;
@@ -72,6 +73,9 @@ public class SecurityConfig {
                 )
                 .csrf(csrf -> csrf.disable())  // ← Deshabilitar CSRF completamente para API REST
                 .authorizeHttpRequests(auth -> auth
+                        // Error forwards of already-authorized requests: the JWT filter doesn't run on them, so
+                        // securing them turned every unhandled 500 into a 401 (and the web logs out on 401).
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/oauth2/authorization/google", "/login/oauth2/code/google").permitAll()
                         .requestMatchers("/api/v1/integrations/steam/login", "/api/v1/integrations/steam/callback").permitAll()
