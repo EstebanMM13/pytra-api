@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.config;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -16,6 +17,7 @@ public class AppTimeZone {
 
     private final ZoneId zone;
 
+    @Autowired
     public AppTimeZone(@Value("${app.time-zone:Europe/Madrid}") String zoneId) {
         this(ZoneId.of(zoneId.trim()));
     }
