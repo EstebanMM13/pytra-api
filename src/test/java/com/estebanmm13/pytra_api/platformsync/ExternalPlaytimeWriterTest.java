@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.platformsync;
 
+import com.estebanmm13.pytra_api.diary.service.SyncedPlayRecorder;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
@@ -18,7 +19,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -43,8 +48,9 @@ class ExternalPlaytimeWriterTest {
     private final GamePlatformLinkRepository gamePlatformLinkRepository = mock(GamePlatformLinkRepository.class);
     private final HybridPlaytimeReconciler hybridPlaytimeReconciler =
             new HybridPlaytimeReconciler(experienceRepository, onlinePlaytimeRepository, gamePlatformLinkRepository);
-    private final ExternalPlaytimeWriter writer =
-            new ExternalPlaytimeWriter(experienceRepository, onlinePlaytimeRepository, platformService, hybridPlaytimeReconciler);
+    private final SyncedPlayRecorder syncedPlayRecorder = mock(SyncedPlayRecorder.class);
+    private final ExternalPlaytimeWriter writer = new ExternalPlaytimeWriter(
+            experienceRepository, onlinePlaytimeRepository, platformService, hybridPlaytimeReconciler, syncedPlayRecorder);
 
     @BeforeEach
     void setUp() {
@@ -283,6 +289,78 @@ class ExternalPlaytimeWriterTest {
         assertThat(manual.getHours()).isEqualTo(5.0);
         verify(experienceRepository).save(manual);
         verify(platformService, never()).requireByLegacyCode(any());
+    }
+
+    // ---- Diary auto lines ----------------------------------------------------------------
+
+    @Test
+    void singleplayerDeltaIsRecordedInTheDiaryOnTheCanonicalRun() {
+        Game game = game(GameCategory.SINGLEPLAYER, ReviewStatus.CONFIRMED);
+        Experience manual = inProgressRun(7L, "PS5", 15.0);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(List.of(manual));
+        GamePlatformLink link = link(game, ExternalPlatform.PSN_PS5, 60);
+        LocalDateTime now = LocalDateTime.of(2026, 10, 29, 20, 0);
+
+        writer.applySyncedTotal(link, 150, now);
+
+        verify(syncedPlayRecorder).record(USER_ID, GAME_ID, 7L, now.toLocalDate(), 90);
+    }
+
+    @Test
+    void onlineAndHybridDeltasAreRecordedWithoutRun() {
+        LocalDateTime now = LocalDateTime.of(2026, 10, 29, 20, 0);
+        Game online = game(GameCategory.ONLINE, ReviewStatus.CONFIRMED);
+        writer.applySyncedTotal(link(online, ExternalPlatform.STEAM, 600), 660, now);
+        verify(syncedPlayRecorder).record(USER_ID, GAME_ID, null, now.toLocalDate(), 60);
+
+        // A HYBRID delta absorbed by the runs adds no online hours, but the user still played.
+        Game hybrid = game(GameCategory.HYBRID, ReviewStatus.CONFIRMED);
+        GamePlatformLink link = link(hybrid, ExternalPlatform.STEAM, 30 * 60);
+        when(gamePlatformLinkRepository.findAllByUserIdAndGameId(USER_ID, GAME_ID)).thenReturn(List.of(link));
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(List.of(run("PC", 40.0)));
+        writer.applySyncedTotal(link, 35 * 60, now);
+        verify(syncedPlayRecorder).record(USER_ID, GAME_ID, null, now.toLocalDate(), 300);
+    }
+
+    @Test
+    void pendingNegativeUnchangedAndUncategorisedDeltasAreNotRecorded() {
+        LocalDateTime now = LocalDateTime.now();
+        writer.applySyncedTotal(link(game(GameCategory.SINGLEPLAYER, ReviewStatus.PENDING_REVIEW),
+                ExternalPlatform.STEAM, 60), 600, now);
+        writer.applySyncedTotal(link(game(GameCategory.SINGLEPLAYER, ReviewStatus.CONFIRMED),
+                ExternalPlatform.STEAM, 600), 60, now);
+        writer.applySyncedTotal(link(game(GameCategory.ONLINE, ReviewStatus.CONFIRMED),
+                ExternalPlatform.STEAM, 600), 600, now);
+        writer.applySyncedTotal(link(game(null, ReviewStatus.CONFIRMED), ExternalPlatform.STEAM, 60), 120, now);
+
+        verify(syncedPlayRecorder, never()).record(any(), any(), any(), any(), anyLong());
+    }
+
+    @Test
+    void confirmImportIsNeverRecordedInTheDiary() {
+        Game game = game(GameCategory.ONLINE, ReviewStatus.CONFIRMED);
+
+        writer.importTotalsOnConfirm(List.of(link(game, ExternalPlatform.STEAM, 600 * 60)), game);
+
+        verify(syncedPlayRecorder, never()).record(any(), any(), any(), any(), anyLong());
+    }
+
+    @Test
+    void playDateUsesLastPlayedOnlyWhenItFallsBetweenThePreviousSyncAndNow() {
+        LocalDateTime previousSync = LocalDateTime.of(2026, 10, 27, 22, 0);
+        LocalDateTime now = LocalDateTime.of(2026, 10, 29, 9, 0);
+        ZoneId zone = ZoneId.systemDefault();
+        Instant yesterday = LocalDateTime.of(2026, 10, 28, 23, 30).atZone(zone).toInstant();
+        Instant beforePreviousSync = LocalDateTime.of(2026, 10, 20, 12, 0).atZone(zone).toInstant();
+        Instant future = LocalDateTime.of(2026, 10, 30, 12, 0).atZone(zone).toInstant();
+
+        assertThat(ExternalPlaytimeWriter.playDate(yesterday, previousSync, now))
+                .isEqualTo(LocalDate.of(2026, 10, 28));
+        assertThat(ExternalPlaytimeWriter.playDate(null, previousSync, now)).isEqualTo(now.toLocalDate());
+        assertThat(ExternalPlaytimeWriter.playDate(beforePreviousSync, previousSync, now)).isEqualTo(now.toLocalDate());
+        assertThat(ExternalPlaytimeWriter.playDate(future, previousSync, now)).isEqualTo(now.toLocalDate());
+        assertThat(ExternalPlaytimeWriter.playDate(yesterday, null, now))
+                .isEqualTo(LocalDate.of(2026, 10, 28));
     }
 
     private static Experience inProgressRun(Long id, String platformCode, double hours) {

@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.platformsync;
 
+import com.estebanmm13.pytra_api.diary.service.SyncedPlayRecorder;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
@@ -15,7 +16,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -36,6 +40,8 @@ import java.util.Optional;
  *   <li>HYBRID: hours go to OnlinePlaytime too, minus the hours of the runs logged on the linked
  *       platforms (the platform total already includes them). See {@link HybridPlaytimeReconciler}.</li>
  * </ul>
+ * Every positive delta of a confirmed game is also recorded in the diary as a record-only auto line
+ * ({@link SyncedPlayRecorder}).
  */
 @Slf4j
 @Component
@@ -46,6 +52,7 @@ public class ExternalPlaytimeWriter {
     private final OnlinePlaytimeRepository onlinePlaytimeRepository;
     private final PlatformService platformService;
     private final HybridPlaytimeReconciler hybridPlaytimeReconciler;
+    private final SyncedPlayRecorder syncedPlayRecorder;
 
     /**
      * Moves the link's baseline to the platform's current total. Managed entities are dirty-checked,
@@ -59,6 +66,7 @@ public class ExternalPlaytimeWriter {
             return false;
         }
 
+        LocalDateTime previousSyncAt = link.getLastSyncedAt();
         link.setLastSyncedPlaytimeMinutes(currentMinutes);
         link.setLastSyncedAt(now);
 
@@ -73,10 +81,42 @@ public class ExternalPlaytimeWriter {
         if (game.getReviewStatus() != ReviewStatus.CONFIRMED) {
             return false;
         }
-        if (game.getCategory() == GameCategory.HYBRID) {
-            return hybridPlaytimeReconciler.applySyncedChange(link, baselineMinutes, now);
+        boolean added = game.getCategory() == GameCategory.HYBRID
+                ? hybridPlaytimeReconciler.applySyncedChange(link, baselineMinutes, now)
+                : addDelta(link, game, (currentMinutes - baselineMinutes) / 60.0, now);
+        recordInDiary(link, game, currentMinutes - baselineMinutes, previousSyncAt, now);
+        return added;
+    }
+
+    /**
+     * Records the observed play in the diary (record only: the hours were just added above). Only deltas of a
+     * confirmed, categorised game reach this point, so the first import of a title (its link created with
+     * the whole history as baseline, or the confirm-time import) never lands in the diary.
+     */
+    private void recordInDiary(GamePlatformLink link, Game game, long deltaMinutes,
+                               LocalDateTime previousSyncAt, LocalDateTime now) {
+        if (game.getCategory() == null || deltaMinutes <= 0) {
+            return;
         }
-        return addDelta(link, game, (currentMinutes - baselineMinutes) / 60.0, now);
+        // SINGLEPLAYER hours went to the link's canonical run (set by addDelta); ONLINE/HYBRID ones to the
+        // online playtime.
+        Long run = game.getCategory() == GameCategory.SINGLEPLAYER ? link.getExperienceId() : null;
+        syncedPlayRecorder.record(link.getUserId(), game.getId(), run,
+                playDate(link.getLastPlayedAt(), previousSyncAt, now), deltaMinutes);
+    }
+
+    /**
+     * The day the play happened: the platform's last-played time when it falls between the previous sync
+     * and now (a stale or skewed value says nothing about this delta), otherwise the sync day. Server time
+     * zone, like every other LocalDateTime of the sync.
+     */
+    static LocalDate playDate(Instant lastPlayedAt, LocalDateTime previousSyncAt, LocalDateTime now) {
+        if (lastPlayedAt == null) {
+            return now.toLocalDate();
+        }
+        LocalDateTime playedAt = LocalDateTime.ofInstant(lastPlayedAt, ZoneId.systemDefault());
+        boolean afterPreviousSync = previousSyncAt == null || !playedAt.isBefore(previousSyncAt);
+        return afterPreviousSync && !playedAt.isAfter(now) ? playedAt.toLocalDate() : now.toLocalDate();
     }
 
     /**
