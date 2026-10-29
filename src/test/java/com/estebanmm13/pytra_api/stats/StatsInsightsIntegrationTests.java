@@ -298,6 +298,7 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.timeToFinish.buckets.length()").value(6))
                 .andExpect(jsonPath("$.timeToFinish.buckets[0].label").value("0-7"))
                 .andExpect(jsonPath("$.timeToFinish.buckets[0].count").value(1))
+                .andExpect(jsonPath("$.timeToFinish.buckets[0].gameCount").value(1))
                 .andExpect(jsonPath("$.timeToFinish.buckets[2].label").value("31-90"))
                 .andExpect(jsonPath("$.timeToFinish.buckets[2].count").value(1))
                 .andExpect(jsonPath("$.timeToFinish.buckets[5].maxDays").value(nullValue()))
@@ -309,6 +310,7 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.hoursBuckets.length()").value(4))
                 .andExpect(jsonPath("$.hoursBuckets[0].label").value("<10"))
                 .andExpect(jsonPath("$.hoursBuckets[0].runCount").value(1))
+                .andExpect(jsonPath("$.hoursBuckets[0].gameCount").value(1))
                 .andExpect(jsonPath("$.hoursBuckets[0].averageRating").value(9))
                 .andExpect(jsonPath("$.hoursBuckets[2].runCount").value(1))
                 .andExpect(jsonPath("$.hoursBuckets[2].averageRating").value(7))
@@ -323,6 +325,30 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.abandonedCount").value(0))
                 .andExpect(jsonPath("$.timeToFinish.sampleSize").value(0))
                 .andExpect(jsonPath("$.timeToFinish.fastest").value(nullValue()));
+    }
+
+    // ---------------------------------------------------------------- play facts
+
+    @Test
+    void playFactsListRunsAndOnlinePlayYears() throws Exception {
+        Long game = createGameVia(auth, "Facts Game", "");
+        createExperienceVia(auth, game, run("A", "COMPLETADO", 8, 20.0, null, "2024-01-01", "2024-01-11", ""));
+        Long arena = createOnlineGame("Facts Arena");
+        putOnlinePlaytime(arena, "5", ps5Id.toString());
+        logDay("2023-06-01", line(arena, "1.5"));
+
+        performAs(auth, get("/api/v1/stats/play-facts"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.runs.length()").value(1))
+                .andExpect(jsonPath("$.runs[0].gameId").value(game))
+                .andExpect(jsonPath("$.runs[0].year").value(2024))
+                .andExpect(jsonPath("$.runs[0].status").value("COMPLETADO"))
+                .andExpect(jsonPath("$.runs[0].hours").value(20.0))
+                .andExpect(jsonPath("$.runs[0].daysToFinish").value(10))
+                .andExpect(jsonPath("$.onlineYears.length()").value(1))
+                .andExpect(jsonPath("$.onlineYears[0].gameId").value(arena))
+                .andExpect(jsonPath("$.onlineYears[0].year").value(2023))
+                .andExpect(jsonPath("$.onlineYears[0].platformIds[0]").value(ps5Id));
     }
 
     // ---------------------------------------------------------------- rating profile

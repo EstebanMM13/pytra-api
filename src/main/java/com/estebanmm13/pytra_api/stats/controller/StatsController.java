@@ -130,4 +130,10 @@ public class StatsController {
     public ResponseEntity<RatingStatsDto> getRatings(@RequestParam(required = false) Integer year) {
         return ResponseEntity.ok(statsInsightsService.getRatings(currentUserResolver.getCurrentUserId(), year));
     }
+
+    /** Compact per-run facts (year, platform, status, hours, days to finish) and online play years, for library filters. */
+    @GetMapping("/play-facts")
+    public ResponseEntity<PlayFactsDto> getPlayFacts() {
+        return ResponseEntity.ok(statsInsightsService.getPlayFacts(currentUserResolver.getCurrentUserId()));
+    }
 }

@@ -30,4 +30,7 @@ public interface StatsInsightsService {
 
     /** Histogram, mean, median and standard deviation of the run ratings in scope, by genre and platform. */
     RatingStatsDto getRatings(Long userId, Integer year);
+
+    /** Every run's year, platform, status, hours and days to finish, plus the years of counted online diary hours. */
+    PlayFactsDto getPlayFacts(Long userId);
 }

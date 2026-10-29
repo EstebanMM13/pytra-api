@@ -23,6 +23,7 @@ import com.estebanmm13.pytra_api.platforms.TestPlatforms;
 import com.estebanmm13.pytra_api.platforms.model.Platform;
 import com.estebanmm13.pytra_api.stats.dto.ActivityStatsDto;
 import com.estebanmm13.pytra_api.stats.dto.PlatformStatsDto;
+import com.estebanmm13.pytra_api.stats.dto.PlayFactsDto;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -220,6 +221,46 @@ class StatsInsightsServiceImplTest {
         assertThat(eras.byYear().get(0).gameCount()).isEqualTo(2);
     }
 
+    // ---------------------------------------------------------------- play facts
+
+    @Test
+    void playFactsCarryEachRunsYearPlatformAndDaysToFinishAndTheOnlinePlayYears() {
+        Experience timed = dated(1L, ExperienceStatus.COMPLETADO, "9", 12.5, null, "2023-12-20", "2024-01-04", false);
+        Experience untimed = dated(1L, ExperienceStatus.ABANDONADO, null, 3.0, null, "2022-05-01", "2022-05-03", false);
+        Experience undated = run(2L, TestPlatforms.SWITCH, ExperienceStatus.COMPLETADO, null, 0.0, null);
+        when(experienceRepository.findAllByUserId(USER_ID)).thenReturn(List.of(undated, untimed, timed));
+        when(onlinePlaytimeRepository.findAllByUserId(USER_ID)).thenReturn(List.of(
+                online(3L, 10.0, TestPlatforms.PS5, TestPlatforms.PC)));
+        when(diaryEntryGameRepository.sumCountedOnlineHoursByYearAndGame(USER_ID)).thenReturn(List.of(
+                new OnlineDiaryYearGameHours(2024, 3L, new BigDecimal("2")),
+                new OnlineDiaryYearGameHours(2023, 3L, new BigDecimal("1")),
+                // No hours: not a play year.
+                new OnlineDiaryYearGameHours(2022, 3L, BigDecimal.ZERO),
+                // Game without online playtime platforms.
+                new OnlineDiaryYearGameHours(2024, 4L, new BigDecimal("1"))));
+
+        PlayFactsDto facts = service.getPlayFacts(USER_ID);
+
+        assertThat(facts.runs()).extracting(PlayFactsDto.RunFact::experienceId)
+                .containsExactly(timed.getId(), untimed.getId(), undated.getId());
+        PlayFactsDto.RunFact first = facts.runs().get(0);
+        // The year follows ExperiencePeriod: the end date's year when no explicit year is set.
+        assertThat(first.year()).isEqualTo(2024);
+        assertThat(first.platformId()).isEqualTo(TestPlatforms.PC.getId());
+        assertThat(first.hours()).isEqualTo(12.5);
+        assertThat(first.daysToFinish()).isEqualTo(15L);
+        // Only completed runs are timed.
+        assertThat(facts.runs().get(1).daysToFinish()).isNull();
+        assertThat(facts.runs().get(1).year()).isEqualTo(2022);
+        assertThat(facts.runs().get(2).year()).isNull();
+        assertThat(facts.runs().get(2).daysToFinish()).isNull();
+
+        assertThat(facts.onlineYears()).containsExactly(
+                new PlayFactsDto.OnlineYear(3L, 2023, List.of(TestPlatforms.PC.getId(), TestPlatforms.PS5.getId())),
+                new PlayFactsDto.OnlineYear(3L, 2024, List.of(TestPlatforms.PC.getId(), TestPlatforms.PS5.getId())),
+                new PlayFactsDto.OnlineYear(4L, 2024, List.of()));
+    }
+
     // ---------------------------------------------------------------- completion habits
 
     private Experience dated(Long gameId, ExperienceStatus status, String rating, double hours, Integer year,
@@ -274,6 +315,7 @@ class StatsInsightsServiceImplTest {
         assertThat(time.slowest().experienceId()).isEqualTo(twoMonths.getId());
         assertThat(time.slowest().days()).isEqualTo(60);
         assertThat(time.buckets()).extracting(CompletionStatsDto.DaysBucket::count).containsExactly(1L, 1L, 1L, 0L, 0L, 0L);
+        assertThat(time.buckets()).extracting(CompletionStatsDto.DaysBucket::gameCount).containsExactly(1L, 1L, 1L, 0L, 0L, 0L);
         assertThat(time.buckets().getLast().maxDays()).isNull();
 
         // RPG: 5 completed, 1 abandoned; Shooter: 1 and 1.
@@ -287,6 +329,9 @@ class StatsInsightsServiceImplTest {
                 .containsExactly("<10", "10-30", "30-60", "60+");
         assertThat(completion.hoursBuckets()).extracting(CompletionStatsDto.HoursBucket::runCount)
                 .containsExactly(2L, 1L, 1L, 1L);
+        // The two runs under 10 h are of the same game.
+        assertThat(completion.hoursBuckets()).extracting(CompletionStatsDto.HoursBucket::gameCount)
+                .containsExactly(1L, 1L, 1L, 1L);
         assertThat(completion.hoursBuckets().get(0).averageRating()).isEqualByComparingTo("9");
         assertThat(completion.hoursBuckets().get(1).ratedCount()).isZero();
         assertThat(completion.hoursBuckets().get(1).averageRating()).isNull();

@@ -47,8 +47,11 @@ public record CompletionStatsDto(
     public record RunDuration(Long experienceId, Long gameId, String gameName, String runLabel, long days) {
     }
 
-    /** Runs that took {@code minDays..maxDays} days, both inclusive; {@code maxDays} null means no upper bound. */
-    public record DaysBucket(String label, int minDays, Integer maxDays, long count) {
+    /**
+     * Runs that took {@code minDays..maxDays} days, both inclusive; {@code maxDays} null means no upper bound.
+     * {@code gameCount}: distinct games of those runs (what a library filter on the bucket lists).
+     */
+    public record DaysBucket(String label, int minDays, Integer maxDays, long count, long gameCount) {
     }
 
     /** {@code abandonmentRate = abandoned / (completed + abandoned)}, 0..1 with 4 decimals. */
@@ -64,6 +67,7 @@ public record CompletionStatsDto(
      * Completed runs with {@code minHours <= hours < maxHours}; {@code maxHours} null means no upper bound.
      *
      * @param averageRating mean of the rated runs of the bucket, 2 decimals; null when none is rated
+     * @param gameCount     distinct games of the bucket's runs (what a library filter on the bucket lists)
      */
     public record HoursBucket(
             String label,
@@ -71,6 +75,7 @@ public record CompletionStatsDto(
             Double maxHours,
             long runCount,
             long ratedCount,
-            BigDecimal averageRating) {
+            BigDecimal averageRating,
+            long gameCount) {
     }
 }

@@ -446,7 +446,11 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
         Map<Long, long[]> outcomesByGenre = new LinkedHashMap<>(); // [completed, abandoned]
         Map<Long, String> genreNames = new HashMap<>();
         List<List<BigDecimal>> ratingsByHours = new ArrayList<>();
-        HOUR_BUCKETS.forEach(bucket -> ratingsByHours.add(new ArrayList<>()));
+        List<Set<Long>> gamesByHours = new ArrayList<>();
+        HOUR_BUCKETS.forEach(bucket -> {
+            ratingsByHours.add(new ArrayList<>());
+            gamesByHours.add(new HashSet<>());
+        });
 
         for (Experience run : runs) {
             if (Boolean.TRUE.equals(run.getReplay())) replays++;
@@ -454,13 +458,14 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
             boolean isAbandoned = run.getStatus() == ExperienceStatus.ABANDONADO;
             if (isCompleted) {
                 completed++;
-                if (run.getStartDate() != null && run.getEndDate() != null
-                        && !run.getEndDate().isBefore(run.getStartDate())) {
-                    timed.add(new TimedRun(run, ChronoUnit.DAYS.between(run.getStartDate(), run.getEndDate())));
+                Long days = daysToFinish(run);
+                if (days != null) {
+                    timed.add(new TimedRun(run, days));
                 }
                 for (int i = 0; i < HOUR_BUCKETS.size(); i++) {
                     if (HOUR_BUCKETS.get(i).contains(hoursOf(run))) {
                         ratingsByHours.get(i).add(run.getRating());
+                        gamesByHours.get(i).add(run.getGameId());
                         break;
                     }
                 }
@@ -492,7 +497,7 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
             List<BigDecimal> ratings = ratingsByHours.get(i);
             hoursBuckets.add(new CompletionStatsDto.HoursBucket(range.label(), range.min(), range.max(),
                     ratings.size(), ratings.stream().filter(Objects::nonNull).count(),
-                    StatsMath.averageRating(ratings)));
+                    StatsMath.averageRating(ratings), gamesByHours.get(i).size()));
         }
 
         return new CompletionStatsDto(year, completed, abandoned, replays,
@@ -502,8 +507,9 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
     private CompletionStatsDto.TimeToFinish timeToFinish(Long userId, List<TimedRun> timed) {
         List<CompletionStatsDto.DaysBucket> buckets = new ArrayList<>();
         for (DayRange range : DAY_BUCKETS) {
-            long count = timed.stream().filter(t -> range.contains(t.days())).count();
-            buckets.add(new CompletionStatsDto.DaysBucket(range.label(), range.min(), range.max(), count));
+            List<TimedRun> inRange = timed.stream().filter(t -> range.contains(t.days())).toList();
+            long games = inRange.stream().map(t -> t.run().getGameId()).distinct().count();
+            buckets.add(new CompletionStatsDto.DaysBucket(range.label(), range.min(), range.max(), inRange.size(), games));
         }
         if (timed.isEmpty()) {
             return new CompletionStatsDto.TimeToFinish(0, null, null, null, null, buckets);
@@ -534,6 +540,49 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
         Experience run = timed.run();
         return new CompletionStatsDto.RunDuration(run.getId(), run.getGameId(),
                 names.getOrDefault(run.getGameId(), "Unknown"), run.getRunLabel(), timed.days());
+    }
+
+    /**
+     * Calendar days from start to end of a COMPLETADO run with both dates, end not before start (0 when started
+     * and finished the same day); null for any other run. Shared by the completion stats and the play facts.
+     */
+    static Long daysToFinish(Experience run) {
+        if (run.getStatus() != ExperienceStatus.COMPLETADO || run.getStartDate() == null || run.getEndDate() == null
+                || run.getEndDate().isBefore(run.getStartDate())) {
+            return null;
+        }
+        return ChronoUnit.DAYS.between(run.getStartDate(), run.getEndDate());
+    }
+
+    // ---------------------------------------------------------------- play facts
+
+    @Override
+    @Transactional(readOnly = true)
+    public PlayFactsDto getPlayFacts(Long userId) {
+        List<PlayFactsDto.RunFact> runs = new ArrayList<>();
+        for (Experience run : experienceRepository.findAllByUserId(userId)) {
+            runs.add(new PlayFactsDto.RunFact(run.getId(), run.getGameId(),
+                    run.getPlatform() != null ? run.getPlatform().getId() : null,
+                    ExperiencePeriod.yearOf(run), run.getStatus(), StatsMath.round2(hoursOf(run)), daysToFinish(run)));
+        }
+        runs.sort(Comparator.comparing(PlayFactsDto.RunFact::experienceId, Comparator.nullsLast(Comparator.naturalOrder())));
+
+        Map<Long, List<Long>> onlinePlatformIds = new HashMap<>();
+        for (OnlinePlaytime playtime : onlinePlaytimeRepository.findAllByUserId(userId)) {
+            List<Platform> platforms = new ArrayList<>(playtime.getPlatforms());
+            platforms.sort(PlatformMapper.CATALOG_ORDER);
+            onlinePlatformIds.put(playtime.getGameId(), platforms.stream().map(Platform::getId).toList());
+        }
+        // Same rows as the per-year platform hours: a game "was played online" in a year with counted hours.
+        List<PlayFactsDto.OnlineYear> onlineYears = new ArrayList<>();
+        for (OnlineDiaryYearGameHours row : diaryEntryGameRepository.sumCountedOnlineHoursByYearAndGame(userId)) {
+            if (row.year() != null && doubleOf(row.hours()) > 0) {
+                onlineYears.add(new PlayFactsDto.OnlineYear(row.gameId(), row.year(),
+                        onlinePlatformIds.getOrDefault(row.gameId(), List.of())));
+            }
+        }
+        onlineYears.sort(Comparator.comparing(PlayFactsDto.OnlineYear::gameId).thenComparingInt(PlayFactsDto.OnlineYear::year));
+        return new PlayFactsDto(runs, onlineYears);
     }
 
     // ---------------------------------------------------------------- rating profile
