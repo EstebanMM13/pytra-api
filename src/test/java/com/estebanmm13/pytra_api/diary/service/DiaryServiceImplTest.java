@@ -329,6 +329,57 @@ class DiaryServiceImplTest {
         assertThat(days).extracting(DiaryDayResponseDto::date).containsExactly(DAY.plusDays(1));
     }
 
+    @Test
+    void resavingAnUnchangedAutoLineKeepsItAutoAndMovesNothing() {
+        // Not synced any more and with one run in progress: a user line would count, an auto line never does.
+        ownedGame(GameCategory.SINGLEPLAYER);
+        runs(run(RUN_A, ExperienceStatus.EN_CURSO));
+        DiaryEntry entry = existingDay(autoLine(RUN_A, "1.50"));
+
+        DiaryDayResponseDto day = service.saveDay(DAY, day(game(null, "1.5")), USER_ID).orElseThrow();
+
+        verifyNoInteractions(experienceService, onlinePlaytimeService);
+        assertThat(entry.getGames()).singleElement().satisfies(line -> {
+            assertThat(line.isAutoSynced()).isTrue();
+            assertThat(line.isCountsHours()).isFalse();
+            assertThat(line.getExperienceId()).isEqualTo(RUN_A);
+        });
+        assertThat(day.games()).singleElement().satisfies(game -> assertThat(game.autoSynced()).isTrue());
+    }
+
+    @Test
+    void editingAnAutoLineMakesItTheUsersButStillRecordOnly() {
+        ownedGame(GameCategory.ONLINE);
+        DiaryEntry entry = existingDay(autoLine(null, "1"));
+
+        service.saveDay(DAY, day(game(null, "3")), USER_ID);
+
+        verifyNoInteractions(experienceService, onlinePlaytimeService);
+        assertThat(entry.getGames()).singleElement().satisfies(line -> {
+            assertThat(line.isAutoSynced()).isFalse();
+            assertThat(line.isCountsHours()).isFalse();
+            assertThat(line.getHours()).isEqualByComparingTo("3");
+        });
+    }
+
+    @Test
+    void removingAnAutoLineSubtractsNothing() {
+        ownedGame(GameCategory.ONLINE);
+        existingDay(autoLine(null, "2"));
+        DiaryDayRequestDto noteOnly = day();
+        noteOnly.setNote("Rest day");
+
+        service.saveDay(DAY, noteOnly, USER_ID);
+
+        verifyNoInteractions(experienceService, onlinePlaytimeService);
+    }
+
+    private static DiaryEntryGame autoLine(Long experienceId, String hours) {
+        DiaryEntryGame line = line(experienceId, hours, false);
+        line.setAutoSynced(true);
+        return line;
+    }
+
     private Game ownedGame(GameCategory category) {
         Game game = new Game();
         game.setId(GAME_ID);

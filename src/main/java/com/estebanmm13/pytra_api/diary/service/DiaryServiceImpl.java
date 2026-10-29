@@ -77,8 +77,14 @@ public class DiaryServiceImpl implements DiaryService {
         static final Target ONLINE = new Target(null);
     }
 
-    /** A requested game once validated: where its hours go (null = nowhere) and the run to remember. */
-    private record ResolvedGame(DiaryGameRequestDto request, Target target, Long experienceId) {
+    /**
+     * A requested game once validated: where its hours go (null = nowhere), the run to remember and whether
+     * the line stays a sync-written auto line.
+     */
+    private record ResolvedGame(DiaryGameRequestDto request, Target target, Long experienceId, boolean autoSynced) {
+        ResolvedGame(DiaryGameRequestDto request, Target target, Long experienceId) {
+            this(request, target, experienceId, false);
+        }
     }
 
     @Override
@@ -151,7 +157,7 @@ public class DiaryServiceImpl implements DiaryService {
         requireOwnedGame(gameId, userId);
         return diaryEntryGameRepository.findAllByUserIdAndGameIdLatestFirst(userId, gameId).stream()
                 .map(line -> new GameDiaryDayResponseDto(line.getEntry().getEntryDate(), line.getHours(),
-                        line.getNote(), line.getExperienceId(), line.isCountsHours()))
+                        line.getNote(), line.getExperienceId(), line.isCountsHours(), line.isAutoSynced()))
                 .toList();
     }
 
@@ -165,6 +171,20 @@ public class DiaryServiceImpl implements DiaryService {
             Game owned = requireOwnedGame(game.getGameId(), userId);
             String field = "games[" + i + "].experienceId";
             DiaryEntryGame oldLine = oldLines.get(game.getGameId());
+
+            // A sync-written line never counts, even once edited or after the game was unlinked: the sync
+            // already added its hours. It stays "auto" only while the user leaves its hours and run as they are
+            // (the web sends the whole day back on every save); any change makes it the user's line.
+            if (oldLine != null && oldLine.isAutoSynced()) {
+                Long run = game.getExperienceId() != null ? game.getExperienceId() : oldLine.getExperienceId();
+                if (game.getExperienceId() != null && !isRunOf(run, game.getGameId(), userId)) {
+                    runErrors.put(field, InvalidRequestException.INVALID_DIARY_RUN);
+                }
+                boolean unchanged = game.getHours().compareTo(oldLine.getHours()) == 0
+                        && Objects.equals(run, oldLine.getExperienceId());
+                resolved.add(new ResolvedGame(game, null, run, unchanged));
+                continue;
+            }
 
             // A line counted before the game was linked keeps counting: the link absorbed those hours
             // (max on confirm, then only later deltas), so giving them back would lose them.
@@ -265,6 +285,7 @@ public class DiaryServiceImpl implements DiaryService {
             line.setHours(request.getHours());
             line.setNote(trimToNull(request.getNote()));
             line.setCountsHours(game.target() != null);
+            line.setAutoSynced(game.autoSynced());
             kept.add(request.getGameId());
         }
         entry.getGames().removeIf(line -> !kept.contains(line.getGameId()));
@@ -309,7 +330,8 @@ public class DiaryServiceImpl implements DiaryService {
                         line.getHours(),
                         line.getNote(),
                         line.isCountsHours(),
-                        synced.contains(line.getGameId())));
+                        synced.contains(line.getGameId()),
+                        line.isAutoSynced()));
                 total = total.add(line.getHours());
             }
             responses.add(new DiaryDayResponseDto(entry.getEntryDate(), entry.getNote(), total, lines));

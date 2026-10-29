@@ -39,4 +39,11 @@ public class DiaryEntryGame {
 
     @Column(nullable = false)
     private boolean countsHours;
+
+    /**
+     * Written by the Steam/PSN sync ({@link com.estebanmm13.pytra_api.diary.service.SyncedPlayRecorder}).
+     * Record only: the sync already added these hours, so an auto line never counts them (DB check).
+     */
+    @Column(nullable = false)
+    private boolean autoSynced;
 }
