@@ -140,6 +140,7 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/by-release-era"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/completion"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/ratings"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/play-facts"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary?from=2024-05-01&to=2024-05-31"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary/2024-05-01"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/diary/2024-05-01"),
@@ -636,6 +637,18 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                     .andExpect(jsonPath("$.completedCount").value(1))
                     .andExpect(jsonPath("$.timeToFinish.sampleSize").value(0))
                     .andExpect(jsonPath("$.hoursBuckets[2].runCount").value(1));
+        }
+
+        @Test
+        void playFactsOnlyListOwnRuns() throws Exception {
+            // Alice has one run; Bob none.
+            perform(get("/api/v1/stats/play-facts"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.runs.length()").value(0))
+                    .andExpect(jsonPath("$.onlineYears.length()").value(0));
+            perform(get("/api/v1/stats/play-facts"), aliceAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.runs.length()").value(1));
         }
 
         @Test
