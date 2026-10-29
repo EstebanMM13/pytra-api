@@ -2,8 +2,14 @@ package com.estebanmm13.pytra_api.steamsync;
 
 import com.estebanmm13.pytra_api.AbstractIntegrationTest;
 import com.estebanmm13.pytra_api.auth.model.User;
+import com.estebanmm13.pytra_api.config.AppTimeZone;
+import com.estebanmm13.pytra_api.diary.repository.DiaryEntryRepository;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
+import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
+import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
+import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
+import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGame;
 import com.estebanmm13.pytra_api.steamsync.client.SteamOwnedGamesResult;
@@ -13,7 +19,9 @@ import com.estebanmm13.pytra_api.steamsync.repository.SteamLinkRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.time.LocalDate;
@@ -21,8 +29,12 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -48,6 +60,14 @@ class SyncedDiaryIntegrationTests extends AbstractIntegrationTest {
     private GameRepository gameRepository;
     @Autowired
     private ExperienceRepository experienceRepository;
+    @Autowired
+    private OnlinePlaytimeRepository onlinePlaytimeRepository;
+    @Autowired
+    private GamePlatformLinkRepository gamePlatformLinkRepository;
+    @Autowired
+    private AppTimeZone appTimeZone;
+    @MockitoSpyBean
+    private DiaryEntryRepository diaryEntryRepository;
 
     private User alice;
     private String aliceAuth;
@@ -57,7 +77,8 @@ class SyncedDiaryIntegrationTests extends AbstractIntegrationTest {
     void setUp() {
         alice = createVerifiedUser("diarysync");
         aliceAuth = bearer(alice);
-        today = LocalDate.now();
+        // Sync-written lines land on the users' day (app.time-zone), not the server's.
+        today = LocalDate.now(appTimeZone.zone());
         when(steamWebApiClient.isConfigured()).thenReturn(true);
         link(alice);
     }
@@ -186,7 +207,69 @@ class SyncedDiaryIntegrationTests extends AbstractIntegrationTest {
         performAs(bobAuth, get("/api/v1/stats/activity")).andExpect(jsonPath("$.totalHours").value(0.0));
     }
 
+    @Test
+    void aFailingDiaryWriteNeverRollsBackTheSync() throws Exception {
+        library(new SteamOwnedGame(730, "Counter-Strike 2", 600), new SteamOwnedGame(620, "Portal 2", 60));
+        sync();
+        Long csId = gameIdByName("Counter-Strike 2");
+        Long portalId = gameIdByName("Portal 2");
+        confirm(csId, "Counter-Strike 2", "ONLINE");
+        confirm(portalId, "Portal 2", "ONLINE");
+        // E.g. the user saving the same day at that moment, or a PSN sync racing for the day's entry.
+        doThrow(new DataIntegrityViolationException("uq_diary_entries_user_date"))
+                .when(diaryEntryRepository).findForUpdate(anyLong(), any());
+
+        library(new SteamOwnedGame(730, "Counter-Strike 2", 660), new SteamOwnedGame(620, "Portal 2", 120));
+        sync().andExpect(jsonPath("$.gamesUpdated").value(2));
+
+        // Hours and baselines of every game committed; only the diary record was dropped.
+        assertThat(onlineHours(csId)).isEqualTo(11.0);
+        assertThat(onlineHours(portalId)).isEqualTo(2.0);
+        assertThat(gamePlatformLinkRepository
+                .findByUserIdAndGameIdAndPlatform(alice.getId(), csId, ExternalPlatform.STEAM).orElseThrow()
+                .getLastSyncedPlaytimeMinutes()).isEqualTo(660L);
+        performAs(aliceAuth, get("/api/v1/diary/{date}", today)).andExpect(status().isNotFound());
+
+        // The next sync records again.
+        reset(diaryEntryRepository);
+        library(new SteamOwnedGame(730, "Counter-Strike 2", 690), new SteamOwnedGame(620, "Portal 2", 120));
+        sync();
+        performAs(aliceAuth, get("/api/v1/diary/{date}", today))
+                .andExpect(jsonPath("$.games.length()").value(1))
+                .andExpect(jsonPath("$.games[0].hours").value(0.5));
+    }
+
+    @Test
+    void savingTheDayBackAsTheWebDoesKeepsTheAutoLine() throws Exception {
+        library(new SteamOwnedGame(730, "Counter-Strike 2", 600));
+        sync();
+        Long gameId = gameIdByName("Counter-Strike 2");
+        confirm(gameId, "Counter-Strike 2", "ONLINE");
+        library(new SteamOwnedGame(730, "Counter-Strike 2", 690));
+        sync();
+
+        // pytra-web sends hours as JSON numbers (1.50 stored -> 1.5 sent) and adds a note to the day.
+        performAs(aliceAuth, put("/api/v1/diary/{date}", today),
+                "{\"note\": \"Good night\", \"games\": [{\"gameId\": " + gameId + ", \"hours\": 1.5, \"note\": null}]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.games[0].autoSynced").value(true))
+                .andExpect(jsonPath("$.games[0].countsHours").value(false));
+        assertThat(onlineHours(gameId)).isEqualTo(11.5);
+
+        // A later sync still merges into it.
+        library(new SteamOwnedGame(730, "Counter-Strike 2", 720));
+        sync();
+        performAs(aliceAuth, get("/api/v1/diary/{date}", today))
+                .andExpect(jsonPath("$.note").value("Good night"))
+                .andExpect(jsonPath("$.games[0].hours").value(2.0));
+    }
+
     // ---- Helpers -------------------------------------------------------------------------
+
+    private double onlineHours(Long gameId) {
+        return onlinePlaytimeRepository.findByGameIdAndUserId(gameId, alice.getId())
+                .map(OnlinePlaytime::getTotalHours).orElse(0.0);
+    }
 
     private void link(User user) {
         steamLinkRepository.save(SteamLink.builder()

@@ -3,19 +3,29 @@ package com.estebanmm13.pytra_api.diary.service;
 import com.estebanmm13.pytra_api.diary.model.DiaryEntry;
 import com.estebanmm13.pytra_api.diary.model.DiaryEntryGame;
 import com.estebanmm13.pytra_api.diary.repository.DiaryEntryRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,12 +38,21 @@ class SyncedPlayRecorderTest {
     private static final LocalDate DAY = LocalDate.of(2026, 10, 29);
 
     private final DiaryEntryRepository diaryEntryRepository = mock(DiaryEntryRepository.class);
-    private final SyncedPlayRecorder recorder = new SyncedPlayRecorder(diaryEntryRepository);
+    private final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+    private final SyncedPlayRecorder recorder = new SyncedPlayRecorder(diaryEntryRepository, transactionManager);
 
     @BeforeEach
     void setUp() {
-        when(diaryEntryRepository.findByUserIdAndEntryDate(USER_ID, DAY)).thenReturn(Optional.empty());
-        when(diaryEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
+        when(diaryEntryRepository.findForUpdate(USER_ID, DAY)).thenReturn(Optional.empty());
+        when(diaryEntryRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    @AfterEach
+    void tearDown() {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test
@@ -56,7 +75,7 @@ class SyncedPlayRecorderTest {
         recorder.record(USER_ID, GAME_ID, RUN, DAY, 90);
 
         ArgumentCaptor<DiaryEntry> saved = ArgumentCaptor.forClass(DiaryEntry.class);
-        verify(diaryEntryRepository).save(saved.capture());
+        verify(diaryEntryRepository).saveAndFlush(saved.capture());
         DiaryEntry entry = saved.getValue();
         assertThat(entry.getUserId()).isEqualTo(USER_ID);
         assertThat(entry.getEntryDate()).isEqualTo(DAY);
@@ -81,7 +100,7 @@ class SyncedPlayRecorderTest {
             assertThat(line.isAutoSynced()).isTrue();
             assertThat(line.isCountsHours()).isFalse();
         });
-        verify(diaryEntryRepository).save(entry);
+        verify(diaryEntryRepository).saveAndFlush(entry);
     }
 
     @Test
@@ -106,7 +125,7 @@ class SyncedPlayRecorderTest {
             assertThat(line.getExperienceId()).isNull();
             assertThat(line.isAutoSynced()).isFalse();
         });
-        verify(diaryEntryRepository, never()).save(any());
+        verify(diaryEntryRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -129,8 +148,77 @@ class SyncedPlayRecorderTest {
         recorder.record(USER_ID, GAME_ID, RUN, DAY, 0);
         recorder.record(USER_ID, GAME_ID, RUN, DAY, -60);
 
-        verify(diaryEntryRepository, never()).findByUserIdAndEntryDate(any(), any());
-        verify(diaryEntryRepository, never()).save(any());
+        verify(diaryEntryRepository, never()).findForUpdate(any(), any());
+        verify(transactionManager, never()).getTransaction(any());
+    }
+
+    // ---- Isolation from the sync's transaction -------------------------------------------
+
+    @Test
+    void insideATransactionTheWriteWaitsForTheCommitAndRunsInANewTransaction() {
+        TransactionSynchronizationManager.initSynchronization();
+
+        recorder.record(USER_ID, GAME_ID, RUN, DAY, 60);
+
+        verify(diaryEntryRepository, never()).findForUpdate(any(), any());
+        List<TransactionSynchronization> pending = TransactionSynchronizationManager.getSynchronizations();
+        assertThat(pending).hasSize(1);
+
+        pending.getFirst().afterCommit();
+
+        verify(diaryEntryRepository).saveAndFlush(any());
+        ArgumentCaptor<TransactionDefinition> definition = ArgumentCaptor.forClass(TransactionDefinition.class);
+        verify(transactionManager).getTransaction(definition.capture());
+        assertThat(definition.getValue().getPropagationBehavior())
+                .isEqualTo(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
+
+    @Test
+    void aRolledBackSyncRecordsNothing() {
+        TransactionSynchronizationManager.initSynchronization();
+
+        recorder.record(USER_ID, GAME_ID, RUN, DAY, 60);
+        TransactionSynchronizationManager.getSynchronizations()
+                .forEach(sync -> sync.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+
+        verify(diaryEntryRepository, never()).findForUpdate(any(), any());
+    }
+
+    @Test
+    void aFailingWriteIsLoggedAndNeverThrows() {
+        when(diaryEntryRepository.findForUpdate(USER_ID, DAY)).thenThrow(new IllegalStateException("db down"));
+
+        assertThatCode(() -> recorder.record(USER_ID, GAME_ID, RUN, DAY, 60)).doesNotThrowAnyException();
+        verify(transactionManager).rollback(any());
+    }
+
+    @Test
+    void aLostRaceForTheDaysEntryIsRetriedOnceAndMerges() {
+        DiaryEntry created = DiaryEntry.builder().id(1L).userId(USER_ID).entryDate(DAY).games(new ArrayList<>())
+                .build();
+        created.getGames().add(autoLine(GAME_ID, null, "1"));
+        created.getGames().getFirst().setEntry(created);
+        when(diaryEntryRepository.findForUpdate(USER_ID, DAY))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(created));
+        when(diaryEntryRepository.saveAndFlush(any()))
+                .thenThrow(new DataIntegrityViolationException("uq_diary_entries_user_date"))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        recorder.record(USER_ID, GAME_ID, null, DAY, 30);
+
+        verify(diaryEntryRepository, times(2)).saveAndFlush(any());
+        assertThat(created.getGames()).singleElement()
+                .satisfies(line -> assertThat(line.getHours()).isEqualByComparingTo("1.5"));
+    }
+
+    @Test
+    void aRaceLostTwiceIsDroppedWithoutThrowing() {
+        when(diaryEntryRepository.saveAndFlush(any()))
+                .thenThrow(new DataIntegrityViolationException("uq_diary_entries_user_date"));
+
+        assertThatCode(() -> recorder.record(USER_ID, GAME_ID, null, DAY, 30)).doesNotThrowAnyException();
+        verify(diaryEntryRepository, times(2)).saveAndFlush(any());
     }
 
     private DiaryEntry existingDay(DiaryEntryGame... lines) {
@@ -139,7 +227,7 @@ class SyncedPlayRecorderTest {
             line.setEntry(entry);
             entry.getGames().add(line);
         }
-        when(diaryEntryRepository.findByUserIdAndEntryDate(USER_ID, DAY)).thenReturn(Optional.of(entry));
+        when(diaryEntryRepository.findForUpdate(USER_ID, DAY)).thenReturn(Optional.of(entry));
         return entry;
     }
 
