@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -180,7 +181,7 @@ public class DiaryServiceImpl implements DiaryService {
                 if (game.getExperienceId() != null && !isRunOf(run, game.getGameId(), userId)) {
                     runErrors.put(field, InvalidRequestException.INVALID_DIARY_RUN);
                 }
-                boolean unchanged = game.getHours().compareTo(oldLine.getHours()) == 0
+                boolean unchanged = sameDiaryHours(game.getHours(), oldLine.getHours())
                         && Objects.equals(run, oldLine.getExperienceId());
                 resolved.add(new ResolvedGame(game, null, run, unchanged));
                 continue;
@@ -362,6 +363,14 @@ public class DiaryServiceImpl implements DiaryService {
                 throw new InvalidRequestException(InvalidRequestException.DUPLICATE_DIARY_GAME);
             }
         }
+    }
+
+    /**
+     * Same hours as stored (NUMERIC(5,2)), whatever the scale sent: the web echoes 1.50 back as 1.5, and a
+     * value is compared at the 2 decimals the column keeps.
+     */
+    static boolean sameDiaryHours(BigDecimal sent, BigDecimal stored) {
+        return sent.setScale(2, RoundingMode.HALF_UP).compareTo(stored.setScale(2, RoundingMode.HALF_UP)) == 0;
     }
 
     private static String trimToNull(String value) {

@@ -348,6 +348,35 @@ class DiaryServiceImplTest {
     }
 
     @Test
+    void webEchoOfAnAutoLineKeepsItAuto() {
+        // pytra-web reads hours as a JS number (1.50 -> 1.5, 0.33 -> 0.33), shows them rounded to 2 decimals,
+        // and sends them back as numbers with the line's experienceId when it has one.
+        ownedGame(GameCategory.SINGLEPLAYER);
+        runs(run(RUN_A, ExperienceStatus.EN_CURSO), run(RUN_B, ExperienceStatus.EN_CURSO));
+        when(experienceRepository.findByIdAndUserId(RUN_A, USER_ID))
+                .thenReturn(Optional.of(run(RUN_A, ExperienceStatus.EN_CURSO)));
+        DiaryEntry entry = existingDay(autoLine(RUN_A, "1.50"));
+        DiaryDayRequestDto webPayload = day(game(RUN_A, "1.5"));
+        webPayload.setNote("Late session");
+
+        service.saveDay(DAY, webPayload, USER_ID);
+
+        verifyNoInteractions(experienceService, onlinePlaytimeService);
+        assertThat(entry.getGames()).singleElement().satisfies(line -> {
+            assertThat(line.isAutoSynced()).isTrue();
+            assertThat(line.getExperienceId()).isEqualTo(RUN_A);
+        });
+    }
+
+    @Test
+    void sameDiaryHoursIgnoresScale() {
+        assertThat(DiaryServiceImpl.sameDiaryHours(new BigDecimal("1.5"), new BigDecimal("1.50"))).isTrue();
+        assertThat(DiaryServiceImpl.sameDiaryHours(new BigDecimal("2"), new BigDecimal("2.00"))).isTrue();
+        assertThat(DiaryServiceImpl.sameDiaryHours(new BigDecimal("0.33"), new BigDecimal("0.33"))).isTrue();
+        assertThat(DiaryServiceImpl.sameDiaryHours(new BigDecimal("1.25"), new BigDecimal("1.50"))).isFalse();
+    }
+
+    @Test
     void editingAnAutoLineMakesItTheUsersButStillRecordOnly() {
         ownedGame(GameCategory.ONLINE);
         DiaryEntry entry = existingDay(autoLine(null, "1"));
