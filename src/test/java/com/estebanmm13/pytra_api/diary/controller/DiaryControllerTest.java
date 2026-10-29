@@ -151,7 +151,7 @@ class DiaryControllerTest {
     @Test
     void gameDiaryListsTheDaysOfTheGame() throws Exception {
         when(diaryService.findByGame(3L, USER_ID))
-                .thenReturn(List.of(new GameDiaryDayResponseDto(DAY, new BigDecimal("2"), null, 11L, true)));
+                .thenReturn(List.of(new GameDiaryDayResponseDto(DAY, new BigDecimal("2"), null, 11L, true, false)));
 
         mockMvc.perform(get("/api/v1/games/3/diary"))
                 .andExpect(status().isOk())
