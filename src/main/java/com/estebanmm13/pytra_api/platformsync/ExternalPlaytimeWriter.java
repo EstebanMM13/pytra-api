@@ -4,7 +4,9 @@ import com.estebanmm13.pytra_api.config.AppTimeZone;
 import com.estebanmm13.pytra_api.diary.service.SyncedPlayRecorder;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
+import com.estebanmm13.pytra_api.experiences.model.OnlinePlatformHours;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
+import com.estebanmm13.pytra_api.platforms.model.Platform;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.HybridPlaytimeReconciler;
@@ -178,7 +180,16 @@ public class ExternalPlaytimeWriter {
                 .orElse(null);
 
         OnlinePlaytime onlinePlaytime = findOrNewOnlinePlaytime(game.getUserId(), game.getId());
+        double imported = syncedTotalHours - onlinePlaytime.getTotalHours();
         onlinePlaytime.setTotalHours(Math.max(onlinePlaytime.getTotalHours(), syncedTotalHours));
+        // The hours added on top of the typed ones go to each link's platform, by its share of the synced minutes.
+        long linkedMinutes = links.stream().mapToLong(GamePlatformLink::getLastSyncedPlaytimeMinutes).sum();
+        if (imported > 0 && linkedMinutes > 0) {
+            for (GamePlatformLink link : links) {
+                OnlinePlatformHours.add(onlinePlaytime, catalogPlatformOf(link),
+                        imported * link.getLastSyncedPlaytimeMinutes() / linkedMinutes);
+            }
+        }
         onlinePlaytime.setLastSessionAt(lastSyncedAt);
         onlinePlaytimeRepository.save(onlinePlaytime);
     }
@@ -212,6 +223,7 @@ public class ExternalPlaytimeWriter {
 
         OnlinePlaytime onlinePlaytime = findOrNewOnlinePlaytime(link.getUserId(), game.getId());
         onlinePlaytime.setTotalHours(onlinePlaytime.getTotalHours() + hoursToAdd);
+        OnlinePlatformHours.add(onlinePlaytime, catalogPlatformOf(link), hoursToAdd);
         onlinePlaytime.setLastSessionAt(sessionAt);
         onlinePlaytimeRepository.save(onlinePlaytime);
         return true;
@@ -256,6 +268,19 @@ public class ExternalPlaytimeWriter {
                 .notes(source.note())
                 .build());
         link.setExperienceId(experience.getId());
+    }
+
+    /** Catalog platform of a link's hours (Steam: PC; PSN: the PS4 or PS5 version); null when unknown. */
+    private Platform catalogPlatformOf(GamePlatformLink link) {
+        return catalogPlatformOf(link, platformService);
+    }
+
+    public static Platform catalogPlatformOf(GamePlatformLink link, PlatformService platformService) {
+        return switch (link.getPlatform()) {
+            case STEAM, PSN_PS4, PSN_PS5 ->
+                    platformService.requireByLegacyCode(ImportedRunSource.of(link.getPlatform()).platformLegacyCode());
+            default -> null;
+        };
     }
 
     private OnlinePlaytime findOrNewOnlinePlaytime(Long userId, Long gameId) {

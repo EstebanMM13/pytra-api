@@ -48,7 +48,8 @@ class ExternalPlaytimeWriterTest {
     private final PlatformService platformService = mock(PlatformService.class);
     private final GamePlatformLinkRepository gamePlatformLinkRepository = mock(GamePlatformLinkRepository.class);
     private final HybridPlaytimeReconciler hybridPlaytimeReconciler =
-            new HybridPlaytimeReconciler(experienceRepository, onlinePlaytimeRepository, gamePlatformLinkRepository);
+            new HybridPlaytimeReconciler(experienceRepository, onlinePlaytimeRepository, gamePlatformLinkRepository,
+                    platformService);
     private final SyncedPlayRecorder syncedPlayRecorder = mock(SyncedPlayRecorder.class);
     private static final ZoneId UTC = ZoneId.of("UTC");
     private static final ZoneId MADRID = ZoneId.of("Europe/Madrid");
@@ -60,11 +61,42 @@ class ExternalPlaytimeWriterTest {
 
     @BeforeEach
     void setUp() {
+        long id = 1;
         for (String code : List.of("PC", "PS4", "PS5")) {
             when(platformService.requireByLegacyCode(code))
-                    .thenReturn(Platform.builder().name(code).legacyCode(code).build());
+                    .thenReturn(Platform.builder().id(id++).name(code).legacyCode(code).build());
         }
         when(experienceRepository.save(any(Experience.class))).thenAnswer(inv -> inv.getArgument(0));
+    }
+
+    @Test
+    void onlineSyncDeltaGoesToTheLinkPlatformAddingItWhenMissing() {
+        Game game = game(GameCategory.ONLINE, ReviewStatus.CONFIRMED);
+        GamePlatformLink steam = link(game, ExternalPlatform.STEAM, 600);
+        OnlinePlaytime stored = OnlinePlaytime.builder().userId(USER_ID).gameId(GAME_ID).totalHours(20.0).build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(stored));
+
+        writer.applySyncedTotal(steam, 720, LocalDateTime.of(2026, 10, 31, 10, 0));
+
+        // Steam is PC: the 2 new hours are PC's, and PC becomes one of the online platforms.
+        assertThat(stored.getTotalHours()).isEqualTo(22.0);
+        assertThat(stored.getPlatforms()).extracting(Platform::getLegacyCode).containsExactly("PC");
+        assertThat(stored.getPlatformHours()).containsExactlyEntriesOf(java.util.Map.of(1L, 2.0));
+    }
+
+    @Test
+    void onlineConfirmGivesTheImportedHoursToEachLinkPlatform() {
+        Game game = game(GameCategory.ONLINE, ReviewStatus.CONFIRMED);
+        GamePlatformLink ps4 = link(game, ExternalPlatform.PSN_PS4, 60);
+        GamePlatformLink ps5 = link(game, ExternalPlatform.PSN_PS5, 180);
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.empty());
+
+        writer.importTotalsOnConfirm(List.of(ps4, ps5), game);
+
+        ArgumentCaptor<OnlinePlaytime> saved = ArgumentCaptor.forClass(OnlinePlaytime.class);
+        verify(onlinePlaytimeRepository).save(saved.capture());
+        assertThat(saved.getValue().getTotalHours()).isEqualTo(4.0);
+        assertThat(saved.getValue().getPlatformHours()).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(2L, 1.0, 3L, 3.0));
     }
 
     @Test

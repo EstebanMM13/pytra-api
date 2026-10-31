@@ -245,8 +245,11 @@ public class DiaryServiceImpl implements DiaryService {
     private Long pickOnlinePlatform(DiaryGameRequestDto game, DiaryEntryGame oldLine, Long userId, String field,
                                     Map<String, String> errors) {
         Set<Long> platformIds = onlinePlaytimeService.platformIdsOf(game.getGameId(), userId);
-        if (platformIds.size() < 2) {
+        if (platformIds.isEmpty()) {
             return null;
+        }
+        if (platformIds.size() == 1 && game.getPlatformId() == null) {
+            return platformIds.iterator().next();
         }
         if (game.getPlatformId() != null) {
             if (!platformIds.contains(game.getPlatformId())) {

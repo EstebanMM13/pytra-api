@@ -38,6 +38,7 @@ public class HybridPlaytimeReconciler {
     private final ExperienceRepository experienceRepository;
     private final OnlinePlaytimeRepository onlinePlaytimeRepository;
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
+    private final com.estebanmm13.pytra_api.platforms.service.PlatformService platformService;
 
     /**
      * Synced share before a run of {@code game} is created, edited or deleted; pass it to
@@ -97,10 +98,18 @@ public class HybridPlaytimeReconciler {
         List<Experience> runs = runsOf(game);
         double shareBefore = SyncedOnlineHours.of(before, runs);
         double shareAfter = SyncedOnlineHours.of(after, runs);
-        return shiftOnlineHours(game, shareBefore, shareAfter, sessionAt) && shareAfter > shareBefore;
+        return shiftOnlineHours(game, shareBefore, shareAfter, sessionAt,
+                com.estebanmm13.pytra_api.platformsync.ExternalPlaytimeWriter.catalogPlatformOf(link, platformService))
+                && shareAfter > shareBefore;
     }
 
     private boolean shiftOnlineHours(Game game, double shareBefore, double shareAfter, LocalDateTime sessionAt) {
+        return shiftOnlineHours(game, shareBefore, shareAfter, sessionAt, null);
+    }
+
+    /** {@code platform}: the platform the change comes from (a sync link), whose share moves too; null: total only. */
+    private boolean shiftOnlineHours(Game game, double shareBefore, double shareAfter, LocalDateTime sessionAt,
+                                     com.estebanmm13.pytra_api.platforms.model.Platform platform) {
         double delta = shareAfter - shareBefore;
         if (Math.abs(delta) < EPSILON) {
             return false;
@@ -115,6 +124,7 @@ public class HybridPlaytimeReconciler {
             onlinePlaytime = OnlinePlaytime.builder().userId(game.getUserId()).gameId(game.getId()).totalHours(0.0).build();
         }
         onlinePlaytime.setTotalHours(Math.max(0.0, onlinePlaytime.getTotalHours() + delta));
+        com.estebanmm13.pytra_api.experiences.model.OnlinePlatformHours.add(onlinePlaytime, platform, delta);
         if (sessionAt != null) {
             onlinePlaytime.setLastSessionAt(sessionAt);
         }

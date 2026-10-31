@@ -35,7 +35,8 @@ class HybridPlaytimeReconcilerTest {
     private final OnlinePlaytimeRepository onlinePlaytimeRepository = mock(OnlinePlaytimeRepository.class);
     private final GamePlatformLinkRepository gamePlatformLinkRepository = mock(GamePlatformLinkRepository.class);
     private final HybridPlaytimeReconciler reconciler =
-            new HybridPlaytimeReconciler(experienceRepository, onlinePlaytimeRepository, gamePlatformLinkRepository);
+            new HybridPlaytimeReconciler(experienceRepository, onlinePlaytimeRepository, gamePlatformLinkRepository,
+                    org.mockito.Mockito.mock(com.estebanmm13.pytra_api.platforms.service.PlatformService.class));
 
     @Test
     void loggingARunOnTheSyncedPlatformMovesItsHoursOutOfOnline() {

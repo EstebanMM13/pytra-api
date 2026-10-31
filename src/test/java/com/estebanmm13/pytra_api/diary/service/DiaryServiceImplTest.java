@@ -423,6 +423,17 @@ class DiaryServiceImplTest {
     }
 
     @Test
+    void anOnlineLineGoesToTheOnlyOnlinePlatformWithoutAsking() {
+        ownedGame(GameCategory.ONLINE);
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC));
+
+        DiaryDayResponseDto day = service.saveDay(DAY, day(game(null, "2")), USER_ID).orElseThrow();
+
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("2"), PC, USER_ID);
+        assertThat(day.games().get(0).platformId()).isEqualTo(PC);
+    }
+
+    @Test
     void anOnlineLineWithSeveralPlatformsAndNoPlatformIsRefused() {
         ownedGame(GameCategory.ONLINE);
         when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));

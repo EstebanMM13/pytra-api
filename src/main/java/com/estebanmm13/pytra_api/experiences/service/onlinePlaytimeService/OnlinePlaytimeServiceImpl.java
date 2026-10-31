@@ -102,7 +102,7 @@ public class OnlinePlaytimeServiceImpl implements OnlinePlaytimeService {
         );
         onlinePlaytime.setTotalHours(HoursArithmetic.add(onlinePlaytime.getTotalHours(), deltaHours));
         Set<Long> platformIds = platformIdsOf(onlinePlaytime);
-        if (platformId != null && platformIds.size() >= 2 && platformIds.contains(platformId)) {
+        if (platformId != null && platformIds.contains(platformId)) {
             double hours = HoursArithmetic.add(onlinePlaytime.getPlatformHours().get(platformId), deltaHours);
             if (hours > 0) {
                 onlinePlaytime.getPlatformHours().put(platformId, hours);
@@ -126,7 +126,7 @@ public class OnlinePlaytimeServiceImpl implements OnlinePlaytimeService {
 
     /**
      * Sets the per-platform breakdown (null keeps the stored one), drops the hours of platforms no longer
-     * played online and clears it below two platforms. Validated against the record's platforms and total.
+     * played online. Validated against the record's platforms and total.
      */
     private static void applyPlatformHours(OnlinePlaytime onlinePlaytime, Map<Long, Double> requested) {
         Set<Long> platformIds = platformIdsOf(onlinePlaytime);
@@ -142,11 +142,7 @@ public class OnlinePlaytimeServiceImpl implements OnlinePlaytimeService {
             onlinePlaytime.getPlatformHours().clear();
             onlinePlaytime.getPlatformHours().putAll(requested);
         }
-        if (platformIds.size() < 2) {
-            onlinePlaytime.getPlatformHours().clear();
-        } else {
-            onlinePlaytime.getPlatformHours().keySet().retainAll(platformIds);
-        }
+        onlinePlaytime.getPlatformHours().keySet().retainAll(platformIds);
     }
 
     /** Catalog entries for the ids; any unknown id rejects the whole request. */

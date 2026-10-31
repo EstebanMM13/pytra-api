@@ -233,7 +233,7 @@ class OnlinePlaytimeServiceImplTest {
     }
 
     @Test
-    void platformHoursAreClearedWithFewerThanTwoPlatforms() {
+    void platformHoursStayWithASinglePlatform() {
         OnlinePlaytime existing = OnlinePlaytime.builder()
                 .id(1L).userId(USER_ID).gameId(GAME_ID).totalHours(12.0)
                 .platforms(new HashSet<>(Set.of(TestPlatforms.PC, TestPlatforms.PS5)))
@@ -245,7 +245,7 @@ class OnlinePlaytimeServiceImplTest {
 
         OnlinePlaytimeResponseDto response = service.upsert(GAME_ID, request(ids), USER_ID);
 
-        assertThat(response.getPlatformHours()).isEmpty();
+        assertThat(response.getPlatformHours()).containsExactlyEntriesOf(Map.of(TestPlatforms.PC.getId(), 3.0));
     }
 
     @Test
@@ -266,7 +266,7 @@ class OnlinePlaytimeServiceImplTest {
     }
 
     @Test
-    void addHoursOnAPlatformOnlyChangesTheTotalBelowTwoPlatforms() {
+    void addHoursOnTheOnlyPlatformAlsoMovesItsHours() {
         OnlinePlaytime existing = OnlinePlaytime.builder()
                 .id(1L).userId(USER_ID).gameId(GAME_ID).totalHours(10.0)
                 .platforms(new HashSet<>(Set.of(TestPlatforms.PC)))
@@ -276,7 +276,7 @@ class OnlinePlaytimeServiceImplTest {
         service.addHours(GAME_ID, new java.math.BigDecimal("2"), TestPlatforms.PC.getId(), USER_ID);
 
         assertThat(existing.getTotalHours()).isEqualTo(12.0);
-        assertThat(existing.getPlatformHours()).isEmpty();
+        assertThat(existing.getPlatformHours()).containsExactlyEntriesOf(Map.of(TestPlatforms.PC.getId(), 2.0));
     }
 
     @Test
