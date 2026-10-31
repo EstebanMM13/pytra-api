@@ -73,9 +73,18 @@ public class DiaryServiceImpl implements DiaryService {
     private final ExperienceService experienceService;
     private final OnlinePlaytimeService onlinePlaytimeService;
 
-    /** Where a line's hours were added: a run, or the online playtime ({@code experienceId == null}). */
-    private record Target(Long experienceId) {
-        static final Target ONLINE = new Target(null);
+    /**
+     * Where a line's hours were added: a run, or the online playtime ({@code experienceId == null}), on
+     * {@code platformId} when the line names its online platform.
+     */
+    private record Target(Long experienceId, Long platformId) {
+        static Target run(Long experienceId) {
+            return new Target(experienceId, null);
+        }
+
+        static Target online(Long platformId) {
+            return new Target(null, platformId);
+        }
     }
 
     /**
@@ -167,6 +176,7 @@ public class DiaryServiceImpl implements DiaryService {
         Set<Long> syncedGameIds = syncedGameIds(userId);
         List<ResolvedGame> resolved = new ArrayList<>();
         Map<String, String> runErrors = new LinkedHashMap<>();
+        Map<String, String> platformErrors = new LinkedHashMap<>();
         for (int i = 0; i < requested.size(); i++) {
             DiaryGameRequestDto game = requested.get(i);
             Game owned = requireOwnedGame(game.getGameId(), userId);
@@ -198,7 +208,8 @@ public class DiaryServiceImpl implements DiaryService {
                 continue;
             }
             if (owned.getCategory() == GameCategory.ONLINE) {
-                resolved.add(new ResolvedGame(game, Target.ONLINE, null));
+                Long platform = pickOnlinePlatform(game, oldLine, userId, "games[" + i + "].platformId", platformErrors);
+                resolved.add(new ResolvedGame(game, Target.online(platform), null));
                 continue;
             }
 
@@ -209,7 +220,7 @@ public class DiaryServiceImpl implements DiaryService {
                         ? InvalidRequestException.INVALID_DIARY_RUN
                         : InvalidRequestException.DIARY_RUN_REQUIRED);
             }
-            resolved.add(new ResolvedGame(game, new Target(run), run));
+            resolved.add(new ResolvedGame(game, Target.run(run), run));
         }
         if (!runErrors.isEmpty()) {
             String code = runErrors.containsValue(InvalidRequestException.DIARY_RUN_REQUIRED)
@@ -217,7 +228,37 @@ public class DiaryServiceImpl implements DiaryService {
                     : InvalidRequestException.INVALID_DIARY_RUN;
             throw new InvalidRequestException(code, runErrors);
         }
+        if (!platformErrors.isEmpty()) {
+            String code = platformErrors.containsValue(InvalidRequestException.DIARY_PLATFORM_REQUIRED)
+                    ? InvalidRequestException.DIARY_PLATFORM_REQUIRED
+                    : InvalidRequestException.INVALID_PLATFORM;
+            throw new InvalidRequestException(code, platformErrors);
+        }
         return resolved;
+    }
+
+    /**
+     * Online platform of a line counted into online playtime: only asked for when the game is played online
+     * on two or more platforms. The sent one (must be one of them), else the one the line already had; null
+     * otherwise, recording the error under {@code field} when it is required.
+     */
+    private Long pickOnlinePlatform(DiaryGameRequestDto game, DiaryEntryGame oldLine, Long userId, String field,
+                                    Map<String, String> errors) {
+        Set<Long> platformIds = onlinePlaytimeService.platformIdsOf(game.getGameId(), userId);
+        if (platformIds.size() < 2) {
+            return null;
+        }
+        if (game.getPlatformId() != null) {
+            if (!platformIds.contains(game.getPlatformId())) {
+                errors.put(field, InvalidRequestException.INVALID_PLATFORM);
+            }
+            return game.getPlatformId();
+        }
+        if (oldLine != null && oldLine.getPlatformId() != null && platformIds.contains(oldLine.getPlatformId())) {
+            return oldLine.getPlatformId();
+        }
+        errors.put(field, InvalidRequestException.DIARY_PLATFORM_REQUIRED);
+        return null;
     }
 
     /** The sent run, else the run the line already used, else the only run in progress; null when none fits. */
@@ -244,7 +285,7 @@ public class DiaryServiceImpl implements DiaryService {
      * nothing): only the difference on the same target; otherwise subtract from the old one, add to the new one.
      */
     private void moveHours(Long gameId, DiaryEntryGame old, Target newTarget, BigDecimal newHours, Long userId) {
-        Target oldTarget = old != null && old.isCountsHours() ? new Target(old.getExperienceId()) : null;
+        Target oldTarget = old != null && old.isCountsHours() ? new Target(old.getExperienceId(), old.getPlatformId()) : null;
         BigDecimal oldHours = oldTarget != null ? old.getHours() : BigDecimal.ZERO;
 
         if (Objects.equals(oldTarget, newTarget)) {
@@ -265,6 +306,8 @@ public class DiaryServiceImpl implements DiaryService {
     private void addHours(Target target, Long gameId, BigDecimal delta, Long userId) {
         if (target.experienceId() != null) {
             experienceService.addHours(target.experienceId(), delta, userId);
+        } else if (target.platformId() != null) {
+            onlinePlaytimeService.addHours(gameId, delta, target.platformId(), userId);
         } else {
             onlinePlaytimeService.addHours(gameId, delta, userId);
         }
@@ -286,6 +329,7 @@ public class DiaryServiceImpl implements DiaryService {
             line.setHours(request.getHours());
             line.setNote(trimToNull(request.getNote()));
             line.setCountsHours(game.target() != null);
+            line.setPlatformId(game.target() != null ? game.target().platformId() : null);
             line.setAutoSynced(game.autoSynced());
             kept.add(request.getGameId());
         }
@@ -332,7 +376,8 @@ public class DiaryServiceImpl implements DiaryService {
                         line.getNote(),
                         line.isCountsHours(),
                         synced.contains(line.getGameId()),
-                        line.isAutoSynced()));
+                        line.isAutoSynced(),
+                        line.getPlatformId()));
                 total = total.add(line.getHours());
             }
             responses.add(new DiaryDayResponseDto(entry.getEntryDate(), entry.getNote(), total, lines));

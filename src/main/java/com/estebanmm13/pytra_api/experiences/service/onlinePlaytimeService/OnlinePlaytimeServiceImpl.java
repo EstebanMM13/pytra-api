@@ -81,6 +81,12 @@ public class OnlinePlaytimeServiceImpl implements OnlinePlaytimeService {
     @Override
     @Transactional
     public void addHours(Long gameId, BigDecimal deltaHours, Long userId) {
+        addHours(gameId, deltaHours, null, userId);
+    }
+
+    @Override
+    @Transactional
+    public void addHours(Long gameId, BigDecimal deltaHours, Long platformId, Long userId) {
         requireOwnedGame(gameId, userId);
 
         Optional<OnlinePlaytime> existing = onlinePlaytimeRepository.findByGameIdAndUserId(gameId, userId);
@@ -95,7 +101,27 @@ public class OnlinePlaytimeServiceImpl implements OnlinePlaytimeService {
                         .build()
         );
         onlinePlaytime.setTotalHours(HoursArithmetic.add(onlinePlaytime.getTotalHours(), deltaHours));
+        Set<Long> platformIds = platformIdsOf(onlinePlaytime);
+        if (platformId != null && platformIds.size() >= 2 && platformIds.contains(platformId)) {
+            double hours = HoursArithmetic.add(onlinePlaytime.getPlatformHours().get(platformId), deltaHours);
+            if (hours > 0) {
+                onlinePlaytime.getPlatformHours().put(platformId, hours);
+            } else {
+                onlinePlaytime.getPlatformHours().remove(platformId);
+            }
+        }
         onlinePlaytimeRepository.save(onlinePlaytime);
+    }
+
+    @Override
+    public Set<Long> platformIdsOf(Long gameId, Long userId) {
+        return onlinePlaytimeRepository.findByGameIdAndUserId(gameId, userId)
+                .map(OnlinePlaytimeServiceImpl::platformIdsOf)
+                .orElseGet(Set::of);
+    }
+
+    private static Set<Long> platformIdsOf(OnlinePlaytime onlinePlaytime) {
+        return onlinePlaytime.getPlatforms().stream().map(Platform::getId).collect(Collectors.toSet());
     }
 
     /**
@@ -103,7 +129,7 @@ public class OnlinePlaytimeServiceImpl implements OnlinePlaytimeService {
      * played online and clears it below two platforms. Validated against the record's platforms and total.
      */
     private static void applyPlatformHours(OnlinePlaytime onlinePlaytime, Map<Long, Double> requested) {
-        Set<Long> platformIds = onlinePlaytime.getPlatforms().stream().map(Platform::getId).collect(Collectors.toSet());
+        Set<Long> platformIds = platformIdsOf(onlinePlaytime);
         if (requested != null) {
             if (!platformIds.containsAll(requested.keySet())) {
                 throw new InvalidRequestException(InvalidRequestException.INVALID_PLATFORM);

@@ -403,6 +403,98 @@ class DiaryServiceImplTest {
         verifyNoInteractions(experienceService, onlinePlaytimeService);
     }
 
+    // ---------------------------------------------------------------- online platform of a line
+
+    private static final Long PC = 1L;
+    private static final Long PS5 = 2L;
+
+    @Test
+    void anOnlineLineWithSeveralPlatformsAddsItsHoursToThePickedPlatform() {
+        ownedGame(GameCategory.ONLINE);
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));
+        DiaryGameRequestDto game = game(null, "1.75");
+        game.setPlatformId(PS5);
+
+        DiaryDayResponseDto day = service.saveDay(DAY, day(game), USER_ID).orElseThrow();
+
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("1.75"), PS5, USER_ID);
+        assertThat(day.games().get(0).platformId()).isEqualTo(PS5);
+        assertThat(day.games().get(0).countsHours()).isTrue();
+    }
+
+    @Test
+    void anOnlineLineWithSeveralPlatformsAndNoPlatformIsRefused() {
+        ownedGame(GameCategory.ONLINE);
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));
+
+        assertThatThrownBy(() -> service.saveDay(DAY, day(game(null, "1")), USER_ID))
+                .isInstanceOfSatisfying(InvalidRequestException.class, e -> {
+                    assertThat(e.getMessage()).isEqualTo(InvalidRequestException.DIARY_PLATFORM_REQUIRED);
+                    assertThat(e.getFieldErrors()).containsEntry("games[0].platformId",
+                            InvalidRequestException.DIARY_PLATFORM_REQUIRED);
+                });
+        verifyNoInteractions(experienceService);
+        verify(onlinePlaytimeService, never()).addHours(anyLong(), any(), any(), anyLong());
+        verify(onlinePlaytimeService, never()).addHours(anyLong(), any(), anyLong());
+        verify(diaryEntryRepository, never()).save(any());
+    }
+
+    @Test
+    void anOnlineLineOnAPlatformNotPlayedOnlineIsRefused() {
+        ownedGame(GameCategory.ONLINE);
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));
+        DiaryGameRequestDto game = game(null, "1");
+        game.setPlatformId(99L);
+
+        assertThatThrownBy(() -> service.saveDay(DAY, day(game), USER_ID))
+                .isInstanceOfSatisfying(InvalidRequestException.class, e -> {
+                    assertThat(e.getMessage()).isEqualTo(InvalidRequestException.INVALID_PLATFORM);
+                    assertThat(e.getFieldErrors()).containsEntry("games[0].platformId",
+                            InvalidRequestException.INVALID_PLATFORM);
+                });
+        verify(diaryEntryRepository, never()).save(any());
+    }
+
+    @Test
+    void changingTheOnlinePlatformMovesTheHours() {
+        ownedGame(GameCategory.ONLINE);
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));
+        DiaryEntryGame old = line(null, "3", true);
+        old.setPlatformId(PC);
+        existingDay(old);
+        DiaryGameRequestDto game = game(null, "3");
+        game.setPlatformId(PS5);
+
+        service.saveDay(DAY, day(game), USER_ID);
+
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("-3"), PC, USER_ID);
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("3"), PS5, USER_ID);
+    }
+
+    @Test
+    void anEditedOnlineLineKeepsItsPlatformWhenNoneIsSent() {
+        ownedGame(GameCategory.ONLINE);
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));
+        DiaryEntryGame old = line(null, "3", true);
+        old.setPlatformId(PC);
+        existingDay(old);
+
+        service.saveDay(DAY, day(game(null, "1")), USER_ID);
+
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("-2"), PC, USER_ID);
+    }
+
+    @Test
+    void deletingTheDayTakesTheHoursBackFromTheLinePlatform() {
+        DiaryEntryGame old = line(null, "3", true);
+        old.setPlatformId(PC);
+        existingDay(old);
+
+        service.deleteDay(DAY, USER_ID);
+
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("-3"), PC, USER_ID);
+    }
+
     private static DiaryEntryGame autoLine(Long experienceId, String hours) {
         DiaryEntryGame line = line(experienceId, hours, false);
         line.setAutoSynced(true);

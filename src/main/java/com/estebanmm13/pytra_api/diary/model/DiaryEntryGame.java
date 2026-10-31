@@ -31,6 +31,12 @@ public class DiaryEntryGame {
 
     private Long experienceId;
 
+    /**
+     * Platform the online hours were played on (lines counted into online playtime of a game played online on
+     * two or more platforms); those hours are also in that platform's share of the online playtime.
+     */
+    private Long platformId;
+
     @Column(nullable = false, precision = 5, scale = 2)
     private BigDecimal hours;
 

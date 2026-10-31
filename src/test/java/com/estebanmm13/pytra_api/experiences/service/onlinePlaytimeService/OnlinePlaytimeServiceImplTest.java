@@ -248,6 +248,51 @@ class OnlinePlaytimeServiceImplTest {
         assertThat(response.getPlatformHours()).isEmpty();
     }
 
+    @Test
+    void addHoursOnAPlatformAlsoMovesItsShareOfTheBreakdown() {
+        OnlinePlaytime existing = OnlinePlaytime.builder()
+                .id(1L).userId(USER_ID).gameId(GAME_ID).totalHours(10.0)
+                .platforms(new HashSet<>(Set.of(TestPlatforms.PC, TestPlatforms.PS5)))
+                .platformHours(new HashMap<>(Map.of(TestPlatforms.PC.getId(), 4.0)))
+                .build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(existing));
+
+        service.addHours(GAME_ID, new java.math.BigDecimal("2.5"), TestPlatforms.PS5.getId(), USER_ID);
+        service.addHours(GAME_ID, new java.math.BigDecimal("-6"), TestPlatforms.PC.getId(), USER_ID);
+
+        assertThat(existing.getTotalHours()).isEqualTo(6.5);
+        // Never below 0: PC had 4 h, so taking 6 leaves it without hours.
+        assertThat(existing.getPlatformHours()).containsExactlyEntriesOf(Map.of(TestPlatforms.PS5.getId(), 2.5));
+    }
+
+    @Test
+    void addHoursOnAPlatformOnlyChangesTheTotalBelowTwoPlatforms() {
+        OnlinePlaytime existing = OnlinePlaytime.builder()
+                .id(1L).userId(USER_ID).gameId(GAME_ID).totalHours(10.0)
+                .platforms(new HashSet<>(Set.of(TestPlatforms.PC)))
+                .build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(existing));
+
+        service.addHours(GAME_ID, new java.math.BigDecimal("2"), TestPlatforms.PC.getId(), USER_ID);
+
+        assertThat(existing.getTotalHours()).isEqualTo(12.0);
+        assertThat(existing.getPlatformHours()).isEmpty();
+    }
+
+    @Test
+    void platformIdsOfListsTheOnlinePlatformsOrNoneWithoutARecord() {
+        OnlinePlaytime existing = OnlinePlaytime.builder()
+                .id(1L).userId(USER_ID).gameId(GAME_ID).totalHours(10.0)
+                .platforms(new HashSet<>(Set.of(TestPlatforms.PC, TestPlatforms.PS5)))
+                .build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(existing));
+        assertThat(service.platformIdsOf(GAME_ID, USER_ID))
+                .containsExactlyInAnyOrder(TestPlatforms.PC.getId(), TestPlatforms.PS5.getId());
+
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.empty());
+        assertThat(service.platformIdsOf(GAME_ID, USER_ID)).isEmpty();
+    }
+
     private static OnlinePlaytimeRequestDto request(Set<Long> platformIds) {
         OnlinePlaytimeRequestDto dto = new OnlinePlaytimeRequestDto();
         dto.setTotalHours(12.0);

@@ -6,7 +6,8 @@ import java.math.BigDecimal;
  * A game of a diary day. {@code countsHours}: the hours were added to the game's data (the run
  * {@code experienceId}, or the online playtime when it is null). {@code synced}: the game is linked to
  * Steam/PSN, whose sync counts the real playtime instead. {@code autoSynced}: the line was written by the
- * Steam/PSN sync (record only, it never counts hours).
+ * Steam/PSN sync (record only, it never counts hours). {@code platformId}: the online platform the counted
+ * online hours were played on (null when not asked for).
  */
 public record DiaryGameResponseDto(
         Long gameId,
@@ -18,6 +19,7 @@ public record DiaryGameResponseDto(
         String note,
         boolean countsHours,
         boolean synced,
-        boolean autoSynced
+        boolean autoSynced,
+        Long platformId
 ) {
 }

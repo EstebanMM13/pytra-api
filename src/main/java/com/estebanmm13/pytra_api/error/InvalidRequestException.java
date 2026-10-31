@@ -34,6 +34,11 @@ public class InvalidRequestException extends RuntimeException {
     public static final String DIARY_RUN_REQUIRED = "DIARY_RUN_REQUIRED";
     /** The {@code experienceId} sent for a diary game is not one of that game's runs. */
     public static final String INVALID_DIARY_RUN = "INVALID_DIARY_RUN";
+    /**
+     * A diary game whose hours go to online playtime played online on two or more platforms, sent without
+     * {@code platformId}. fieldErrors names each game as {@code games[i].platformId}.
+     */
+    public static final String DIARY_PLATFORM_REQUIRED = "DIARY_PLATFORM_REQUIRED";
 
     private final Map<String, String> fieldErrors;
 

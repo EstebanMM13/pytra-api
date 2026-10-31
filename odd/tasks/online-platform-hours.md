@@ -11,12 +11,16 @@ Branches: pytra-api `feat/online-platform-hours`, pytra-web `dev`. Delivery: ask
 - Assumption A1: games with several platforms and no split entered keep the current even split (existing data is not turned into "sin asignar").
 - Assumption A2: the split cannot exceed the total (400 `PLATFORM_HOURS_EXCEED_TOTAL`); if a later diary/sync change lowers the total below the split, stats scale the split down proportionally.
 - Assumption A3: year-scoped stats apply the same proportions to that year's diary online hours.
+- S4. "no es mas facil que si en el diario pones un juego online te pregunte la plataforma?" → "si": diary lines whose hours go to online playtime ask for the platform when the game has two or more online platforms; the hours are added to the total and to that platform's breakdown (edits/deletes move them back).
+- Assumption A4: only lines counted into online playtime (ONLINE games) carry a platform; Steam/PSN sync deltas keep adding to the total only (they show as unassigned). Old diary lines stay without platform.
 
 ## Tasks
 
 - T1 [S1,S2] API: migration + entity map + request/response field + validation + tests — inline — done (RED compile, GREEN 15/15) — f6eb5f8
 - T2 [S3] API: platform stats use the split (all-time and per year) + tests — inline — done (RED 2 failures, GREEN 13/13) — f6eb5f8
 - T3 [S1,S2] Web: per-platform hour inputs in the Online card, model, request, i18n, tests — inline — done (RED compile, GREEN 1096/1096) — pytra-web c85b55d
+- T4 [S4] API: diary line platform (V36), required with 2+ online platforms (DIARY_PLATFORM_REQUIRED), moves hours in platformHours — inline — pending
+- T5 [S4] Web: platform picker in the diary day editor for online games — inline — pending
 
 Route evidence: no Writer trigger (units depend on each other: web depends on the API contract); parent writes inline. Risk: item 1 (new table via migration).
 
@@ -26,3 +30,4 @@ Route evidence: no Writer trigger (units depend on each other: web depends on th
 - L2 (2026-10-31) Finding: `splitOnline` already splits evenly across the online platforms; the even split is what gets replaced.
 - L3 (2026-10-31) User: "lo que hay que hacer es en la sección Online de un juego si hay mas de una plataforma que el usuario ponga las horas para cada plataforma y entonces ya lo otro no tiene que calcular tanto". Decision: "Desglose del total (Recomendado)".
 - L4 (2026-10-31) Verification: API unit tests pass; 325 integration tests error because Docker is not running (Testcontainers), so V35 and the ddl-auto validate of the new map are not yet checked against Postgres. Web suite 118 files / 1096 tests pass. Next: start Docker and run `./mvnw test` in pytra-api; pytra-web-deploy not updated.
+- L5 (2026-10-31) User: "no es mas facil que si en el diario pones un juego online te pregunte la plataforma?" then "si" to doing it as a second phase.

@@ -22,6 +22,12 @@ public class DiaryGameRequestDto {
     private Long gameId;
 
     private Long experienceId;
+    /**
+     * Platform the hours were played on, for a game whose hours go to online playtime: required when it is
+     * played online on two or more platforms (DIARY_PLATFORM_REQUIRED, unless the line already had one) and
+     * must be one of them (INVALID_PLATFORM); ignored otherwise.
+     */
+    private Long platformId;
 
     /** More than 0 and at most 24, with up to 2 decimals; more decimals are rejected, never rounded. */
     @NotNull
