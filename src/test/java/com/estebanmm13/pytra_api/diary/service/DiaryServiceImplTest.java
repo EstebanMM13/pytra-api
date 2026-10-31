@@ -434,6 +434,20 @@ class DiaryServiceImplTest {
     }
 
     @Test
+    void anOnlineLineWithAStalePlatformGoesToTheOnlyOnlinePlatform() {
+        ownedGame(GameCategory.ONLINE);
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC));
+        DiaryGameRequestDto game = game(null, "2");
+        game.setPlatformId(PS5);
+
+        DiaryDayResponseDto day = service.saveDay(DAY, day(game), USER_ID).orElseThrow();
+
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("2"), PC, USER_ID);
+        verify(onlinePlaytimeService, never()).addHours(GAME_ID, new BigDecimal("2"), PS5, USER_ID);
+        assertThat(day.games().get(0).platformId()).isEqualTo(PC);
+    }
+
+    @Test
     void anOnlineLineWithSeveralPlatformsAndNoPlatformIsRefused() {
         ownedGame(GameCategory.ONLINE);
         when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));

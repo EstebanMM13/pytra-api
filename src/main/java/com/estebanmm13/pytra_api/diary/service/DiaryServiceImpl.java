@@ -239,8 +239,9 @@ public class DiaryServiceImpl implements DiaryService {
 
     /**
      * Online platform of a line counted into online playtime: only asked for when the game is played online
-     * on two or more platforms. The sent one (must be one of them), else the one the line already had; null
-     * otherwise, recording the error under {@code field} when it is required.
+     * on two or more platforms. With a single one it is always that one, even when a stale platform the game
+     * no longer has is sent back. Otherwise the sent one (must be one of them), else the one the line already
+     * had; null otherwise, recording the error under {@code field} when it is required.
      */
     private Long pickOnlinePlatform(DiaryGameRequestDto game, DiaryEntryGame oldLine, Long userId, String field,
                                     Map<String, String> errors) {
@@ -248,7 +249,7 @@ public class DiaryServiceImpl implements DiaryService {
         if (platformIds.isEmpty()) {
             return null;
         }
-        if (platformIds.size() == 1 && game.getPlatformId() == null) {
+        if (platformIds.size() == 1) {
             return platformIds.iterator().next();
         }
         if (game.getPlatformId() != null) {
