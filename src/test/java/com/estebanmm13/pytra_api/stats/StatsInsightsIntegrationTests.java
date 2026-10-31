@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.time.LocalDate;
 
 import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -143,9 +144,11 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
         createExperienceVia(auth, quest, runOn("PC", "COMPLETADO", 8, 10.0, 2023));
         createExperienceVia(auth, quest, runOn("PS5", "ABANDONADO", 6, 4.0, 2024));
         Long arena = createOnlineGame("Platform Arena");
-        putOnlinePlaytime(arena, "30", pcId + ", " + ps5Id);
-        // +2 online hours dated 2024 (the playtime ends at 32h, 16h per platform).
+        putOnlinePlaytime(arena, "30", "");
+        // +2 online hours dated 2024, logged before the platforms were set (no platform asked for); then the
+        // playtime ends at 32h on two platforms without a per-platform split: 16h each.
         logDay("2024-02-01", line(arena, "2"));
+        putOnlinePlaytime(arena, "32", pcId + ", " + ps5Id);
         Long lobby = createOnlineGame("Platform Lobby");
         putOnlinePlaytime(lobby, "5", "");
 
@@ -196,6 +199,44 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.platforms[1].averageRating").value(nullValue()))
                 // byYear always covers every year.
                 .andExpect(jsonPath("$.byYear.length()").value(2));
+    }
+
+    @Test
+    void byPlatformUsesTheOnlineSplitKeptUpToDateByTheDiary() throws Exception {
+        Long arena = createOnlineGame("Split Arena");
+        performAs(auth, put("/api/v1/games/{gameId}/online-playtime", arena),
+                "{\"totalHours\": 10, \"platformIds\": [" + pcId + ", " + ps5Id + "], \"platformHours\": {\""
+                        + pcId + "\": 4}}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.platformHours['" + pcId + "']").value(4.0));
+
+        // Two online platforms: the diary asks which one.
+        performAs(auth, put("/api/v1/diary/{date}", "2024-03-01"), "{\"games\": [" + line(arena, "2") + "]}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("DIARY_PLATFORM_REQUIRED"));
+        performAs(auth, put("/api/v1/diary/{date}", "2024-03-01"),
+                "{\"games\": [{\"gameId\": " + arena + ", \"hours\": 2, \"platformId\": " + ps5Id + "}]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.games[0].platformId").value(ps5Id));
+
+        performAs(auth, get("/api/v1/games/{gameId}/online-playtime", arena))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalHours").value(12.0))
+                .andExpect(jsonPath("$.platformHours['" + ps5Id + "']").value(2.0));
+        performAs(auth, get("/api/v1/stats/by-platform"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.unassignedOnlineHours").value(6.0))
+                .andExpect(jsonPath("$.platforms[0].platformId").value(pcId))
+                .andExpect(jsonPath("$.platforms[0].onlineHours").value(4.0))
+                .andExpect(jsonPath("$.platforms[1].platformId").value(ps5Id))
+                .andExpect(jsonPath("$.platforms[1].onlineHours").value(2.0));
+
+        // Deleting the day takes the hours back from the total and from PS5.
+        performAs(auth, delete("/api/v1/diary/{date}", "2024-03-01")).andExpect(status().isNoContent());
+        performAs(auth, get("/api/v1/games/{gameId}/online-playtime", arena))
+                .andExpect(jsonPath("$.totalHours").value(10.0))
+                .andExpect(jsonPath("$.platformHours['" + ps5Id + "']").doesNotExist())
+                .andExpect(jsonPath("$.platformHours['" + pcId + "']").value(4.0));
     }
 
     // ---------------------------------------------------------------- developers & release eras
