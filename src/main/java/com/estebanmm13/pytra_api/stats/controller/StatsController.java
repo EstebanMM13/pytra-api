@@ -104,12 +104,24 @@ public class StatsController {
         return ResponseEntity.ok(statsInsightsService.getPlatforms(currentUserResolver.getCurrentUserId(), year));
     }
 
-    /** All-time top developers by hours and by average rating (developers with minRatedGames rated games). */
+    /**
+     * All-time top developers by hours and by average rating (developers with minRatedGames rated games);
+     * limit 0 lists every developer.
+     */
     @GetMapping("/by-developer")
     public ResponseEntity<DeveloperStatsDto> getByDeveloper(
             @RequestParam(defaultValue = "10") int limit,
             @RequestParam(defaultValue = "2") int minRatedGames) {
         return ResponseEntity.ok(statsInsightsService.getDevelopers(
+                currentUserResolver.getCurrentUserId(), limit, minRatedGames));
+    }
+
+    /** Same as by-developer grouped by publisher (each stat's {@code developer} holds the publisher). */
+    @GetMapping("/by-publisher")
+    public ResponseEntity<DeveloperStatsDto> getByPublisher(
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(defaultValue = "2") int minRatedGames) {
+        return ResponseEntity.ok(statsInsightsService.getPublishers(
                 currentUserResolver.getCurrentUserId(), limit, minRatedGames));
     }
 

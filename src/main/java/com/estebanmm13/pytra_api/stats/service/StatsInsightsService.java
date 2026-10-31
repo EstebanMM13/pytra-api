@@ -22,6 +22,9 @@ public interface StatsInsightsService {
      */
     DeveloperStatsDto getDevelopers(Long userId, int limit, int minRatedGames);
 
+    /** Same as {@link #getDevelopers} grouped by publisher; each stat's {@code developer} holds the publisher. */
+    DeveloperStatsDto getPublishers(Long userId, int limit, int minRatedGames);
+
     /** All-time CONFIRMED games grouped by release decade and release year. */
     ReleaseEraStatsDto getReleaseEras(Long userId);
 

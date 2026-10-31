@@ -200,11 +200,11 @@ class StatsInsightsServiceImplTest {
 
     private void stubGameFacts() {
         when(gameRepository.findReleaseRowsByUserIdAndReviewStatus(USER_ID, ReviewStatus.CONFIRMED)).thenReturn(List.of(
-                new GameReleaseRow(1L, "FromSoftware", LocalDate.of(2011, 10, 4)),
-                new GameReleaseRow(2L, "  fromsoftware ", LocalDate.of(2022, 2, 25)),
-                new GameReleaseRow(3L, "Nintendo", LocalDate.of(1998, 11, 21)),
-                new GameReleaseRow(4L, "   ", LocalDate.of(1998, 1, 1)),
-                new GameReleaseRow(5L, "Solo Studio", null)));
+                new GameReleaseRow(1L, "FromSoftware", "Bandai Namco", LocalDate.of(2011, 10, 4)),
+                new GameReleaseRow(2L, "  fromsoftware ", "Sony", LocalDate.of(2022, 2, 25)),
+                new GameReleaseRow(3L, "Nintendo", "Nintendo", LocalDate.of(1998, 11, 21)),
+                new GameReleaseRow(4L, "   ", " bandai namco ", LocalDate.of(1998, 1, 1)),
+                new GameReleaseRow(5L, "Solo Studio", null, null)));
         when(experienceRepository.totalsGroupedByGameId(USER_ID)).thenReturn(List.of(
                 new GameRunTotals(1L, 50.0, new BigDecimal("18.00"), 2L),
                 new GameRunTotals(2L, 100.0, new BigDecimal("8.00"), 1L),
@@ -243,6 +243,36 @@ class StatsInsightsServiceImplTest {
         assertThat(anyRated.topByRating()).extracting(DeveloperStatsDto.DeveloperStat::developer)
                 .containsExactly("Solo Studio", "FromSoftware");
         assertThat(anyRated.topByHours()).hasSize(2);
+    }
+
+    @Test
+    void publishersGroupLikeDevelopersAndLeaveOutGamesWithoutOne() {
+        stubGameFacts();
+
+        DeveloperStatsDto publishers = service.getPublishers(USER_ID, 0, 2);
+
+        assertThat(publishers.minRatedGames()).isEqualTo(2);
+        assertThat(publishers.topByHours()).extracting(DeveloperStatsDto.DeveloperStat::developer)
+                .containsExactly("Sony", "Bandai Namco", "Nintendo");
+        DeveloperStatsDto.DeveloperStat bandai = publishers.topByHours().get(1);
+        assertThat(bandai.gameCount()).isEqualTo(2);
+        assertThat(bandai.hours()).isEqualTo(60.0);
+        // Per game: 9 and 6.
+        assertThat(bandai.averageRating()).isEqualByComparingTo("7.5");
+        assertThat(publishers.topByRating()).extracting(DeveloperStatsDto.DeveloperStat::developer)
+                .containsExactly("Bandai Namco");
+        assertThat(service.getPublishers(USER_ID, 1, 1).topByHours()).hasSize(1);
+    }
+
+    @Test
+    void developersWithLimitZeroListEveryDeveloper() {
+        stubGameFacts();
+
+        DeveloperStatsDto developers = service.getDevelopers(USER_ID, 0, 1);
+
+        assertThat(developers.topByHours()).extracting(DeveloperStatsDto.DeveloperStat::developer)
+                .containsExactly("FromSoftware", "Nintendo", "Solo Studio");
+        assertThat(developers.topByRating()).hasSize(3);
     }
 
     @Test

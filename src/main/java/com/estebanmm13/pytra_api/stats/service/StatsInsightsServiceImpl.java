@@ -32,6 +32,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * Loads each breakdown with a few whole-user queries (runs, online playtimes, diary aggregates, projections)
@@ -309,22 +310,34 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
     @Override
     @Transactional(readOnly = true)
     public DeveloperStatsDto getDevelopers(Long userId, int limit, int minRatedGames) {
-        int max = clampLimit(limit);
+        return studios(userId, limit, minRatedGames, GameFacts::developer);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DeveloperStatsDto getPublishers(Long userId, int limit, int minRatedGames) {
+        return studios(userId, limit, minRatedGames, GameFacts::publisher);
+    }
+
+    /** Studios (developers or publishers, by {@code studioOf}) ranked by hours and by rating. */
+    private DeveloperStatsDto studios(Long userId, int limit, int minRatedGames, Function<GameFacts, String> studioOf) {
+        // 0 (or less) lists every studio: the studios page shows them all.
+        int max = limit <= 0 ? Integer.MAX_VALUE : clampLimit(limit);
         int threshold = Math.max(minRatedGames, 1);
 
         // Grouping key: trimmed, lower-cased name; the label is the first spelling met (games in id order).
-        Map<String, GroupAccumulator> byDeveloper = new LinkedHashMap<>();
+        Map<String, GroupAccumulator> byStudio = new LinkedHashMap<>();
         for (GameFacts game : confirmedGameFacts(userId)) {
-            String developer = game.developer() != null ? game.developer().trim() : "";
-            if (developer.isEmpty()) {
+            String name = studioOf.apply(game);
+            String studio = name != null ? name.trim() : "";
+            if (studio.isEmpty()) {
                 continue;
             }
-            byDeveloper.computeIfAbsent(developer.toLowerCase(Locale.ROOT), key -> new GroupAccumulator(developer))
-                    .add(game);
+            byStudio.computeIfAbsent(studio.toLowerCase(Locale.ROOT), key -> new GroupAccumulator(studio)).add(game);
         }
 
         List<DeveloperStatsDto.DeveloperStat> developers = new ArrayList<>();
-        for (GroupAccumulator acc : byDeveloper.values()) {
+        for (GroupAccumulator acc : byStudio.values()) {
             developers.add(new DeveloperStatsDto.DeveloperStat(acc.label, acc.gameCount,
                     StatsMath.round2(acc.hours), acc.ratings.size(), StatsMath.averageRating(acc.ratings)));
         }
@@ -372,7 +385,7 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
     }
 
     /** A CONFIRMED game with its total hours (runs + online) and its rating (null when unrated). */
-    private record GameFacts(Long gameId, String developer, LocalDate releaseDate, double hours, BigDecimal rating) {
+    private record GameFacts(Long gameId, String developer, String publisher, LocalDate releaseDate, double hours, BigDecimal rating) {
     }
 
     /**
@@ -403,7 +416,7 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
             }
             BigDecimal rating = ratedCount == 0 || ratingSum == null ? null
                     : ratingSum.divide(BigDecimal.valueOf(ratedCount), GAME_RATING_SCALE, RoundingMode.HALF_UP);
-            facts.add(new GameFacts(game.gameId(), game.developer(), game.releaseDate(), hours, rating));
+            facts.add(new GameFacts(game.gameId(), game.developer(), game.publisher(), game.releaseDate(), hours, rating));
         }
         return facts;
     }

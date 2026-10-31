@@ -277,6 +277,28 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
     }
 
     @Test
+    void byPublisherGroupsTrimmedNamesCaseInsensitivelyAndListsAllWithLimitZero() throws Exception {
+        Long souls = createGameVia(auth, "Pub Souls", ", \"publisher\": \"Bandai Namco\"");
+        createExperienceVia(auth, souls, run("A", "COMPLETADO", 9, 50.0, 2020, null, null, ""));
+        Long tekken = createGameVia(auth, "Pub Tekken", ", \"publisher\": \" bandai namco \"");
+        createExperienceVia(auth, tekken, run("A", "COMPLETADO", 7, 10.0, 2021, null, null, ""));
+        Long zelda = createGameVia(auth, "Pub Zelda", ", \"publisher\": \"Nintendo\"");
+        createExperienceVia(auth, zelda, run("A", "COMPLETADO", null, 20.0, 2021, null, null, ""));
+        createGameVia(auth, "Pub None", "");
+
+        performAs(auth, get("/api/v1/stats/by-publisher").param("limit", "0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minRatedGames").value(2))
+                .andExpect(jsonPath("$.topByHours.length()").value(2))
+                .andExpect(jsonPath("$.topByHours[0].developer").value("Bandai Namco"))
+                .andExpect(jsonPath("$.topByHours[0].gameCount").value(2))
+                .andExpect(jsonPath("$.topByHours[0].hours").value(60.0))
+                .andExpect(jsonPath("$.topByHours[0].averageRating").value(8))
+                .andExpect(jsonPath("$.topByHours[1].developer").value("Nintendo"))
+                .andExpect(jsonPath("$.topByRating.length()").value(1));
+    }
+
+    @Test
     void byReleaseEraGroupsConfirmedGamesByDecadeAndYear() throws Exception {
         Long a = createGameVia(auth, "Era A", ", \"releaseDate\": \"1998-01-10\"");
         createExperienceVia(auth, a, run("A", "COMPLETADO", 6, 10.0, 2020, null, null, ""));

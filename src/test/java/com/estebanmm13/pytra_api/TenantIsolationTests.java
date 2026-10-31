@@ -137,6 +137,7 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/activity"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/by-platform"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/by-developer"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/by-publisher"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/by-release-era"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/completion"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/ratings"),
