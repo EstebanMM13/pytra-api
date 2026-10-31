@@ -19,8 +19,8 @@ Branches: pytra-api `feat/online-platform-hours`, pytra-web `dev`. Delivery: ask
 - T1 [S1,S2] API: migration + entity map + request/response field + validation + tests — inline — done (RED compile, GREEN 15/15) — f6eb5f8
 - T2 [S3] API: platform stats use the split (all-time and per year) + tests — inline — done (RED 2 failures, GREEN 13/13) — f6eb5f8
 - T3 [S1,S2] Web: per-platform hour inputs in the Online card, model, request, i18n, tests — inline — done (RED compile, GREEN 1096/1096) — pytra-web c85b55d
-- T4 [S4] API: diary line platform (V36), required with 2+ online platforms (DIARY_PLATFORM_REQUIRED), moves hours in platformHours — inline — pending
-- T5 [S4] Web: platform picker in the diary day editor for online games — inline — pending
+- T4 [S4] API: diary line platform (V36), required with 2+ online platforms (DIARY_PLATFORM_REQUIRED), moves hours in platformHours — inline — done (RED compile, GREEN 35+18; full unit suite 0 failures) — 3a4ecd6
+- T5 [S4] Web: platform picker in the diary day editor for online games — inline — done (RED compile, GREEN 1102/1102) — pytra-web (see log)
 
 Route evidence: no Writer trigger (units depend on each other: web depends on the API contract); parent writes inline. Risk: item 1 (new table via migration).
 
@@ -31,3 +31,4 @@ Route evidence: no Writer trigger (units depend on each other: web depends on th
 - L3 (2026-10-31) User: "lo que hay que hacer es en la sección Online de un juego si hay mas de una plataforma que el usuario ponga las horas para cada plataforma y entonces ya lo otro no tiene que calcular tanto". Decision: "Desglose del total (Recomendado)".
 - L4 (2026-10-31) Verification: API unit tests pass; 325 integration tests error because Docker is not running (Testcontainers), so V35 and the ddl-auto validate of the new map are not yet checked against Postgres. Web suite 118 files / 1096 tests pass. Next: start Docker and run `./mvnw test` in pytra-api; pytra-web-deploy not updated.
 - L5 (2026-10-31) User: "no es mas facil que si en el diario pones un juego online te pregunte la plataforma?" then "si" to doing it as a second phase.
+- L6 (2026-10-31) Phase 2 done: V36 diary_entry_games.platform_id; web picker. Same 325 Docker-only integration errors; V35/V36 still unverified against Postgres.
