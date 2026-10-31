@@ -2,7 +2,6 @@ package com.estebanmm13.pytra_api.platformsync;
 
 import com.estebanmm13.pytra_api.diary.repository.DiaryEntryGameRepository;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
-import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.service.experienceService.ExperienceService;
 import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
@@ -36,7 +35,8 @@ import java.util.stream.Collectors;
  * <p>Before {@link ExternalPlaytimeWriter} adopted in-progress runs, linking a title to a game the user was
  * already playing created a separate imported run that took every later delta. When a CONFIRMED
  * SINGLEPLAYER game's link points at such a run, nobody edited it
- * ({@link ImportedRunSource#isUntouchedImportedRun}) and the game has exactly one other in-progress run on
+ * ({@link ImportedRunSource#isUntouchedImportedRun}) and the game has exactly one other run being played
+ * ({@link Experience#isBeingPlayed}: in progress or in its postgame) on
  * that platform, the imported hours are added to that run (through the regular run update), the link and
  * the imported run's diary lines move to it, and the imported run is deleted. Idempotent: once merged the
  * link points at a run the user created, which is never untouched-imported.
@@ -145,7 +145,7 @@ public class ImportedRunMerger {
             List<Experience> targets = runs.stream()
                     .filter(run -> !Objects.equals(run.getId(), imported.getId())
                             && runsById.containsKey(run.getId())
-                            && run.getStatus() == ExperienceStatus.EN_CURSO
+                            && run.isBeingPlayed()
                             && source.isOnPlatform(run))
                     .toList();
             if (targets.size() != 1) continue;

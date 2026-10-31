@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,7 +44,7 @@ public interface ExperienceRepository extends JpaRepository<Experience, Long> {
     @EntityGraph(attributePaths = "platform")
     List<Experience> findAllByUserId(Long userId);
     @EntityGraph(attributePaths = "platform")
-    List<Experience> findAllByUserIdAndStatus(Long userId, ExperienceStatus status);
+    List<Experience> findAllByUserIdAndStatusIn(Long userId, Collection<ExperienceStatus> statuses);
     @EntityGraph(attributePaths = "platform")
     List<Experience> findAllByUserIdAndRatingIsNotNullOrderByRatingDesc(Long userId);
 

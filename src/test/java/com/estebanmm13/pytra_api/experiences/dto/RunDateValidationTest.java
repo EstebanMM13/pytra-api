@@ -64,6 +64,34 @@ class RunDateValidationTest {
         assertThat(validator.validate(run(LocalDate.of(2024, 3, 10), LocalDate.of(2024, 3, 10), null))).isEmpty();
     }
 
+    @Test
+    void rejectsAPostgameEndBeforeTheEndOnItsField() {
+        ExperienceRequestDto dto = run(null, LocalDate.of(2024, 3, 10), null);
+        dto.setPostgameEndDate(LocalDate.of(2024, 3, 9));
+        assertThat(validator.validate(dto))
+                .extracting(v -> v.getPropertyPath().toString())
+                .containsOnly("postgameEndDate");
+
+        dto.setPostgameEndDate(LocalDate.of(2024, 3, 10));
+        assertThat(validator.validate(dto)).isEmpty();
+        dto.setEndDate(null);
+        dto.setPostgameEndDate(LocalDate.of(2024, 3, 9));
+        assertThat(validator.validate(dto)).isEmpty();
+    }
+
+    @Test
+    void rejectsAPostgameEndOutOfRangeOnItsField() {
+        ExperienceRequestDto dto = run(null, null, null);
+        dto.setPostgameEndDate(LocalDate.of(1969, 12, 31));
+        assertThat(validator.validate(dto))
+                .extracting(v -> v.getPropertyPath().toString())
+                .containsOnly("postgameEndDate");
+        dto.setPostgameEndDate(LocalDate.now().plusDays(2));
+        assertThat(validator.validate(dto))
+                .extracting(v -> v.getPropertyPath().toString())
+                .containsOnly("postgameEndDate");
+    }
+
     private static ExperienceRequestDto run(LocalDate startDate, LocalDate endDate, Integer year) {
         ExperienceRequestDto dto = new ExperienceRequestDto();
         dto.setRunLabel("Run");

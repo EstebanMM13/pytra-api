@@ -28,6 +28,8 @@ public class ExperienceMapper {
                 experience.getPlatinum(),
                 experience.getFullCompletion(),
                 experience.getReplay(),
+                Boolean.TRUE.equals(experience.getPostgame()),
+                experience.getPostgameEndDate(),
                 experience.getSummary(),
                 experience.getPros(),
                 experience.getCons(),

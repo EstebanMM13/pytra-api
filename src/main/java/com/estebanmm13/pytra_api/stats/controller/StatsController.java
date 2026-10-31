@@ -58,7 +58,7 @@ public class StatsController {
         return ResponseEntity.ok(statsService.upsertYearNote(currentUserResolver.getCurrentUserId(), year, yearNoteRequestDto));
     }
 
-    /** EN_CURSO experiences across all games. */
+    /** EN_CURSO experiences across all games, plus COMPLETADO ones in their postgame. */
     @GetMapping("/in-progress")
     public ResponseEntity<List<InProgressExperienceDto>> getInProgress() {
         return ResponseEntity.ok(statsService.getInProgress(currentUserResolver.getCurrentUserId()));

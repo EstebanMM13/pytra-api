@@ -62,6 +62,14 @@ public class Experience {
     @Column(nullable = false)
     private Boolean replay;
 
+    /** Beaten (COMPLETADO) but still being played: the postgame. Always false on other statuses. */
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean postgame = false;
+
+    /** When the postgame ended; setting it ends the postgame ({@link #postgame} false). */
+    private LocalDate postgameEndDate;
+
     @Column(columnDefinition = "TEXT")
     private String summary;
 
@@ -77,4 +85,13 @@ public class Experience {
     @UpdateTimestamp
     @Column(nullable = false)
     private LocalDateTime updatedAt;
+
+    /**
+     * True while the user is playing the run: in progress, or completed with its postgame still going. The
+     * diary, the platform sync and "playing now" treat these runs alike.
+     */
+    public boolean isBeingPlayed() {
+        return status == ExperienceStatus.EN_CURSO
+                || (status == ExperienceStatus.COMPLETADO && Boolean.TRUE.equals(postgame));
+    }
 }

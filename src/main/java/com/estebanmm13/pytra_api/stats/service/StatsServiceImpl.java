@@ -329,8 +329,10 @@ public class StatsServiceImpl implements StatsService {
     public List<InProgressExperienceDto> getInProgress(Long userId) {
         Map<Long, GameLabel> games = gamesById(userId);
 
-        List<Experience> experiences = new ArrayList<>(
-                experienceRepository.findAllByUserIdAndStatus(userId, ExperienceStatus.EN_CURSO));
+        // In progress, plus completed runs whose postgame is still being played.
+        List<Experience> experiences = new ArrayList<>(experienceRepository
+                .findAllByUserIdAndStatusIn(userId, List.of(ExperienceStatus.EN_CURSO, ExperienceStatus.COMPLETADO))
+                .stream().filter(Experience::isBeingPlayed).toList());
         // Most recently started first; undated runs last, most recently edited first.
         experiences.sort(Comparator
                 .comparing(Experience::getStartDate, Comparator.nullsLast(Comparator.reverseOrder()))
@@ -352,7 +354,8 @@ public class StatsServiceImpl implements StatsService {
                     PlatformMapper.colorOf(experience.getPlatform()),
                     experience.getStartDate(),
                     hoursOf(experience),
-                    experience.getUpdatedAt()
+                    experience.getUpdatedAt(),
+                    experience.getStatus() == ExperienceStatus.COMPLETADO
             ));
         }
         return result;

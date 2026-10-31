@@ -80,6 +80,18 @@ class DiaryServiceImplTest {
     }
 
     @Test
+    void postgameRunCountsAsTheRunInProgress() {
+        ownedGame(GameCategory.SINGLEPLAYER);
+        Experience postgame = run(RUN_A, ExperienceStatus.COMPLETADO);
+        postgame.setPostgame(true);
+        runs(postgame, run(RUN_B, ExperienceStatus.COMPLETADO));
+
+        service.saveDay(DAY, day(game(null, "2.5")), USER_ID);
+
+        verify(experienceService).addHours(RUN_A, new BigDecimal("2.5"), USER_ID);
+    }
+
+    @Test
     void editingTheSameRunAppliesOnlyTheDifference() {
         ownedGame(GameCategory.SINGLEPLAYER);
         runs(run(RUN_A, ExperienceStatus.EN_CURSO));

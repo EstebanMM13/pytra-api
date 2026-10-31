@@ -26,6 +26,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceRequestDto;
+import java.time.LocalDate;
 
 /** Docker-free controller checks (standalone MockMvc, mocked service) for the run endpoints' validation. */
 class ExperienceControllerTest {
@@ -118,6 +120,30 @@ class ExperienceControllerTest {
                 .andExpect(jsonPath("$.fieldErrors.endDate").value("must not be before the start date"));
 
         verify(experienceService, never()).update(any(), any(), any());
+    }
+
+    @Test
+    void updateRejectsAPostgameEndBeforeTheEndWithAFieldError() throws Exception {
+        mockMvc.perform(put("/api/v1/experiences/11").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"runLabel\": \"Run 1\", \"status\": \"COMPLETADO\", \"platform\": \"PC\", "
+                                + "\"endDate\": \"2024-03-10\", \"postgameEndDate\": \"2024-03-09\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.postgameEndDate").value("must not be before the end date"));
+
+        verify(experienceService, never()).update(any(), any(), any());
+    }
+
+    @Test
+    void updatePassesThePostgameFieldsToTheService() throws Exception {
+        mockMvc.perform(put("/api/v1/experiences/11").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"runLabel\": \"Run 1\", \"status\": \"COMPLETADO\", \"platform\": \"PC\", "
+                                + "\"endDate\": \"2024-03-10\", \"postgame\": true, \"postgameEndDate\": \"2024-05-01\"}"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<ExperienceRequestDto> captor = ArgumentCaptor.forClass(ExperienceRequestDto.class);
+        verify(experienceService).update(eq(11L), captor.capture(), eq(USER_ID));
+        assertThat(captor.getValue().getPostgame()).isTrue();
+        assertThat(captor.getValue().getPostgameEndDate()).isEqualTo(LocalDate.of(2024, 5, 1));
     }
 
     private static String run(String startDate, String endDate) {

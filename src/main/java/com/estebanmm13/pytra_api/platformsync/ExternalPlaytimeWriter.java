@@ -242,13 +242,14 @@ public class ExternalPlaytimeWriter {
     }
 
     /**
-     * The game's run the user is playing on the link's platform, when there is exactly one. With none or
+     * The game's run the user is playing (in progress or in its postgame) on the link's platform, when there
+     * is exactly one. With none or
      * several there is no telling which run the hours belong to, so a canonical run is created instead.
      */
     private Optional<Experience> findAdoptableRun(GamePlatformLink link, Long gameId) {
         ImportedRunSource source = ImportedRunSource.of(link.getPlatform());
         List<Experience> inProgress = experienceRepository.findAllByGameIdAndUserId(gameId, link.getUserId()).stream()
-                .filter(run -> run.getStatus() == ExperienceStatus.EN_CURSO && source.isOnPlatform(run))
+                .filter(run -> run.isBeingPlayed() && source.isOnPlatform(run))
                 .toList();
         return inProgress.size() == 1 ? Optional.of(inProgress.getFirst()) : Optional.empty();
     }

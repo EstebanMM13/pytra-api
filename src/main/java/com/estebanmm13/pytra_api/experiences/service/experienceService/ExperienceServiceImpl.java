@@ -8,6 +8,7 @@ import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceRequestDto
 import com.estebanmm13.pytra_api.experiences.dto.experience.ExperienceResponseDto;
 import com.estebanmm13.pytra_api.experiences.mapper.ExperienceMapper;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
+import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.HybridPlaytimeReconciler;
 import com.estebanmm13.pytra_api.games.model.Game;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -86,6 +88,7 @@ public class ExperienceServiceImpl implements ExperienceService {
                 .cons(experienceRequestDto.getCons())
                 .notes(experienceRequestDto.getNotes())
                 .build();
+        applyPostgame(experience, experienceRequestDto);
 
         experienceRepository.save(experience);
         hybridPlaytimeReconciler.afterRunChange(game, syncedShareBefore);
@@ -112,7 +115,19 @@ public class ExperienceServiceImpl implements ExperienceService {
             experience.setPros(experienceRequestDto.getPros());
             experience.setCons(experienceRequestDto.getCons());
             experience.setNotes(experienceRequestDto.getNotes());
+            applyPostgame(experience, experienceRequestDto);
         });
+    }
+
+    /**
+     * Postgame only exists on a COMPLETADO run: on other statuses both fields are cleared. A postgame end
+     * date means the postgame is over, so it clears the flag (as an end date completes a run in the form).
+     */
+    private static void applyPostgame(Experience experience, ExperienceRequestDto request) {
+        boolean completed = experience.getStatus() == ExperienceStatus.COMPLETADO;
+        LocalDate endDate = completed ? request.getPostgameEndDate() : null;
+        experience.setPostgameEndDate(endDate);
+        experience.setPostgame(completed && endDate == null && Boolean.TRUE.equals(request.getPostgame()));
     }
 
     @Override

@@ -29,6 +29,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
+import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
+import java.time.LocalDate;
 
 class ExperienceServiceImplTest {
 
@@ -204,6 +207,68 @@ class ExperienceServiceImplTest {
         service.addHours(RUN_ID, new BigDecimal("-5"), USER_ID);
 
         assertThat(run.getHours()).isEqualTo(0.0);
+    }
+
+    @Test
+    void completedRunKeepsThePostgameFlag() {
+        ownedGame(GameCategory.SINGLEPLAYER);
+        ExperienceRequestDto request = request();
+        request.setStatus(ExperienceStatus.COMPLETADO);
+        request.setPostgame(true);
+
+        service.create(GAME_ID, request, USER_ID);
+
+        ArgumentCaptor<Experience> saved = ArgumentCaptor.forClass(Experience.class);
+        verify(experienceRepository).save(saved.capture());
+        assertThat(saved.getValue().getPostgame()).isTrue();
+        assertThat(saved.getValue().getPostgameEndDate()).isNull();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ExperienceStatus.class, names = {"EN_CURSO", "ABANDONADO", "PENDIENTE"})
+    void runThatIsNotCompletedLosesThePostgameAndItsEndDate(ExperienceStatus status) {
+        ownedGame(GameCategory.SINGLEPLAYER);
+        Experience run = ownedRun();
+        run.setPostgame(true);
+        ExperienceRequestDto request = request();
+        request.setStatus(status);
+        request.setPostgame(true);
+        request.setPostgameEndDate(LocalDate.of(2026, 10, 1));
+
+        service.update(RUN_ID, request, USER_ID);
+
+        assertThat(run.getPostgame()).isFalse();
+        assertThat(run.getPostgameEndDate()).isNull();
+    }
+
+    @Test
+    void postgameEndDateEndsThePostgame() {
+        ownedGame(GameCategory.SINGLEPLAYER);
+        Experience run = ownedRun();
+        run.setPostgame(true);
+        ExperienceRequestDto request = request();
+        request.setStatus(ExperienceStatus.COMPLETADO);
+        request.setPostgame(true);
+        request.setPostgameEndDate(LocalDate.of(2026, 10, 1));
+
+        service.update(RUN_ID, request, USER_ID);
+
+        assertThat(run.getPostgame()).isFalse();
+        assertThat(run.getPostgameEndDate()).isEqualTo(LocalDate.of(2026, 10, 1));
+    }
+
+    @Test
+    void requestWithoutThePostgameFieldsLeavesTheRunWithoutPostgame() {
+        ownedGame(GameCategory.SINGLEPLAYER);
+        Experience run = ownedRun();
+        ExperienceRequestDto request = request();
+        request.setStatus(ExperienceStatus.COMPLETADO);
+
+        service.update(RUN_ID, request, USER_ID);
+
+        assertThat(run.getStatus()).isEqualTo(ExperienceStatus.COMPLETADO);
+        assertThat(run.getPostgame()).isFalse();
+        assertThat(run.getPostgameEndDate()).isNull();
     }
 
     private Experience ownedRun() {

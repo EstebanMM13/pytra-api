@@ -419,6 +419,27 @@ class ExternalPlaytimeWriterTest {
                 .isEqualTo(LocalDate.of(2026, 10, 28));
     }
 
+    @Test
+    void firstDeltaGoesToThePostgameRunOnTheLinksPlatform() {
+        Game game = game(GameCategory.SINGLEPLAYER, ReviewStatus.CONFIRMED);
+        GamePlatformLink link = link(game, ExternalPlatform.PSN_PS5, 60);
+        Experience postgame = inProgressRun(7L, "PS5", 15.0);
+        postgame.setStatus(ExperienceStatus.COMPLETADO);
+        postgame.setPostgame(true);
+        Experience finishedPs5 = run("PS5", 30.0);
+        finishedPs5.setStatus(ExperienceStatus.COMPLETADO);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID))
+                .thenReturn(List.of(postgame, finishedPs5));
+
+        boolean updated = writer.applySyncedTotal(link, 60 + 78, LocalDateTime.now());
+
+        assertThat(updated).isTrue();
+        assertThat(link.getExperienceId()).isEqualTo(7L);
+        assertThat(postgame.getHours()).isCloseTo(16.3, within(1e-9));
+        verify(experienceRepository).save(postgame);
+        verify(platformService, never()).requireByLegacyCode(any());
+    }
+
     private static Experience inProgressRun(Long id, String platformCode, double hours) {
         Experience run = run(platformCode, hours);
         run.setId(id);

@@ -245,6 +245,8 @@ Seeded with the common platforms (PC, PlayStation, Xbox, Nintendo, Móvil, Retro
 
 Platform: send `platformId` (catalog id). Clients built before the catalog may send the legacy `platform` code instead (`PC`, `PS5`, `PS4`, `XBOX`, `SWITCH`, `MOBILE`); on update, echoing the run's current legacy code (including `OTHER`) keeps its platform. Unknown id/code → `400 INVALID_PLATFORM`. Responses carry `platformId`, `platformName`, `platformColor` and the legacy `platform` code (`OTHER` for platforms the old enum lacked); the stats run lists (`/years/{year}` experiences, `/in-progress`) do too.
 
+Postgame: `postgame` (boolean) marks a beaten run the user keeps playing, and `postgameEndDate` records when that postgame ended. Both only stay on `COMPLETADO` runs (any other status clears them); sending `postgameEndDate` ends the postgame (`postgame` is stored as `false`). A `postgameEndDate` before `endDate` → `400` with `fieldErrors.postgameEndDate`. Absent fields mean no postgame. Runs in their postgame count as being played: they show in `/stats/in-progress`, receive the diary's hours when they are the game's only run being played, and are adopted by the Steam/PSN sync like runs in progress.
+
 Ratings (`rating` here, `generalRating` in online playtime) are `0`–`10` with up to 2 decimals (e.g. `9.25`), stored as `NUMERIC(4,2)`. Values out of range or with more decimals (`9.255`) are rejected with `400` (never rounded). Responses return them as JSON numbers without trailing zeros (`9`, `9.5`, `9.25`). Jackson's float-to-int coercion is disabled globally (`accept-float-as-int: false`), so a decimal sent to an integer field (e.g. `"year": 2024.5`) fails with `400` instead of being silently truncated.
 
 ### Online playtime (`/api/v1/games/{gameId}/online-playtime`)
@@ -261,7 +263,7 @@ Ratings (`rating` here, `generalRating` in online playtime) are `0`–`10` with 
 | GET | `/years` | Years with runs or online diary hours, newest first (`[2025, 2024]`) |
 | GET | `/years/{year}` | Year in review: totals, `months` (always 12), `hoursWithoutMonth`, the year's runs by rating, automatic highlights (`goty`, `topRated`, `mostPlayed`, `topSagas`, `topGenres`, `surprises`, `disappointments`), `note`, `onlineHours` and `onlineGames` (`[{gameId, gameName, coverImageUrl, hours, dayCount}]`, most hours first) |
 | PUT | `/years/{year}/note` | Upsert the yearly free-text note `{summary, highlights}` (max 10 000 chars each, blank = null) |
-| GET | `/in-progress` | `EN_CURSO` runs across all games, most recently started first |
+| GET | `/in-progress` | Runs being played across all games: `EN_CURSO`, plus `COMPLETADO` runs in their postgame (`postgame: true` in each item); most recently started first |
 | GET | `/by-saga` | Hours and game count per saga (includes a "no saga" bucket) |
 | GET | `/by-genre` | Hours and game count per genre |
 | GET | `/top-rated?limit=` | Highest-rated experiences |

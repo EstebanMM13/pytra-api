@@ -12,7 +12,6 @@ import com.estebanmm13.pytra_api.diary.repository.DiaryEntryRepository;
 import com.estebanmm13.pytra_api.error.InvalidRequestException;
 import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
-import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.service.experienceService.ExperienceService;
 import com.estebanmm13.pytra_api.experiences.service.onlinePlaytimeService.OnlinePlaytimeService;
@@ -265,7 +264,10 @@ public class DiaryServiceImpl implements DiaryService {
         return null;
     }
 
-    /** The sent run, else the run the line already used, else the only run in progress; null when none fits. */
+    /**
+     * The sent run, else the run the line already used, else the only run being played (in progress or in its
+     * postgame); null when none fits.
+     */
     private static Long pickRun(DiaryGameRequestDto game, DiaryEntryGame oldLine, List<Experience> runs) {
         Set<Long> runIds = runs.stream().map(Experience::getId).collect(Collectors.toSet());
         if (game.getExperienceId() != null) {
@@ -274,7 +276,7 @@ public class DiaryServiceImpl implements DiaryService {
         if (oldLine != null && oldLine.getExperienceId() != null && runIds.contains(oldLine.getExperienceId())) {
             return oldLine.getExperienceId();
         }
-        List<Experience> inProgress = runs.stream().filter(run -> run.getStatus() == ExperienceStatus.EN_CURSO).toList();
+        List<Experience> inProgress = runs.stream().filter(Experience::isBeingPlayed).toList();
         return inProgress.size() == 1 ? inProgress.get(0).getId() : null;
     }
 

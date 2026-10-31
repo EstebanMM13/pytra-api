@@ -55,6 +55,13 @@ public class ExperienceRequestDto {
 
     private Boolean replay = false;
 
+    /** Still playing a COMPLETADO run (postgame). Ignored on other statuses; absent means false. */
+    private Boolean postgame = false;
+
+    /** When the postgame ended; not before {@code endDate}. Sending it ends the postgame. */
+    @RunDate
+    private LocalDate postgameEndDate;
+
     private String summary;
 
     private String pros;

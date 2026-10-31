@@ -156,6 +156,19 @@ class ImportedRunMergerTest {
         change.run();
     }
 
+    @Test
+    void untouchedImportedRunIsFoldedIntoAPostgameRunOnTheSamePlatform() {
+        manual.setStatus(ExperienceStatus.COMPLETADO);
+        manual.setPostgame(true);
+
+        int merged = merger.mergeAll(USER_ID);
+
+        assertThat(merged).isEqualTo(1);
+        verify(experienceService).addHours(MANUAL_RUN_ID, BigDecimal.valueOf(1.3), USER_ID);
+        assertThat(manual.getHours()).isCloseTo(16.3, within(1e-9));
+        assertThat(runs).containsExactly(manual);
+    }
+
     private static Experience run(Long id, String label, String platformCode, double hours, String notes) {
         return Experience.builder()
                 .id(id)

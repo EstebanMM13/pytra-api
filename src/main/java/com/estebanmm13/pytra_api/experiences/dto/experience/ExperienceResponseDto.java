@@ -28,6 +28,10 @@ public class ExperienceResponseDto {
     private Boolean platinum;
     private Boolean fullCompletion;
     private Boolean replay;
+    /** Still playing this COMPLETADO run (postgame). */
+    private Boolean postgame;
+    /** When the postgame ended; null when it has not ended or there was none. */
+    private LocalDate postgameEndDate;
     private String summary;
     private String pros;
     private String cons;

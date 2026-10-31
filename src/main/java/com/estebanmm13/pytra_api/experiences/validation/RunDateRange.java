@@ -10,8 +10,9 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * The end date of a run is not before its start date (either may be missing). Reported on the
- * {@code endDate} field so it shows up in {@code fieldErrors} like any other field error.
+ * The end date of a run is not before its start date, and the postgame end date is not before the end date
+ * (any of them may be missing). Reported on the later date's field ({@code endDate} or
+ * {@code postgameEndDate}) so it shows up in {@code fieldErrors} like any other field error.
  */
 @Documented
 @Constraint(validatedBy = RunDateRangeValidator.class)

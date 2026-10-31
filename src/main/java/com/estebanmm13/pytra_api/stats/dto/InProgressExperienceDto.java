@@ -22,4 +22,6 @@ public class InProgressExperienceDto {
     private LocalDate startDate;
     private Double hours;
     private LocalDateTime updatedAt;
+    /** A completed run whose postgame is still being played (false: the run is in progress). */
+    private Boolean postgame;
 }
