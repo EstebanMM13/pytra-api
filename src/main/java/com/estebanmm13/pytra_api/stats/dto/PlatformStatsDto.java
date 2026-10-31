@@ -7,9 +7,12 @@ import java.util.List;
  * Hours, games, runs and ratings per catalog platform, plus a per-year split of the hours for a stacked
  * chart. Hours are rounded to 2 decimals.
  *
- * <p>Online playtime rule: an online playtime's hours are split evenly across the platforms it lists (one
- * platform takes them all, two take half each, ...). Online hours of a playtime without platforms, or of a
- * game without an online playtime row, go to {@code unassignedOnlineHours} instead of any platform. In
+ * <p>Online playtime rule: when the user split an online playtime's hours across its platforms, each platform
+ * takes its assigned share of the total and the rest goes to {@code unassignedOnlineHours} (a split above a
+ * total lowered later is scaled down to it). Without a split the hours are split evenly across the platforms
+ * it lists (one platform takes them all, two take half each, ...). Online hours of a playtime without
+ * platforms, or of a game without an online playtime row, go to {@code unassignedOnlineHours} instead of any
+ * platform. A year's diary hours follow the same shares. In
  * all-time mode the online hours are the playtime totals; for a single year (and in {@code byYear}) they are
  * the diary hours of that year counted into online playtime (online playtime itself has no year).
  *

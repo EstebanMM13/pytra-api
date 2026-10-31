@@ -11,6 +11,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Set;
 
 @Getter
@@ -46,4 +47,13 @@ public class OnlinePlaytimeRequestDto {
      */
     @Size(max = 20)
     private Set<@NotNull Long> platformIds;
+
+    /**
+     * Online hours per platform id, a breakdown of {@link #totalHours}. Null keeps the stored breakdown;
+     * an empty map clears it. Every id must be one of the record's platforms (INVALID_PLATFORM) and the
+     * hours cannot add up to more than {@link #totalHours} (PLATFORM_HOURS_EXCEED_TOTAL). Ignored, and the
+     * breakdown cleared, while the record has fewer than two platforms.
+     */
+    @Size(max = 20)
+    private Map<@NotNull Long, @NotNull @PositiveOrZero Double> platformHours;
 }

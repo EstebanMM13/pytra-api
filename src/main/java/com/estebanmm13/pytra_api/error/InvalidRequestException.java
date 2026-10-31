@@ -14,6 +14,8 @@ public class InvalidRequestException extends RuntimeException {
     public static final String INVALID_STEAM_APP_ID = "INVALID_STEAM_APP_ID";
     public static final String INVALID_IGDB_ID = "INVALID_IGDB_ID";
     public static final String INVALID_PLATFORM = "INVALID_PLATFORM";
+    /** The hours assigned to an online playtime's platforms add up to more than its total hours. */
+    public static final String PLATFORM_HOURS_EXCEED_TOTAL = "PLATFORM_HOURS_EXCEED_TOTAL";
     public static final String INVALID_COVER_URL = "INVALID_COVER_URL";
     public static final String INVALID_COVER_WIDTH = "INVALID_COVER_WIDTH";
     /** ONLINE games are tracked through online playtime only: new runs are refused. */

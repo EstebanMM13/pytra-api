@@ -18,12 +18,16 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class OnlinePlaytimeServiceImpl implements OnlinePlaytimeService {
+
+    private static final double HOURS_TOLERANCE = 1e-6;
 
     private final OnlinePlaytimeRepository onlinePlaytimeRepository;
     private final GameRepository gameRepository;
@@ -68,6 +72,7 @@ public class OnlinePlaytimeServiceImpl implements OnlinePlaytimeService {
             // Absent field = keep: clients built before online platforms existed never wipe them.
             onlinePlaytime.setPlatforms(resolvePlatforms(onlinePlaytimeRequestDto.getPlatformIds()));
         }
+        applyPlatformHours(onlinePlaytime, onlinePlaytimeRequestDto.getPlatformHours());
 
         onlinePlaytimeRepository.save(onlinePlaytime);
         return onlinePlaytimeMapper.toResponseDto(onlinePlaytime);
@@ -91,6 +96,31 @@ public class OnlinePlaytimeServiceImpl implements OnlinePlaytimeService {
         );
         onlinePlaytime.setTotalHours(HoursArithmetic.add(onlinePlaytime.getTotalHours(), deltaHours));
         onlinePlaytimeRepository.save(onlinePlaytime);
+    }
+
+    /**
+     * Sets the per-platform breakdown (null keeps the stored one), drops the hours of platforms no longer
+     * played online and clears it below two platforms. Validated against the record's platforms and total.
+     */
+    private static void applyPlatformHours(OnlinePlaytime onlinePlaytime, Map<Long, Double> requested) {
+        Set<Long> platformIds = onlinePlaytime.getPlatforms().stream().map(Platform::getId).collect(Collectors.toSet());
+        if (requested != null) {
+            if (!platformIds.containsAll(requested.keySet())) {
+                throw new InvalidRequestException(InvalidRequestException.INVALID_PLATFORM);
+            }
+            double assigned = requested.values().stream().mapToDouble(Double::doubleValue).sum();
+            // Tolerance for decimal sums like 0.1 + 0.2.
+            if (assigned - onlinePlaytime.getTotalHours() > HOURS_TOLERANCE) {
+                throw new InvalidRequestException(InvalidRequestException.PLATFORM_HOURS_EXCEED_TOTAL);
+            }
+            onlinePlaytime.getPlatformHours().clear();
+            onlinePlaytime.getPlatformHours().putAll(requested);
+        }
+        if (platformIds.size() < 2) {
+            onlinePlaytime.getPlatformHours().clear();
+        } else {
+            onlinePlaytime.getPlatformHours().keySet().retainAll(platformIds);
+        }
     }
 
     /** Catalog entries for the ids; any unknown id rejects the whole request. */

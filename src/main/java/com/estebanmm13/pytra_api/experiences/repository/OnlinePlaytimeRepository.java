@@ -12,11 +12,11 @@ import java.util.Optional;
 
 @Repository
 public interface OnlinePlaytimeRepository extends JpaRepository<OnlinePlaytime, Long> {
-    @EntityGraph(attributePaths = "platforms")
+    @EntityGraph(attributePaths = {"platforms", "platformHours"})
     Optional<OnlinePlaytime> findByGameIdAndUserId(Long gameId, Long userId);
     List<OnlinePlaytime> findAllByUserIdOrderByTotalHoursDesc(Long userId);
     /** With platforms in the same query: the library merges them into each game's platform list. */
-    @EntityGraph(attributePaths = "platforms")
+    @EntityGraph(attributePaths = {"platforms", "platformHours"})
     List<OnlinePlaytime> findAllByUserId(Long userId);
     List<OnlinePlaytime> findAllByUserIdAndGeneralRatingIsNotNull(Long userId);
 

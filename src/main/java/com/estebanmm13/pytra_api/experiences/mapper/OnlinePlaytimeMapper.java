@@ -6,6 +6,8 @@ import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.platforms.mapper.PlatformMapper;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+
 @Component
 public class OnlinePlaytimeMapper {
 
@@ -24,7 +26,8 @@ public class OnlinePlaytimeMapper {
                 onlinePlaytime.getPlatforms().stream()
                         .sorted(PlatformMapper.CATALOG_ORDER)
                         .map(PlatformMapper::toRefDto)
-                        .toList()
+                        .toList(),
+                Map.copyOf(onlinePlaytime.getPlatformHours())
         );
     }
 }

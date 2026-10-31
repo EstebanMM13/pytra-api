@@ -14,9 +14,11 @@ import com.estebanmm13.pytra_api.platforms.repository.PlatformRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -169,6 +171,81 @@ class OnlinePlaytimeServiceImplTest {
 
         assertThat(existing.getFullCompletion()).isTrue();
         assertThat(existing.getPlatinum()).isFalse();
+    }
+
+    @Test
+    void platformHoursAreStoredAndReturned() {
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.empty());
+        Set<Long> ids = Set.of(TestPlatforms.PC.getId(), TestPlatforms.PS5.getId());
+        when(platformRepository.findAllById(ids)).thenReturn(List.of(TestPlatforms.PC, TestPlatforms.PS5));
+        OnlinePlaytimeRequestDto dto = request(ids);
+        dto.setPlatformHours(Map.of(TestPlatforms.PC.getId(), 4.0, TestPlatforms.PS5.getId(), 6.5));
+
+        OnlinePlaytimeResponseDto response = service.upsert(GAME_ID, dto, USER_ID);
+
+        assertThat(response.getPlatformHours())
+                .containsExactlyInAnyOrderEntriesOf(Map.of(TestPlatforms.PC.getId(), 4.0, TestPlatforms.PS5.getId(), 6.5));
+        verify(onlinePlaytimeRepository).save(any());
+    }
+
+    @Test
+    void platformHoursForAPlatformNotPlayedOnlineAreRejected() {
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.empty());
+        Set<Long> ids = Set.of(TestPlatforms.PC.getId(), TestPlatforms.PS5.getId());
+        when(platformRepository.findAllById(ids)).thenReturn(List.of(TestPlatforms.PC, TestPlatforms.PS5));
+        OnlinePlaytimeRequestDto dto = request(ids);
+        dto.setPlatformHours(Map.of(TestPlatforms.SWITCH.getId(), 1.0));
+
+        assertThatThrownBy(() -> service.upsert(GAME_ID, dto, USER_ID))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessage(InvalidRequestException.INVALID_PLATFORM);
+        verify(onlinePlaytimeRepository, never()).save(any());
+    }
+
+    @Test
+    void platformHoursAboveTheTotalAreRejected() {
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.empty());
+        Set<Long> ids = Set.of(TestPlatforms.PC.getId(), TestPlatforms.PS5.getId());
+        when(platformRepository.findAllById(ids)).thenReturn(List.of(TestPlatforms.PC, TestPlatforms.PS5));
+        OnlinePlaytimeRequestDto dto = request(ids);
+        dto.setPlatformHours(Map.of(TestPlatforms.PC.getId(), 10.0, TestPlatforms.PS5.getId(), 2.5));
+
+        assertThatThrownBy(() -> service.upsert(GAME_ID, dto, USER_ID))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessage(InvalidRequestException.PLATFORM_HOURS_EXCEED_TOTAL);
+        verify(onlinePlaytimeRepository, never()).save(any());
+    }
+
+    @Test
+    void missingPlatformHoursKeepTheStoredOnesAndDropRemovedPlatforms() {
+        OnlinePlaytime existing = OnlinePlaytime.builder()
+                .id(1L).userId(USER_ID).gameId(GAME_ID).totalHours(12.0)
+                .platforms(new HashSet<>(Set.of(TestPlatforms.PC, TestPlatforms.PS5, TestPlatforms.SWITCH)))
+                .platformHours(new HashMap<>(Map.of(TestPlatforms.PC.getId(), 3.0, TestPlatforms.SWITCH.getId(), 2.0)))
+                .build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(existing));
+        Set<Long> ids = Set.of(TestPlatforms.PC.getId(), TestPlatforms.PS5.getId());
+        when(platformRepository.findAllById(ids)).thenReturn(List.of(TestPlatforms.PC, TestPlatforms.PS5));
+
+        OnlinePlaytimeResponseDto response = service.upsert(GAME_ID, request(ids), USER_ID);
+
+        assertThat(response.getPlatformHours()).containsExactlyEntriesOf(Map.of(TestPlatforms.PC.getId(), 3.0));
+    }
+
+    @Test
+    void platformHoursAreClearedWithFewerThanTwoPlatforms() {
+        OnlinePlaytime existing = OnlinePlaytime.builder()
+                .id(1L).userId(USER_ID).gameId(GAME_ID).totalHours(12.0)
+                .platforms(new HashSet<>(Set.of(TestPlatforms.PC, TestPlatforms.PS5)))
+                .platformHours(new HashMap<>(Map.of(TestPlatforms.PC.getId(), 3.0)))
+                .build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(existing));
+        Set<Long> ids = Set.of(TestPlatforms.PC.getId());
+        when(platformRepository.findAllById(ids)).thenReturn(List.of(TestPlatforms.PC));
+
+        OnlinePlaytimeResponseDto response = service.upsert(GAME_ID, request(ids), USER_ID);
+
+        assertThat(response.getPlatformHours()).isEmpty();
     }
 
     private static OnlinePlaytimeRequestDto request(Set<Long> platformIds) {

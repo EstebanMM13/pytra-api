@@ -7,7 +7,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 @NoArgsConstructor
@@ -59,6 +61,17 @@ public class OnlinePlaytime {
             inverseJoinColumns = @JoinColumn(name = "platform_id")
     )
     private Set<Platform> platforms = new HashSet<>();
+
+    /**
+     * Online hours assigned to each of {@link #platforms}, by platform id: a breakdown of {@link #totalHours}
+     * (never above it when saved by the user). Only kept with two or more platforms; empty means no breakdown.
+     */
+    @Builder.Default
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "online_playtime_platform_hours", joinColumns = @JoinColumn(name = "online_playtime_id"))
+    @MapKeyColumn(name = "platform_id")
+    @Column(name = "hours", nullable = false)
+    private Map<Long, Double> platformHours = new HashMap<>();
 
     @UpdateTimestamp
     @Column(nullable = false)

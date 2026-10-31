@@ -31,10 +31,12 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -137,6 +139,45 @@ class StatsInsightsServiceImplTest {
         assertThat(year2024.platforms().get(0).hours()).isEqualTo(11.0);
         assertThat(year2024.platforms().get(0).runCount()).isEqualTo(1);
         assertThat(year2024.platforms().get(2).runCount()).isZero();
+    }
+
+    @Test
+    void platformsUseTheUsersOnlineBreakdownAndLeaveTheRestUnassigned() {
+        OnlinePlaytime gta = online(3L, 20.0, TestPlatforms.PC, TestPlatforms.PS5, TestPlatforms.SWITCH);
+        gta.getPlatformHours().putAll(Map.of(TestPlatforms.PC.getId(), 4.0, TestPlatforms.PS5.getId(), 12.0));
+        when(experienceRepository.findAllByUserId(USER_ID)).thenReturn(List.of());
+        when(onlinePlaytimeRepository.findAllByUserId(USER_ID)).thenReturn(List.of(gta));
+        when(diaryEntryGameRepository.sumCountedOnlineHoursByYearAndGame(USER_ID)).thenReturn(List.of(
+                new OnlineDiaryYearGameHours(2024, 3L, new BigDecimal("10"))));
+
+        PlatformStatsDto allTime = service.getPlatforms(USER_ID, null);
+
+        assertThat(allTime.unassignedOnlineHours()).isEqualTo(4.0);
+        assertThat(allTime.platforms()).extracting(PlatformStatsDto.PlatformStat::name, PlatformStatsDto.PlatformStat::onlineHours)
+                .containsExactly(tuple("PS5", 12.0), tuple("PC", 4.0), tuple("Switch", 0.0));
+        // A year's diary hours follow the same proportions.
+        PlatformStatsDto.YearPlatforms y2024 = allTime.byYear().get(0);
+        assertThat(y2024.unassignedOnlineHours()).isEqualTo(2.0);
+        assertThat(y2024.platforms()).extracting(PlatformStatsDto.PlatformHours::name, PlatformStatsDto.PlatformHours::hours)
+                .containsExactly(tuple("PS5", 6.0), tuple("PC", 2.0), tuple("Switch", 0.0));
+        PlatformStatsDto year2024 = service.getPlatforms(USER_ID, 2024);
+        assertThat(year2024.unassignedOnlineHours()).isEqualTo(2.0);
+        assertThat(year2024.platforms()).extracting(PlatformStatsDto.PlatformStat::onlineHours).containsExactly(6.0, 2.0, 0.0);
+    }
+
+    @Test
+    void anOnlineBreakdownAboveALoweredTotalIsScaledDown() {
+        OnlinePlaytime lowered = online(3L, 5.0, TestPlatforms.PC, TestPlatforms.PS5);
+        lowered.getPlatformHours().putAll(Map.of(TestPlatforms.PC.getId(), 4.0, TestPlatforms.PS5.getId(), 6.0));
+        when(experienceRepository.findAllByUserId(USER_ID)).thenReturn(List.of());
+        when(onlinePlaytimeRepository.findAllByUserId(USER_ID)).thenReturn(List.of(lowered));
+        when(diaryEntryGameRepository.sumCountedOnlineHoursByYearAndGame(USER_ID)).thenReturn(List.of());
+
+        PlatformStatsDto allTime = service.getPlatforms(USER_ID, null);
+
+        assertThat(allTime.unassignedOnlineHours()).isZero();
+        assertThat(allTime.platforms()).extracting(PlatformStatsDto.PlatformStat::name, PlatformStatsDto.PlatformStat::onlineHours)
+                .containsExactly(tuple("PS5", 3.0), tuple("PC", 2.0));
     }
 
     @Test

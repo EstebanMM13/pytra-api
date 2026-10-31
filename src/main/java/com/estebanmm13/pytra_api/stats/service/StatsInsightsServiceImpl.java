@@ -134,12 +134,11 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
         List<OnlineDiaryYearGameHours> onlineDiary = diaryEntryGameRepository.sumCountedOnlineHoursByYearAndGame(userId);
 
         Map<Long, Platform> catalog = new HashMap<>();
-        Map<Long, List<Platform>> onlinePlatformsByGame = new HashMap<>();
+        Map<Long, OnlineSplit> onlineSplitByGame = new HashMap<>();
         for (OnlinePlaytime playtime : onlinePlaytimes) {
-            List<Platform> platforms = new ArrayList<>(playtime.getPlatforms());
-            platforms.sort(PlatformMapper.CATALOG_ORDER);
-            platforms.forEach(platform -> catalog.put(platform.getId(), platform));
-            onlinePlatformsByGame.put(playtime.getGameId(), platforms);
+            OnlineSplit split = OnlineSplit.of(playtime);
+            split.platforms().forEach(platform -> catalog.put(platform.getId(), platform));
+            onlineSplitByGame.put(playtime.getGameId(), split);
         }
 
         // Platforms in scope.
@@ -162,12 +161,12 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
         if (year == null) {
             for (OnlinePlaytime playtime : onlinePlaytimes) {
                 unassigned += splitOnline(playtime.getGameId(), doubleOf(playtime.getTotalHours()),
-                        onlinePlatformsByGame, byPlatform);
+                        onlineSplitByGame, byPlatform);
             }
         } else {
             for (OnlineDiaryYearGameHours row : onlineDiary) {
                 if (year.equals(row.year())) {
-                    unassigned += splitOnline(row.gameId(), doubleOf(row.hours()), onlinePlatformsByGame, byPlatform);
+                    unassigned += splitOnline(row.gameId(), doubleOf(row.hours()), onlineSplitByGame, byPlatform);
                 }
             }
         }
@@ -195,13 +194,13 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
                 .thenComparing(stat -> catalog.get(stat.platformId()), PlatformMapper.CATALOG_ORDER));
 
         return new PlatformStatsDto(year, platforms, StatsMath.round2(unassigned),
-                platformHoursByYear(runs, onlineDiary, onlinePlatformsByGame, catalog));
+                platformHoursByYear(runs, onlineDiary, onlineSplitByGame, catalog));
     }
 
     /** Every year's hours per platform: runs by their year, online by the diary year (same split rule). */
     private static List<PlatformStatsDto.YearPlatforms> platformHoursByYear(
             List<Experience> runs, List<OnlineDiaryYearGameHours> onlineDiary,
-            Map<Long, List<Platform>> onlinePlatformsByGame, Map<Long, Platform> catalog) {
+            Map<Long, OnlineSplit> onlineSplitByGame, Map<Long, Platform> catalog) {
         SortedMap<Integer, Map<Long, PlatformAccumulator>> byYear = new TreeMap<>();
         Map<Integer, Double> unassignedByYear = new HashMap<>();
         for (Experience run : runs) {
@@ -218,7 +217,7 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
             if (row.year() == null) {
                 continue;
             }
-            double unassigned = splitOnline(row.gameId(), doubleOf(row.hours()), onlinePlatformsByGame,
+            double unassigned = splitOnline(row.gameId(), doubleOf(row.hours()), onlineSplitByGame,
                     byYear.computeIfAbsent(row.year(), y -> new HashMap<>()));
             if (unassigned > 0) {
                 unassignedByYear.merge(row.year(), unassigned, Double::sum);
@@ -250,25 +249,50 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
     }
 
     /**
-     * Splits a game's online hours evenly across the platforms of its online playtime (the documented rule).
+     * Splits a game's online hours across the platforms of its online playtime with its {@link OnlineSplit}.
      * Returns the hours that have no platform to go to.
      */
-    private static double splitOnline(Long gameId, double hours, Map<Long, List<Platform>> onlinePlatformsByGame,
+    private static double splitOnline(Long gameId, double hours, Map<Long, OnlineSplit> onlineSplitByGame,
                                       Map<Long, PlatformAccumulator> byPlatform) {
         if (hours <= 0) {
             return 0;
         }
-        List<Platform> platforms = onlinePlatformsByGame.getOrDefault(gameId, List.of());
-        if (platforms.isEmpty()) {
+        OnlineSplit split = onlineSplitByGame.get(gameId);
+        if (split == null || split.platforms().isEmpty()) {
             return hours;
         }
-        double share = hours / platforms.size();
-        for (Platform platform : platforms) {
+        for (Platform platform : split.platforms()) {
             PlatformAccumulator acc = byPlatform.computeIfAbsent(platform.getId(), id -> new PlatformAccumulator());
-            acc.onlineHours += share;
+            acc.onlineHours += hours * split.shares().get(platform.getId());
             acc.gameIds.add(gameId);
         }
-        return 0;
+        return hours * split.unassignedShare();
+    }
+
+    /**
+     * How a game's online hours (all-time or one year's) go to its online platforms, as shares of 1.
+     * With the user's per-platform breakdown each platform gets its assigned part of the total and the
+     * rest is unassigned; a breakdown above a total lowered later is scaled down to it. Without a
+     * breakdown the hours are split evenly (the documented default).
+     */
+    private record OnlineSplit(List<Platform> platforms, Map<Long, Double> shares, double unassignedShare) {
+
+        static OnlineSplit of(OnlinePlaytime playtime) {
+            List<Platform> platforms = new ArrayList<>(playtime.getPlatforms());
+            platforms.sort(PlatformMapper.CATALOG_ORDER);
+            Map<Long, Double> shares = new HashMap<>();
+            double assigned = platforms.stream()
+                    .mapToDouble(platform -> playtime.getPlatformHours().getOrDefault(platform.getId(), 0.0))
+                    .sum();
+            double base = Math.max(doubleOf(playtime.getTotalHours()), assigned);
+            if (platforms.size() < 2 || assigned <= 0) {
+                platforms.forEach(platform -> shares.put(platform.getId(), 1.0 / platforms.size()));
+                return new OnlineSplit(platforms, shares, 0);
+            }
+            platforms.forEach(platform -> shares.put(platform.getId(),
+                    playtime.getPlatformHours().getOrDefault(platform.getId(), 0.0) / base));
+            return new OnlineSplit(platforms, shares, 1 - assigned / base);
+        }
     }
 
     private static final class PlatformAccumulator {
