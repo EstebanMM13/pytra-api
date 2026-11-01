@@ -485,6 +485,8 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
         createExperienceVia(auth, gem, run("Only", "COMPLETADO", 9.5, 6.0, 2023, null, null, ""));
         Long waiting = createGameVia(auth, "Rank Waiting", "");
         Long pendingRun = createExperienceVia(auth, waiting, run("Someday", "PENDIENTE", null, 0.0, null, null, null, ""));
+        // Announced and not started: no runs, so the library lists it as pending (an online game would not be).
+        Long upcoming = createGameVia(auth, "Rank Upcoming", ", \"releaseDate\": \"2030-01-01\"");
         Long arena = createOnlineGame("Rank Arena");
         logDay("2024-02-01", line(arena, "1"));
         logDay("2024-02-02", line(arena, "2"));
@@ -502,8 +504,11 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.shortGems[0].rating").value(9.5))
                 .andExpect(jsonPath("$.mostDaysPlayed[0].gameName").value("Rank Arena"))
                 .andExpect(jsonPath("$.mostDaysPlayed[0].days").value(2))
-                .andExpect(jsonPath("$.longestPending.length()").value(1))
+                .andExpect(jsonPath("$.longestPending.length()").value(2))
                 .andExpect(jsonPath("$.longestPending[0].experienceId").value(pendingRun))
+                .andExpect(jsonPath("$.longestPending[1].gameId").value(upcoming))
+                .andExpect(jsonPath("$.longestPending[1].experienceId").value(nullValue()))
+                .andExpect(jsonPath("$.longestPending[1].pendingSince").isNotEmpty())
                 // Set on insert (Hibernate @CreationTimestamp, V39 column), never sent by the client.
                 .andExpect(jsonPath("$.longestPending[0].pendingSince").isNotEmpty());
 

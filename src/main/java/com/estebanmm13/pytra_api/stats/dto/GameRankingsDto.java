@@ -15,8 +15,8 @@ import java.util.List;
  * @param shortGems      games rated 8 or more with 0 < total hours (runs + online) <= 15, best rating first
  *                       (ties: fewer hours, then name)
  * @param mostDaysPlayed games by distinct diary days, most days first (ties: name)
- * @param longestPending games whose latest run (ExperiencePeriod.RECENCY) is PENDIENTE, oldest waiting first
- *                       (ties: lowest experience id)
+ * @param longestPending pending games as the library's "Pendiente" tab sees them (latest run PENDIENTE, or a
+ *                       SINGLEPLAYER game with no runs), oldest waiting first (ties: lowest game id)
  */
 public record GameRankingsDto(
         List<ReplayedGame> mostReplayed,
@@ -39,7 +39,11 @@ public record GameRankingsDto(
     public record DaysPlayedGame(Long gameId, String gameName, long days) {
     }
 
-    /** @param pendingSince when the pending run was created (estimated for runs created before V39) */
+    /**
+     * @param experienceId the pending run; null (with runLabel) for a game without runs
+     * @param pendingSince when the pending run was created, or the game for a game without runs (estimated for
+     *                     rows created before V39/V40)
+     */
     public record PendingGame(Long gameId, String gameName, Long experienceId, String runLabel,
                               LocalDateTime pendingSince) {
     }

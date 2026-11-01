@@ -13,7 +13,9 @@ import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.GameRunTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRow;
+import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
+import com.estebanmm13.pytra_api.games.repository.GameAddedRow;
 import com.estebanmm13.pytra_api.games.repository.GameGenreRow;
 import com.estebanmm13.pytra_api.games.repository.GameLabel;
 import com.estebanmm13.pytra_api.games.repository.GameReleaseRow;
@@ -726,7 +728,7 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
                 longestRuns(runsByGame, names, cap),
                 shortGems(facts, names, cap),
                 mostDaysPlayed(userId, confirmed, names, cap),
-                longestPending(runsByGame, names, cap));
+                longestPending(userId, runsByGame, names, cap));
     }
 
     private static List<GameRankingsDto.ReplayedGame> mostReplayed(Map<Long, List<Experience>> runsByGame,
@@ -782,18 +784,33 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
                 .toList();
     }
 
-    /** A game is pending when its latest run (the library's status rule) is PENDIENTE; it waits since that run. */
-    private static List<GameRankingsDto.PendingGame> longestPending(Map<Long, List<Experience>> runsByGame,
-                                                                    Map<Long, String> names, int cap) {
-        return runsByGame.values().stream()
-                .map(runs -> runs.stream().max(ExperiencePeriod.RECENCY).orElseThrow())
-                .filter(latest -> latest.getStatus() == ExperienceStatus.PENDIENTE)
-                .sorted(Comparator.comparing(Experience::getCreatedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
-                        .thenComparing(Experience::getId))
-                .limit(cap)
-                .map(run -> new GameRankingsDto.PendingGame(run.getGameId(), nameOf(run.getGameId(), names),
-                        run.getId(), run.getRunLabel(), run.getCreatedAt()))
-                .toList();
+    /**
+     * Pending games as the library's "Pendiente" tab sees them: the latest run (ExperiencePeriod.RECENCY) is
+     * PENDIENTE, waiting since that run was created; or a SINGLEPLAYER game with no runs yet, waiting since the
+     * game was added (online and hybrid games without runs are tracked by online playtime instead).
+     */
+    private List<GameRankingsDto.PendingGame> longestPending(Long userId, Map<Long, List<Experience>> runsByGame,
+                                                             Map<Long, String> names, int cap) {
+        List<GameRankingsDto.PendingGame> pending = new ArrayList<>();
+        for (GameAddedRow game : gameRepository.findAddedRowsByUserIdAndReviewStatus(userId, ReviewStatus.CONFIRMED)) {
+            List<Experience> runs = runsByGame.get(game.gameId());
+            if (runs == null || runs.isEmpty()) {
+                if (game.category() == GameCategory.SINGLEPLAYER) {
+                    pending.add(new GameRankingsDto.PendingGame(game.gameId(), nameOf(game.gameId(), names),
+                            null, null, game.createdAt()));
+                }
+                continue;
+            }
+            Experience latest = runs.stream().max(ExperiencePeriod.RECENCY).orElseThrow();
+            if (latest.getStatus() == ExperienceStatus.PENDIENTE) {
+                pending.add(new GameRankingsDto.PendingGame(game.gameId(), nameOf(game.gameId(), names),
+                        latest.getId(), latest.getRunLabel(), latest.getCreatedAt()));
+            }
+        }
+        pending.sort(Comparator.comparing(GameRankingsDto.PendingGame::pendingSince,
+                        Comparator.nullsFirst(Comparator.naturalOrder()))
+                .thenComparing(GameRankingsDto.PendingGame::gameId));
+        return pending.stream().limit(cap).toList();
     }
 
     private static String nameOf(Long gameId, Map<Long, String> names) {

@@ -8,7 +8,9 @@ import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.repository.GameRunTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRow;
+import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
+import com.estebanmm13.pytra_api.games.repository.GameAddedRow;
 import com.estebanmm13.pytra_api.games.repository.GameLabel;
 import com.estebanmm13.pytra_api.games.repository.GameReleaseRow;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
@@ -50,6 +52,7 @@ class StatsGameRankingsTest {
     private final List<GameRunTotals> runTotals = new ArrayList<>();
     private final List<OnlinePlaytimeRow> onlineRows = new ArrayList<>();
     private final List<GameDiaryDays> diaryDays = new ArrayList<>();
+    private final List<GameAddedRow> addedRows = new ArrayList<>();
 
     @BeforeEach
     void stubQueries() {
@@ -64,6 +67,11 @@ class StatsGameRankingsTest {
         when(experienceRepository.totalsGroupedByGameId(USER_ID)).thenReturn(runTotals);
         when(onlinePlaytimeRepository.findRowsByUserId(USER_ID)).thenReturn(onlineRows);
         when(diaryEntryGameRepository.countPlayedDaysByGame(USER_ID)).thenReturn(diaryDays);
+        // The CONFIRMED games 1-4, single player unless a test says otherwise.
+        for (long game = 1; game <= 4; game++) {
+            addedRows.add(new GameAddedRow(game, GameCategory.SINGLEPLAYER, LocalDateTime.of(2026, 1, 1, 0, 0)));
+        }
+        when(gameRepository.findAddedRowsByUserIdAndReviewStatus(USER_ID, ReviewStatus.CONFIRMED)).thenReturn(addedRows);
     }
 
     private Experience run(Long gameId, ExperienceStatus status, double hours) {
@@ -196,6 +204,28 @@ class StatsGameRankingsTest {
                         tuple("Bravo", oldest.getId(), LocalDateTime.of(2024, 3, 5, 8, 0)),
                         tuple("Alpha", recent.getId(), LocalDateTime.of(2026, 6, 1, 10, 0)),
                         tuple("Delta", sameDate.getId(), LocalDateTime.of(2026, 6, 1, 10, 0)));
+    }
+
+    @Test
+    void longestPendingAlsoListsSingleplayerGamesWithoutRunsLikeTheLibrary() {
+        // The library's "Pendiente" tab: latest run pending, or no runs at all unless the game is online.
+        Experience pendingRun = run(1L, ExperienceStatus.PENDIENTE, 0);
+        pendingRun.setCreatedAt(LocalDateTime.of(2025, 5, 1, 0, 0));
+        addedRows.clear();
+        addedRows.add(new GameAddedRow(1L, GameCategory.SINGLEPLAYER, LocalDateTime.of(2020, 1, 1, 0, 0)));
+        addedRows.add(new GameAddedRow(2L, GameCategory.SINGLEPLAYER, LocalDateTime.of(2024, 1, 1, 0, 0)));
+        addedRows.add(new GameAddedRow(3L, GameCategory.ONLINE, LocalDateTime.of(2019, 1, 1, 0, 0)));
+        addedRows.add(new GameAddedRow(4L, GameCategory.HYBRID, LocalDateTime.of(2019, 1, 1, 0, 0)));
+
+        GameRankingsDto rankings = service.getGameRankings(USER_ID, 50);
+
+        // Game 2 (no runs) waits since it was added; game 1 since its pending run, not since the game.
+        assertThat(rankings.longestPending())
+                .extracting(GameRankingsDto.PendingGame::gameName, GameRankingsDto.PendingGame::experienceId,
+                        GameRankingsDto.PendingGame::pendingSince)
+                .containsExactly(
+                        tuple("Bravo", null, LocalDateTime.of(2024, 1, 1, 0, 0)),
+                        tuple("Alpha", pendingRun.getId(), LocalDateTime.of(2025, 5, 1, 0, 0)));
     }
 
     // ---------------------------------------------------------------- limit

@@ -90,6 +90,12 @@ public interface GameRepository extends JpaRepository<Game, Long> {
     List<GameGenreRow> findGenreRowsByUserIdAndReviewStatus(@Param("userId") Long userId,
                                                             @Param("reviewStatus") ReviewStatus reviewStatus);
 
+    /** Category and creation date of every game of the user in that review status. */
+    @Query("SELECT new com.estebanmm13.pytra_api.games.repository.GameAddedRow(g.id, g.category, g.createdAt) "
+            + "FROM Game g WHERE g.userId = :userId AND g.reviewStatus = :reviewStatus")
+    List<GameAddedRow> findAddedRowsByUserIdAndReviewStatus(@Param("userId") Long userId,
+                                                          @Param("reviewStatus") ReviewStatus reviewStatus);
+
     /** Developer, publisher and release date of every game of the user in that review status, ordered by game id. */
     @Query("SELECT new com.estebanmm13.pytra_api.games.repository.GameReleaseRow(g.id, g.developer, g.publisher, g.releaseDate) "
             + "FROM Game g WHERE g.userId = :userId AND g.reviewStatus = :reviewStatus ORDER BY g.id")
