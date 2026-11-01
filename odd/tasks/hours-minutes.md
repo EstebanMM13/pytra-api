@@ -13,8 +13,9 @@ Branch: pytra-web `dev`. Delivery: ask-on-risk. Runner: `npx ng test --watch=fal
 
 ## Tasks
 
-- [ ] T1 S1-S5 hours formatter, hours inputs, specs — delegated (Writer trigger: parallel with achievements-unlocked T1, disjoint surfaces; long-session backstop)
+- [x] T1 S1-S5 hours formatter, hours inputs, specs — delegated (Writer trigger: parallel with achievements-unlocked T1, disjoint surfaces; long-session backstop)
 
 ## Log
 
 - L1 (2026-11-01) User: "oye porque suma 0,77 horas? no deberia pasar a 1h cuando llegues a 0,6?" -> explained decimal hours (minutes / 60) -> "vale quiero que lo de las horas se ponga en h y min."
+- L2 (2026-11-01) T1 done by a delegated writer (RED then GREEN per rule) + parent: i18n help texts (run.inlineAddHours, runForm.errors.hours, game.online.platformHoursInvalid, diary.editor.hoursError, game.online.invalid) and a compact diary calendar format (46m / 1h / 1h30, compactHours, RED then GREEN). Web 8625d15. Web suite 1165 tests, build clean, CI green. Pasted decimals still accepted in the h field (writer's extra, kept).

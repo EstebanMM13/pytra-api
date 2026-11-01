@@ -14,8 +14,9 @@ Branches: pytra-api `feat/stats-game-rankings` (pushed to origin/master), pytra-
 
 ## Tasks
 
-- [ ] T1 S1-S6 API table + endpoints + web merge/record/display — delegated (Writer trigger: parallel with hours-minutes T1, disjoint surfaces; long-session backstop). Risk: item 1 (new migration), item 3 is not hit (new endpoints only).
+- [x] T1 S1-S6 API table + endpoints + web merge/record/display — delegated (Writer trigger: parallel with hours-minutes T1, disjoint surfaces; long-session backstop). Risk: item 1 (new migration), item 3 is not hit (new endpoints only).
 
 ## Log
 
 - L1 (2026-11-01) User reported Multitarea locked with 3 runs (one in postgame): count fixed in api e47d593. Then: "Y que los logros una vez conseguidos ya se queden desbloqueados claro".
+- L2 (2026-11-01) T1 done by a delegated writer: api 8d5b603 (V41 unlocked_achievements, GET/POST /api/v1/achievements, export), web d98d804 (merge computed OR stored, record once, unlock date in the profile) + 01c36d6 (refresh the cached stored list after recording; verifier advisory, RED observed then GREEN). Local: api unit 26/26, web 1165 tests, build clean. CI api 1185/0/0 (Postgres, V41 included). Independent verifier: S1-S6 PASS, no blockers. RDD range 43f6348..8d5b603 escalated high (item 1), granted, approved, acknowledged; informational: concurrent POSTs can slightly exceed the 300 cap; a postgame run counts as completed and in progress (only Multitarea reads that count).
