@@ -20,9 +20,9 @@ Branches: pytra-api `feat/stats-game-rankings` (from `feat/run-postgame`, which 
 ## Tasks
 
 - [x] T1 S1 rename labels (web) — inline — pytra-web 42605c1
-- [ ] T2 S5-S9 API: V39 created_at + `GET /api/v1/stats/game-rankings` — inline (Risk: item 1, migration)
-- [ ] T3 S2-S9 web: stats/games screen, hub card, i18n — inline
-- [ ] T4 S10 web: dashboard "Ver todos" links — inline
+- [x] T2 S5-S9 API: V39 created_at + `GET /api/v1/stats/game-rankings` — inline (Risk: item 1, migration) — pytra-api b65db8f, 2af0ca8
+- [x] T3 S2-S9 web: stats/games screen, hub card, i18n — inline — pytra-web ec5d3f8
+- [x] T4 S10 web: dashboard "Ver todos" links — inline — pytra-web 15a466e
 
 ## Log
 
@@ -30,3 +30,8 @@ Branches: pytra-api `feat/stats-game-rankings` (from `feat/run-postgame`, which 
 - L2 Hub card named "Juegos" (Claude's recommendation, user: "vale, dale"). Rankings over collection status (user: "dentro de Estadisticas pues será mejor rankings completos no?"). Extra rankings S6-S9: "las cuatro me gustan, mételas todas". S9 storage: "la migración con fecha de creación".
 - L3 T1 done on pytra-web dev (moved from the master worktree, reverted there). Tests not run: they need node_modules.
 - L4 Route declaration: all tasks inline. The web units depend on the API contract (not independent), and each is about 100-300 lines, so the Writer trigger does not fire.
+- L5 T2: RED observed (7 unit tests, UnsupportedOperationException), GREEN 7/7. Full API suite: 1157 run, 0 failures, 333 errors, all Spring contexts failing without Docker (Testcontainers), so V39 and the new integration tests are not checked against Postgres locally.
+- L6 Independent verifier (risk item 1): S5-S9 PASS, no blockers. Advisory fixed (test comment, 2af0ca8); advisories left: pre-V39 pending runs get their last-update time as an estimate; limit clamps to 1-50 like the other insights.
+- L7 T3/T4: web tests written after the code (no RED observed). Full web suite 119 files / 1129 tests passed; ng build clean. Dashboard link has no component test (dashboard has no spec). Prettier applied to new files only (existing files are not prettier-clean at base).
+- L8 RDD: API range cfa8a87..2af0ca8 assessed medium, escalated to high (item 1); consent asked.
+
