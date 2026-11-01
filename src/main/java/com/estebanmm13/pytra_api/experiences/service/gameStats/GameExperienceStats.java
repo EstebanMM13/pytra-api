@@ -14,6 +14,7 @@ import java.util.List;
  * @param totalHours           run hours plus the online playtime's total hours
  * @param bestRating           best of the run ratings and the online general rating
  * @param lastExperienceStatus status of the most recent run (see ExperiencePeriod#RECENCY), null without runs
+ * @param lastExperiencePostgame true when that most recent run is COMPLETADO with its postgame still going
  * @param lastPlayedYear       latest ExperiencePeriod#yearOf among the runs, null when none has a year
  * @param platforms            distinct platforms of the runs and the online playtime, in catalog order
  * @param lastPlayedAt         latest endDate/startDate among the runs, null when none has a date
@@ -24,6 +25,7 @@ public record GameExperienceStats(
         double totalHours,
         BigDecimal bestRating,
         ExperienceStatus lastExperienceStatus,
+        boolean lastExperiencePostgame,
         Integer lastPlayedYear,
         boolean hasPlatinum,
         boolean hasFullCompletion,
@@ -32,5 +34,5 @@ public record GameExperienceStats(
         LocalDate lastActivityAt) {
 
     public static final GameExperienceStats EMPTY =
-            new GameExperienceStats(0, 0.0, null, null, null, false, false, List.of(), null, null);
+            new GameExperienceStats(0, 0.0, null, null, false, null, false, false, List.of(), null, null);
 }

@@ -228,7 +228,7 @@ Seeded with the common platforms (PC, PlayStation, Xbox, Nintendo, Móvil, Retro
 ### Games (`/api/v1/games`)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/` | List the current user's games, with library aggregates: `experienceCount`, `totalHours`, `bestRating`, `lastExperienceStatus`, `lastPlayedYear`, `hasPlatinum`, `platforms` (legacy codes, distinct, catalog order; `OTHER` for platforms the old enum lacked), `platformRefs` (`[{id, name, color}]`, catalog order), `lastPlayedAt` (latest experience `endDate`/`startDate`, nullable date) (two queries in total, no N+1) |
+| GET | `/` | List the current user's games, with library aggregates: `experienceCount`, `totalHours`, `bestRating`, `lastExperienceStatus`, `lastExperiencePostgame` (the most recent run is `COMPLETADO` with its postgame still going), `lastPlayedYear`, `hasPlatinum`, `platforms` (legacy codes, distinct, catalog order; `OTHER` for platforms the old enum lacked), `platformRefs` (`[{id, name, color}]`, catalog order), `lastPlayedAt` (latest experience `endDate`/`startDate`, nullable date) (two queries in total, no N+1) |
 | GET | `/{id}` | Get a game (same aggregates) |
 | POST | `/` | Create a game (optionally linked to a saga and/or genres) |
 | PUT | `/{id}` | Update a game |

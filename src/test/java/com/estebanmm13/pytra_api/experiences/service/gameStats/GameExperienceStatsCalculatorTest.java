@@ -85,6 +85,23 @@ class GameExperienceStatsCalculatorTest {
     }
 
     @Test
+    void lastExperiencePostgameFollowsTheMostRecentRun() {
+        Experience older = run(TestPlatforms.PC, LocalDate.of(2023, 1, 1), LocalDate.of(2023, 2, 1));
+        Experience latest = run(TestPlatforms.PC, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 10, 1));
+
+        latest.setPostgame(true);
+        GameExperienceStats inPostgame = GameExperienceStatsCalculator.of(List.of(older, latest));
+        assertThat(inPostgame.lastExperienceStatus()).isEqualTo(ExperienceStatus.COMPLETADO);
+        assertThat(inPostgame.lastExperiencePostgame()).isTrue();
+
+        // Only the most recent run decides, like lastExperienceStatus.
+        latest.setPostgame(false);
+        older.setPostgame(true);
+        assertThat(GameExperienceStatsCalculator.of(List.of(older, latest)).lastExperiencePostgame()).isFalse();
+        assertThat(GameExperienceStats.EMPTY.lastExperiencePostgame()).isFalse();
+    }
+
+    @Test
     void onlineHoursAddToTheRunHours() {
         GameExperienceStats stats = GameExperienceStatsCalculator.of(
                 List.of(run(TestPlatforms.PC, null, null), run(TestPlatforms.PC, null, null)),

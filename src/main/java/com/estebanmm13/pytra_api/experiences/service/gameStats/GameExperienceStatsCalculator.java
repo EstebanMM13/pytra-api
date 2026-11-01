@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.experiences.service.gameStats;
 
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperiencePeriod;
+import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
@@ -118,7 +119,9 @@ public class GameExperienceStatsCalculator {
         }
         return new GameExperienceStats(
                 experiences.size(), totalHours, Ratings.normalize(bestRating),
-                latest != null ? latest.getStatus() : null, lastPlayedYear, hasPlatinum, hasFullCompletion,
+                latest != null ? latest.getStatus() : null,
+                latest != null && latest.getStatus() == ExperienceStatus.COMPLETADO && latest.isBeingPlayed(),
+                lastPlayedYear, hasPlatinum, hasFullCompletion,
                 platformsById.values().stream().sorted(PlatformMapper.CATALOG_ORDER).toList(), lastPlayedAt,
                 latestOf(lastPlayedAt, lastOnlineSession));
     }

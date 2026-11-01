@@ -35,6 +35,8 @@ public class GameResponseDto {
     private Double totalHours;
     private BigDecimal bestRating;
     private ExperienceStatus lastExperienceStatus;
+    /** True when the most recent run is COMPLETADO and its postgame is still being played. */
+    private Boolean lastExperiencePostgame;
     private Integer lastPlayedYear;
     /** True when any run or the game's online playtime is flagged platinum. */
     private Boolean hasPlatinum;
