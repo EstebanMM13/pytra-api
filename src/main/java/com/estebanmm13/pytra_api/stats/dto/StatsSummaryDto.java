@@ -22,5 +22,6 @@ public class StatsSummaryDto {
     private long replayCount;
     private long completedCount;
     private long abandonedCount;
+    /** Runs being played: EN_CURSO, or COMPLETADO with the postgame still going (Experience#isBeingPlayed). */
     private long inProgressCount;
 }

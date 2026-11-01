@@ -60,6 +60,20 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
     }
 
     @Test
+    void inProgressCountIncludesCompletedRunsStillInTheirPostgame() throws Exception {
+        // "Being played" like /in-progress and the diary: in progress, or completed with the postgame going.
+        Long gameId = createGameVia(auth, "Postgame Game", "");
+        createExperienceVia(auth, gameId, run("A", "EN_CURSO", null, 1.0, null, null, null, ""));
+        createExperienceVia(auth, gameId, run("B", "COMPLETADO", 9, 30.0, null, "2026-01-01", "2026-02-01", ", \"postgame\": true"));
+        createExperienceVia(auth, gameId, run("C", "COMPLETADO", 8, 20.0, null, "2025-01-01", "2025-02-01", ""));
+
+        performAs(auth, get("/api/v1/stats/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.completedCount").value(2))
+                .andExpect(jsonPath("$.inProgressCount").value(2));
+    }
+
+    @Test
     void averageRatingIsNullWhenNothingIsRated() throws Exception {
         performAs(auth, get("/api/v1/stats/summary"))
                 .andExpect(status().isOk())

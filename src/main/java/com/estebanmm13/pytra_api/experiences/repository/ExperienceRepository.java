@@ -34,6 +34,8 @@ public interface ExperienceRepository extends JpaRepository<Experience, Long> {
                    COALESCE(SUM(CASE WHEN e.status = com.estebanmm13.pytra_api.experiences.model.ExperienceStatus.ABANDONADO
                                      THEN 1 ELSE 0 END), 0) AS abandonedCount,
                    COALESCE(SUM(CASE WHEN e.status = com.estebanmm13.pytra_api.experiences.model.ExperienceStatus.EN_CURSO
+                                       OR (e.status = com.estebanmm13.pytra_api.experiences.model.ExperienceStatus.COMPLETADO
+                                           AND e.postgame = true)
                                      THEN 1 ELSE 0 END), 0) AS inProgressCount,
                    SUM(e.rating) AS ratingSum,
                    COUNT(e.rating) AS ratedCount
