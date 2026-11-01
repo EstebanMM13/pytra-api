@@ -146,16 +146,19 @@ Code is organized by **module (bounded context)**, not by technical layer:
 ```
 com.estebanmm13.pytra_api/
 ├── auth/         # Users, registration, login, email verification, password reset, Google OIDC, JWT, rate limiting, demo, token purge
-├── account/      # Data export (CSV / Markdown) and account deletion
+├── account/      # Data export (CSV / Markdown), account deletion, personal access tokens
 ├── games/        # Genres (catalog), Sagas, Games, GamePlatformLink
 ├── experiences/  # Experience (playthroughs), OnlinePlaytime
+├── diary/        # Play diary: games and hours per day
+├── achievements/ # Unlocked achievements per user (the catalog lives in the web)
+├── obsidian/     # Read-only library snapshot for the Obsidian sync plugin
 ├── platforms/    # Platform catalog (global, editable)
 ├── steamsync/    # Steam OpenID linking, Steam Web API client, library sync
 ├── psnsync/      # PSN online-ID linking, service-account auth, PS4/PS5 game list sync
 ├── platformsync/ # Shared by both syncs: playtime writer, pending queue, pending confirm
 ├── metadata/     # IGDB and Steam store lookups: form autofill and pending-game enrichment
 ├── covers/       # Downscaled Steam cover thumbnails for list views
-├── stats/        # Aggregated stats across games/sagas/genres/experiences
+├── stats/        # Aggregated stats: summary, year in review, stats hub sections
 ├── mail/         # EmailSender: Brevo HTTP sender or logging fallback
 ├── config/       # SecurityConfig, URL normalization
 └── error/        # Global exception handling
@@ -201,6 +204,11 @@ Google login starts at `GET /oauth2/authorization/google` and returns through `/
 | PATCH | `/me` | Partial update: `username` and/or `avatar` (preset key; explicit `null` clears it) |
 | GET | `/me/export?format=csv\|markdown` | Download all the user's data. CSV: one row per experience with the game columns repeated (games without runs get one row), UTF-8 with BOM, formula-like text (first non-blank character `= + - @`, or a leading control character) prefixed with `'`. Markdown (Obsidian-friendly): front matter (quoted YAML values), one `##` section per game with its `###` runs, then the yearly notes. Unknown format: `400 INVALID_EXPORT_FORMAT`. Max 5 exports per user per minute (in-memory): `429 EXPORT_RATE_LIMITED` |
 | DELETE | `/me` | Body `{"confirm": "<username>", "password": "..."}`. `confirm` must match the username (case-insensitive, else `400 CONFIRMATION_MISMATCH`). Accounts with a password must send it (`400 INVALID_PASSWORD` if missing or wrong; never 401 so clients don't log out); Google-only accounts need a token issued in the last 10 minutes, else `403 REAUTH_REQUIRED` (log in with Google again). Deletes the user and everything they own in one transaction (all user tables cascade from `users`); `204`. Blocked with `409 SYNC_IN_PROGRESS` while a Steam or PSN sync runs |
+| POST | `/me/tokens` | Body `{name}` (1–50 chars). Creates a personal access token (`pytra_pat_...`) for the Obsidian sync; the response is the only one that ever carries the plaintext `token` |
+| GET | `/me/tokens` | The user's tokens `{id, name, prefix, createdAt, lastUsedAt}` (never the token itself) |
+| DELETE | `/me/tokens/{id}` | Revokes a token (`204`) |
+
+Personal access tokens are read-only credentials: they authenticate **only** `GET /api/v1/export/obsidian`. On any other request (token management included) they authenticate nothing and the request answers `401`, as do unknown or revoked tokens.
 
 ### Genres (`/api/v1/genres`, global catalog)
 | Method | Endpoint | Description |
@@ -245,6 +253,8 @@ Seeded with the common platforms (PC, PlayStation, Xbox, Nintendo, Móvil, Retro
 
 Platform: send `platformId` (catalog id). Clients built before the catalog may send the legacy `platform` code instead (`PC`, `PS5`, `PS4`, `XBOX`, `SWITCH`, `MOBILE`); on update, echoing the run's current legacy code (including `OTHER`) keeps its platform. Unknown id/code → `400 INVALID_PLATFORM`. Responses carry `platformId`, `platformName`, `platformColor` and the legacy `platform` code (`OTHER` for platforms the old enum lacked); the stats run lists (`/years/{year}` experiences, `/in-progress`) do too.
 
+Flags: `platinum`, `fullCompletion` (100%) and `replay` (booleans, default `false`).
+
 Postgame: `postgame` (boolean) marks a beaten run the user keeps playing, and `postgameEndDate` records when that postgame ended. Both only stay on `COMPLETADO` runs (any other status clears them); sending `postgameEndDate` ends the postgame (`postgame` is stored as `false`). A `postgameEndDate` before `endDate` → `400` with `fieldErrors.postgameEndDate`. Absent fields mean no postgame. Runs in their postgame count as being played: they show in `/stats/in-progress`, receive the diary's hours when they are the game's only run being played, and are adopted by the Steam/PSN sync like runs in progress.
 
 Ratings (`rating` here, `generalRating` in online playtime) are `0`–`10` with up to 2 decimals (e.g. `9.25`), stored as `NUMERIC(4,2)`. Values out of range or with more decimals (`9.255`) are rejected with `400` (never rounded). Responses return them as JSON numbers without trailing zeros (`9`, `9.5`, `9.25`). Jackson's float-to-int coercion is disabled globally (`accept-float-as-int: false`), so a decimal sent to an integer field (e.g. `"year": 2024.5`) fails with `400` instead of being silently truncated.
@@ -253,7 +263,33 @@ Ratings (`rating` here, `generalRating` in online playtime) are `0`–`10` with 
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/` | Get tracked online playtime |
-| PUT | `/` | Upsert online playtime |
+| PUT | `/` | Upsert online playtime: `totalHours`, `lastSessionAt`, `generalRating`, `notes`, `platinum`, `fullCompletion`, `platformIds` (online platforms) and `platformHours` (`{platformId: hours}`, hours >= 0) |
+
+### Diary (`/api/v1/diary`)
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/?from=&to=` | Days in the range (ISO dates): `{date, note, totalHours, games[]}` |
+| GET | `/{date}` | One day |
+| PUT | `/{date}` | Replaces the whole day: `{note?, games: [{gameId, experienceId?, platformId?, hours, note?}]}` (max 30 games, note max 1000 chars, line note max 500). `hours` > 0 and <= 24 with up to 2 decimals (never rounded). A day with no games and no note is deleted (`204`) |
+| DELETE | `/{date}` | Deletes the day (`204`) |
+| GET | `/api/v1/games/{gameId}/diary` | Days one game was played, latest first (the game page's "days played") |
+
+Where a line's hours go: to the run `experienceId`, which may be omitted when the game has exactly one run being played (`EN_CURSO` or in its postgame), or to the online playtime for `ONLINE` games. For a game played online on two or more platforms, `platformId` is required (`DIARY_PLATFORM_REQUIRED`) and must be one of them (`INVALID_PLATFORM`). Each line answers `countsHours` (the hours were added to the game's data), `synced` (the game is linked to Steam/PSN, whose sync counts the real playtime, so the line does not) and `autoSynced` (the line was written by the sync, record only).
+
+### Achievements (`/api/v1/achievements`)
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/` | Unlocked achievements `[{id, unlockedAt}]` |
+| POST | `/` | Body `{ids: [...]}` (1–100 ids, each 1–64 of `A-Z a-z 0-9 _ -`). Records newly unlocked ids, idempotent (an id already stored keeps its first date); answers the whole list |
+
+The achievement catalog and the unlock rules live in the web; the API only stores which ids are unlocked, so an achievement stays unlocked once recorded.
+
+### Obsidian export (`/api/v1/export`)
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/obsidian` | Full snapshot of the confirmed library for the Obsidian sync plugin: `{schemaVersion, serverTime, sagas, games, experiences}`. Accepts a personal access token or a session JWT |
+
+Every export is complete (the plugin detects deletions by comparing id sets). Field names are a public contract with the plugin: change them only together with `schemaVersion` (currently `1`).
 
 ### Stats (`/api/v1/stats`)
 | Method | Endpoint | Description |
@@ -269,6 +305,15 @@ Ratings (`rating` here, `generalRating` in online playtime) are `0`–`10` with 
 | GET | `/top-rated?limit=` | Highest-rated experiences |
 | GET | `/most-played/singleplayer?limit=` | Games ranked by `Experience` hours |
 | GET | `/most-played/online?limit=` | Games ranked by `OnlinePlaytime` hours (never merged with singleplayer) |
+| GET | `/activity?year=` | Diary heatmap and weekday split of a year (current year when omitted), plus all-time streaks |
+| GET | `/by-platform?year=` | Hours, games, runs and ratings per platform (all-time when `year` is omitted) and hours per year |
+| GET | `/by-developer?limit=10&minRatedGames=2` | All-time top developers by hours and by average rating (only developers with `minRatedGames` rated games); `limit=0` lists every developer |
+| GET | `/by-publisher?limit=10&minRatedGames=2` | Same as `/by-developer`, grouped by publisher |
+| GET | `/by-release-era` | All-time games by release decade and by release year |
+| GET | `/completion?year=` | Completion habits of the runs (all-time when `year` is omitted) |
+| GET | `/ratings?year=` | Rating profile of the runs (all-time when `year` is omitted) |
+| GET | `/game-rankings?limit=50` | All-time rankings of the confirmed games (replays, longest runs, short gems, diary days, pending), up to `limit` (1–50) each |
+| GET | `/play-facts` | Compact per-run facts (year, platform, status, hours, days to finish) and online play years, for the library filters |
 
 Averages are over rated experiences only, computed exactly (`BigDecimal`) and rounded to 2 decimals half up (`[9.25, 8.5]` → `8.88`), `null` when nothing is rated. Highlight thresholds are inclusive and applied to the rounded average (surprise `>= 8.5`, disappointment `<= 6`). Year endpoints accept 1970 to next year (`400 INVALID_YEAR` otherwise).
 
@@ -405,6 +450,9 @@ There is no Dockerfile in this repo; Railway builds the Maven project directly. 
 - [x] Transactional email via Brevo, per-IP rate limiting on public auth endpoints
 - [x] Genres, sagas, games, runs, online playtime, platform catalog, decimal ratings
 - [x] Aggregated stats and year in review (GOTY, highlights, yearly notes)
+- [x] Stats hub: activity, platforms, studios, release eras, completion habits, ratings, game rankings
+- [x] Play diary, persistent achievements, game backlog ("Pendiente") and postgame runs
+- [x] Personal access tokens and the Obsidian export
 - [x] Steam and PlayStation Network library sync with a shared pending-review queue
 - [x] IGDB autofill and automatic IGDB enrichment of pending games
 - [x] Read-only demo, data export, account deletion
