@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.account.export;
 
+import com.estebanmm13.pytra_api.achievements.model.UnlockedAchievement;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.experiences.model.Ratings;
@@ -91,7 +92,10 @@ public final class AccountExportWriter {
         return out.toString();
     }
 
-    /** One section per game with its runs, then one section per year with the yearly notes. */
+    /**
+     * One section per game with its runs, then one section per year with the yearly notes, then the
+     * unlocked achievements (web ids) with their unlock date.
+     */
     static String markdown(ExportData data) {
         StringBuilder out = new StringBuilder();
         out.append("---\n")
@@ -148,6 +152,14 @@ public final class AccountExportWriter {
                         block(out, "Summary", note.getSummary());
                         block(out, "Highlights", note.getHighlights());
                     });
+        }
+
+        if (!data.achievements().isEmpty()) {
+            out.append("\n# Achievements\n\n");
+            for (UnlockedAchievement achievement : data.achievements()) {
+                out.append("- ").append(singleLine(achievement.getAchievementId()))
+                        .append(" (").append(achievement.getUnlockedAt().toLocalDate()).append(")\n");
+            }
         }
         return out.toString();
     }

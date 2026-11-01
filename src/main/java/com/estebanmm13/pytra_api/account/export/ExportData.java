@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.account.export;
 
+import com.estebanmm13.pytra_api.achievements.model.UnlockedAchievement;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
 import com.estebanmm13.pytra_api.games.model.Game;
@@ -13,6 +14,7 @@ import java.util.Map;
  * Everything one user owns that goes into an export, already loaded (games with saga and genres).
  *
  * @param experiencesByGame runs per game id, in the order they should be written
+ * @param achievements unlocked achievements, oldest unlock first
  */
 public record ExportData(
         String username,
@@ -20,5 +22,6 @@ public record ExportData(
         List<Game> games,
         Map<Long, List<Experience>> experiencesByGame,
         Map<Long, OnlinePlaytime> onlinePlaytimeByGame,
-        List<YearNote> yearNotes) {
+        List<YearNote> yearNotes,
+        List<UnlockedAchievement> achievements) {
 }

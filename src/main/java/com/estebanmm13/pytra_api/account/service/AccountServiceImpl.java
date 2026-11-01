@@ -4,6 +4,7 @@ import com.estebanmm13.pytra_api.account.export.AccountExportWriter;
 import com.estebanmm13.pytra_api.account.export.ExportData;
 import com.estebanmm13.pytra_api.account.export.ExportFile;
 import com.estebanmm13.pytra_api.account.export.ExportFormat;
+import com.estebanmm13.pytra_api.achievements.repository.UnlockedAchievementRepository;
 import com.estebanmm13.pytra_api.auth.model.User;
 import com.estebanmm13.pytra_api.auth.repository.UserRepository;
 import com.estebanmm13.pytra_api.auth.validation.UsernamePolicy;
@@ -48,6 +49,7 @@ public class AccountServiceImpl implements AccountService {
     private final ExperienceRepository experienceRepository;
     private final OnlinePlaytimeRepository onlinePlaytimeRepository;
     private final YearNoteRepository yearNoteRepository;
+    private final UnlockedAchievementRepository unlockedAchievementRepository;
     private final SteamSyncGuard steamSyncGuard;
     private final PasswordEncoder passwordEncoder;
     private final ExportRateLimiter exportRateLimiter;
@@ -58,6 +60,7 @@ public class AccountServiceImpl implements AccountService {
                               ExperienceRepository experienceRepository,
                               OnlinePlaytimeRepository onlinePlaytimeRepository,
                               YearNoteRepository yearNoteRepository,
+                              UnlockedAchievementRepository unlockedAchievementRepository,
                               SteamSyncGuard steamSyncGuard,
                               PasswordEncoder passwordEncoder,
                               ExportRateLimiter exportRateLimiter,
@@ -67,6 +70,7 @@ public class AccountServiceImpl implements AccountService {
         this.experienceRepository = experienceRepository;
         this.onlinePlaytimeRepository = onlinePlaytimeRepository;
         this.yearNoteRepository = yearNoteRepository;
+        this.unlockedAchievementRepository = unlockedAchievementRepository;
         this.steamSyncGuard = steamSyncGuard;
         this.passwordEncoder = passwordEncoder;
         this.exportRateLimiter = exportRateLimiter;
@@ -102,7 +106,8 @@ public class AccountServiceImpl implements AccountService {
                 games,
                 experiencesByGame,
                 onlineByGame,
-                yearNoteRepository.findAllByUserIdOrderByYearDesc(userId));
+                yearNoteRepository.findAllByUserIdOrderByYearDesc(userId),
+                unlockedAchievementRepository.findAllByUserIdOrderByUnlockedAtAscAchievementIdAsc(userId));
 
         String filename = "pytra-export-" + user.getUsername() + "-" + LocalDate.now() + "." + exportFormat.extension();
         return new ExportFile(filename, exportFormat.mediaType(), AccountExportWriter.write(data, exportFormat));
@@ -111,7 +116,7 @@ public class AccountServiceImpl implements AccountService {
     /**
      * Every user-owned table references users(id) ON DELETE CASCADE (tokens, sagas, games and their
      * genre links, experiences, online playtime, Steam links/states/ignored apps/platform links,
-     * year notes), so deleting the user row removes all of it atomically in this one transaction.
+     * year notes, unlocked achievements), so deleting the user row removes all of it atomically in this one transaction.
      * The global genre catalog is not user-owned and stays.
      */
     @Override

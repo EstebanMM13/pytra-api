@@ -31,6 +31,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -148,6 +149,8 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.PUT, "/api/v1/diary/2024-05-01"),
                 Arguments.of(HttpMethod.DELETE, "/api/v1/diary/2024-05-01"),
                 Arguments.of(HttpMethod.GET, "/api/v1/games/1/diary"),
+                Arguments.of(HttpMethod.GET, "/api/v1/achievements"),
+                Arguments.of(HttpMethod.POST, "/api/v1/achievements"),
                 Arguments.of(HttpMethod.GET, "/api/v1/users/me"),
                 Arguments.of(HttpMethod.PATCH, "/api/v1/users/me"),
                 Arguments.of(HttpMethod.GET, "/api/v1/users/me/export"),
@@ -843,6 +846,31 @@ class TenantIsolationTests extends AbstractIntegrationTest {
             perform(get("/api/v1/experiences/{id}", aliceExperienceId), aliceAuth)
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.hours").value(44.5));
+        }
+    }
+
+    @Nested
+    class Achievements {
+
+        @Test
+        void unlockedAchievementsArePerUser() throws Exception {
+            perform(post("/api/v1/achievements"), aliceAuth, "{\"ids\": [\"multitasker\", \"years10\"]}")
+                    .andExpect(status().isOk());
+
+            perform(get("/api/v1/achievements"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(0));
+
+            // Recording the same id as Bob stores Bob's own row and never touches Alice's.
+            perform(post("/api/v1/achievements"), bobAuth, "{\"ids\": [\"multitasker\"]}")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(1))
+                    .andExpect(jsonPath("$[0].id").value("multitasker"));
+
+            perform(get("/api/v1/achievements"), aliceAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(2))
+                    .andExpect(jsonPath("$[*].id", containsInAnyOrder("multitasker", "years10")));
         }
     }
 

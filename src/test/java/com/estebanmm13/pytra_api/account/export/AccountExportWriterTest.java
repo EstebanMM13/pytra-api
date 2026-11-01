@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.account.export;
 
+import com.estebanmm13.pytra_api.achievements.model.UnlockedAchievement;
 import com.estebanmm13.pytra_api.error.InvalidRequestException;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
@@ -48,7 +49,9 @@ class AccountExportWriterTest {
             Map.of(1L, List.of(run)),
             Map.of(1L, OnlinePlaytime.builder().gameId(1L).totalHours(3.0).fullCompletion(true)
                     .platforms(new HashSet<>(Set.of(TestPlatforms.PS5, TestPlatforms.PC))).build()),
-            List.of(YearNote.builder().year(2024).summary("Great year").highlights("Elden Ring").build()));
+            List.of(YearNote.builder().year(2024).summary("Great year").highlights("Elden Ring").build()),
+            List.of(UnlockedAchievement.builder().achievementId("years10").unlockedAt(LocalDateTime.of(2026, 3, 2, 9, 0)).build(),
+                    UnlockedAchievement.builder().achievementId("multitasker").unlockedAt(LocalDateTime.of(2026, 11, 1, 10, 0)).build()));
 
     @Test
     void csvHasOneRowPerExperienceAndOneForGamesWithoutRuns() {
@@ -71,7 +74,7 @@ class AccountExportWriterTest {
                 .platform(Platform.builder().id(99L).name("=HYPERLINK(1)").sortOrder(1000).build())
                 .platinum(false).fullCompletion(false).replay(false).build();
         ExportData withPlatforms = new ExportData("Esteban", LocalDateTime.of(2026, 10, 9, 12, 0), List.of(elden),
-                Map.of(1L, List.of(handheld, injected)), Map.of(), List.of());
+                Map.of(1L, List.of(handheld, injected)), Map.of(), List.of(), List.of());
 
         String csv = AccountExportWriter.csv(withPlatforms);
         assertThat(csv).contains(",DS,false,false,false,");
@@ -107,7 +110,7 @@ class AccountExportWriterTest {
                 .saga(Saga.builder().id(9L).name("Evil\r\nsaga").build())
                 .reviewStatus(ReviewStatus.CONFIRMED).build();
         ExportData tricky = new ExportData("bad\"name\\\ninjected: true", LocalDateTime.of(2026, 1, 1, 0, 0),
-                List.of(game), Map.of(), Map.of(), List.of());
+                List.of(game), Map.of(), Map.of(), List.of(), List.of());
 
         String md = AccountExportWriter.markdown(tricky);
 
@@ -138,6 +141,21 @@ class AccountExportWriterTest {
         assertThat(md).contains("_No runs logged._");
         assertThat(md).contains("# Year notes\n\n## 2024\n");
         assertThat(md).contains("**Highlights**\n\nElden Ring\n");
+    }
+
+    @Test
+    void markdownListsTheUnlockedAchievementsWithTheirDateAndCsvIgnoresThem() {
+        assertThat(AccountExportWriter.markdown(data))
+                .endsWith("\n# Achievements\n\n- years10 (2026-03-02)\n- multitasker (2026-11-01)\n");
+        assertThat(AccountExportWriter.csv(data)).doesNotContain("years10", "multitasker");
+    }
+
+    @Test
+    void markdownWithoutAchievementsHasNoAchievementsSection() {
+        ExportData none = new ExportData("Esteban", LocalDateTime.of(2026, 1, 1, 0, 0),
+                List.of(), Map.of(), Map.of(), List.of(), List.of());
+
+        assertThat(AccountExportWriter.markdown(none)).doesNotContain("# Achievements");
     }
 
     @Test

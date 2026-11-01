@@ -42,7 +42,7 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
             "email_verification_tokens", "password_reset_tokens", "exchange_code_tokens",
             "sagas", "games", "experiences", "online_playtimes",
             "game_platform_links", "steam_links", "steam_link_states", "steam_ignored_apps",
-            "psn_links", "psn_ignored_titles", "year_notes");
+            "psn_links", "psn_ignored_titles", "year_notes", "unlocked_achievements");
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -163,6 +163,10 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
         createGameVia(bobAuth, "Bob Markdown Game", "");
         performAs(bobAuth, put("/api/v1/stats/years/2024/note"), "{\"summary\": \"Bob year\"}")
                 .andExpect(status().isOk());
+        performAs(aliceAuth, post("/api/v1/achievements"), "{\"ids\": [\"aliceOnly\"]}")
+                .andExpect(status().isOk());
+        performAs(bobAuth, post("/api/v1/achievements"), "{\"ids\": [\"bobOnly\"]}")
+                .andExpect(status().isOk());
 
         MvcResult result = performAs(aliceAuth, get("/api/v1/users/me/export").param("format", "markdown"))
                 .andExpect(status().isOk())
@@ -172,8 +176,8 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
 
         String md = new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
         assertThat(md).contains("## Alice Markdown Game", "### Platinum run", "- **Rating:** 10/10",
-                "- **Hours:** 80", "**Pros**\n\nBosses", "**Cons**\n\nCamera", "# Year notes", "## 2024", "Alice year");
-        assertThat(md).doesNotContain("Bob Markdown Game", "Bob year");
+                "- **Hours:** 80", "**Pros**\n\nBosses", "**Cons**\n\nCamera", "# Year notes", "## 2024", "Alice year", "# Achievements", "aliceOnly");
+        assertThat(md).doesNotContain("Bob Markdown Game", "Bob year", "bobOnly");
     }
 
     @Test
@@ -317,6 +321,8 @@ class AccountIntegrationTests extends AbstractIntegrationTest {
         performAs(auth, put("/api/v1/games/{gameId}/online-playtime", gameId), "{\"totalHours\": 4.0}")
                 .andExpect(status().isOk());
         performAs(auth, put("/api/v1/stats/years/2024/note"), "{\"summary\": \"Note\"}")
+                .andExpect(status().isOk());
+        performAs(auth, post("/api/v1/achievements"), "{\"ids\": [\"multitasker\"]}")
                 .andExpect(status().isOk());
 
         Long userId = user.getId();
