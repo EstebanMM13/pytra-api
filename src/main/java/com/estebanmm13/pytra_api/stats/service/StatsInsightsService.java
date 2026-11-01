@@ -36,4 +36,7 @@ public interface StatsInsightsService {
 
     /** Every run's year, platform, status, hours and days to finish, plus the years of counted online diary hours. */
     PlayFactsDto getPlayFacts(Long userId);
+
+    /** All-time game rankings of the CONFIRMED games, each list capped at {@code limit} (1-50). */
+    GameRankingsDto getGameRankings(Long userId, int limit);
 }

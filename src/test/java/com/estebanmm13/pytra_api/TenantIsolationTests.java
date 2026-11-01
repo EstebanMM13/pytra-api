@@ -142,6 +142,7 @@ class TenantIsolationTests extends AbstractIntegrationTest {
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/completion"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/ratings"),
                 Arguments.of(HttpMethod.GET, "/api/v1/stats/play-facts"),
+                Arguments.of(HttpMethod.GET, "/api/v1/stats/game-rankings"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary?from=2024-05-01&to=2024-05-31"),
                 Arguments.of(HttpMethod.GET, "/api/v1/diary/2024-05-01"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/diary/2024-05-01"),
@@ -650,6 +651,22 @@ class TenantIsolationTests extends AbstractIntegrationTest {
             perform(get("/api/v1/stats/play-facts"), aliceAuth)
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.runs.length()").value(1));
+        }
+
+        @Test
+        void gameRankingsOnlyListOwnGames() throws Exception {
+            // Alice has one completed 42.5 h run; Bob nothing.
+            perform(get("/api/v1/stats/game-rankings"), bobAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.mostReplayed.length()").value(0))
+                    .andExpect(jsonPath("$.longestRuns.length()").value(0))
+                    .andExpect(jsonPath("$.shortGems.length()").value(0))
+                    .andExpect(jsonPath("$.mostDaysPlayed.length()").value(0))
+                    .andExpect(jsonPath("$.longestPending.length()").value(0));
+            perform(get("/api/v1/stats/game-rankings"), aliceAuth)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.longestRuns.length()").value(1))
+                    .andExpect(jsonPath("$.longestRuns[0].hours").value(42.5));
         }
 
         @Test

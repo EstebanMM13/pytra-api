@@ -473,4 +473,42 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.standardDeviation").value(nullValue()))
                 .andExpect(jsonPath("$.histogram.length()").value(21));
     }
+
+    // ---------------------------------------------------------------- game rankings
+
+    @Test
+    void gameRankingsListReplaysLongRunsGemsDiaryDaysAndPendingGames() throws Exception {
+        Long saga = createGameVia(auth, "Rank Saga", "");
+        createExperienceVia(auth, saga, run("First", "COMPLETADO", 9, 60.0, 2020, null, null, ""));
+        createExperienceVia(auth, saga, run("Replay", "COMPLETADO", 8, 40.0, 2022, null, null, ""));
+        Long gem = createGameVia(auth, "Rank Gem", "");
+        createExperienceVia(auth, gem, run("Only", "COMPLETADO", 9.5, 6.0, 2023, null, null, ""));
+        Long waiting = createGameVia(auth, "Rank Waiting", "");
+        Long pendingRun = createExperienceVia(auth, waiting, run("Someday", "PENDIENTE", null, 0.0, null, null, null, ""));
+        Long arena = createOnlineGame("Rank Arena");
+        logDay("2024-02-01", line(arena, "1"));
+        logDay("2024-02-02", line(arena, "2"));
+
+        performAs(auth, get("/api/v1/stats/game-rankings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mostReplayed.length()").value(1))
+                .andExpect(jsonPath("$.mostReplayed[0].gameName").value("Rank Saga"))
+                .andExpect(jsonPath("$.mostReplayed[0].runCount").value(2))
+                .andExpect(jsonPath("$.mostReplayed[0].hours").value(100.0))
+                .andExpect(jsonPath("$.longestRuns[0].runLabel").value("First"))
+                .andExpect(jsonPath("$.longestRuns[0].hours").value(60.0))
+                .andExpect(jsonPath("$.shortGems.length()").value(1))
+                .andExpect(jsonPath("$.shortGems[0].gameName").value("Rank Gem"))
+                .andExpect(jsonPath("$.shortGems[0].rating").value(9.5))
+                .andExpect(jsonPath("$.mostDaysPlayed[0].gameName").value("Rank Arena"))
+                .andExpect(jsonPath("$.mostDaysPlayed[0].days").value(2))
+                .andExpect(jsonPath("$.longestPending.length()").value(1))
+                .andExpect(jsonPath("$.longestPending[0].experienceId").value(pendingRun))
+                // Set by the database on insert (V39), never sent by the client.
+                .andExpect(jsonPath("$.longestPending[0].pendingSince").isNotEmpty());
+
+        performAs(auth, get("/api/v1/stats/game-rankings").param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.longestRuns.length()").value(1));
+    }
 }

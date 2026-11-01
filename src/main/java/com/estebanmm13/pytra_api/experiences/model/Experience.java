@@ -3,6 +3,7 @@ package com.estebanmm13.pytra_api.experiences.model;
 import com.estebanmm13.pytra_api.platforms.model.Platform;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
@@ -85,6 +86,11 @@ public class Experience {
     @UpdateTimestamp
     @Column(nullable = false)
     private LocalDateTime updatedAt;
+
+    /** When the run was added (rows older than V39 hold an estimate); never changes after the insert. */
+    @CreationTimestamp
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     /**
      * True while the user is playing the run: in progress, or completed with its postgame still going. The

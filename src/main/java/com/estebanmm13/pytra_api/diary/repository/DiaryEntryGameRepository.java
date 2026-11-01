@@ -82,6 +82,15 @@ public interface DiaryEntryGameRepository extends JpaRepository<DiaryEntryGame, 
             """)
     List<LocalDate> findPlayedDates(@Param("userId") Long userId);
 
+    /** Distinct diary days per game of the user (one line per game and day, so a row count is the day count). */
+    @Query("""
+            SELECT new com.estebanmm13.pytra_api.diary.repository.GameDiaryDays(g.gameId, COUNT(DISTINCT e.entryDate))
+            FROM DiaryEntryGame g JOIN g.entry e
+            WHERE e.userId = :userId
+            GROUP BY g.gameId
+            """)
+    List<GameDiaryDays> countPlayedDaysByGame(@Param("userId") Long userId);
+
     /**
      * Before a run is deleted: its diary lines stop pointing at it and stop counting, since the run's hours
      * (diary ones included) go away with it. Nothing is ever subtracted twice.

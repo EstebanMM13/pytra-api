@@ -49,6 +49,10 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
     private static final int MAX_LIMIT = 50;
     /** Scale of the intermediate per-game rating means, so group means round only once. */
     private static final int GAME_RATING_SCALE = 10;
+    /** "Short gems": games rated at least this, over at most SHORT_GEM_MAX_HOURS total hours. */
+    private static final BigDecimal SHORT_GEM_MIN_RATING = new BigDecimal("8");
+    /** Total hours (runs + online) cap of a short gem. */
+    private static final double SHORT_GEM_MAX_HOURS = 15;
 
     private final DiaryEntryGameRepository diaryEntryGameRepository;
     private final ExperienceRepository experienceRepository;
@@ -695,6 +699,105 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
     static int ratingBucketOf(BigDecimal rating) {
         int index = rating.multiply(BigDecimal.TWO).setScale(0, RoundingMode.FLOOR).intValue();
         return Math.min(Math.max(index, 0), RATING_BUCKETS - 1);
+    }
+
+    // ---------------------------------------------------------------- game rankings
+
+    @Override
+    @Transactional(readOnly = true)
+    public GameRankingsDto getGameRankings(Long userId, int limit) {
+        int cap = clampLimit(limit);
+        List<GameFacts> facts = confirmedGameFacts(userId);
+        Set<Long> confirmed = new HashSet<>();
+        facts.forEach(game -> confirmed.add(game.gameId()));
+        Map<Long, String> names = new HashMap<>();
+        for (GameLabel label : gameRepository.findLabelsByUserId(userId)) {
+            names.put(label.id(), label.name());
+        }
+        Map<Long, List<Experience>> runsByGame = new LinkedHashMap<>();
+        for (Experience run : experienceRepository.findAllByUserId(userId)) {
+            if (confirmed.contains(run.getGameId())) {
+                runsByGame.computeIfAbsent(run.getGameId(), id -> new ArrayList<>()).add(run);
+            }
+        }
+
+        return new GameRankingsDto(
+                mostReplayed(runsByGame, names, cap),
+                longestRuns(runsByGame, names, cap),
+                shortGems(facts, names, cap),
+                mostDaysPlayed(userId, confirmed, names, cap),
+                longestPending(runsByGame, names, cap));
+    }
+
+    private static List<GameRankingsDto.ReplayedGame> mostReplayed(Map<Long, List<Experience>> runsByGame,
+                                                                   Map<Long, String> names, int cap) {
+        List<GameRankingsDto.ReplayedGame> replayed = new ArrayList<>();
+        runsByGame.forEach((gameId, runs) -> {
+            List<Experience> counted = runs.stream().filter(run -> run.getStatus() != ExperienceStatus.PENDIENTE).toList();
+            if (counted.size() >= 2) {
+                double hours = counted.stream().mapToDouble(StatsInsightsServiceImpl::hoursOf).sum();
+                replayed.add(new GameRankingsDto.ReplayedGame(gameId, nameOf(gameId, names), counted.size(), round1(hours)));
+            }
+        });
+        replayed.sort(Comparator.comparingLong(GameRankingsDto.ReplayedGame::runCount).reversed()
+                .thenComparing(Comparator.comparingDouble(GameRankingsDto.ReplayedGame::hours).reversed())
+                .thenComparing(GameRankingsDto.ReplayedGame::gameName, String.CASE_INSENSITIVE_ORDER));
+        return replayed.stream().limit(cap).toList();
+    }
+
+    private static List<GameRankingsDto.LongRun> longestRuns(Map<Long, List<Experience>> runsByGame,
+                                                             Map<Long, String> names, int cap) {
+        return runsByGame.values().stream()
+                .flatMap(List::stream)
+                .filter(run -> run.getStatus() != ExperienceStatus.PENDIENTE && hoursOf(run) > 0)
+                .sorted(Comparator.comparingDouble(StatsInsightsServiceImpl::hoursOf).reversed()
+                        .thenComparing(Experience::getId))
+                .limit(cap)
+                .map(run -> new GameRankingsDto.LongRun(run.getId(), run.getGameId(), nameOf(run.getGameId(), names),
+                        run.getRunLabel(), round1(hoursOf(run))))
+                .toList();
+    }
+
+    private static List<GameRankingsDto.ShortGem> shortGems(List<GameFacts> facts, Map<Long, String> names, int cap) {
+        return facts.stream()
+                .filter(game -> game.rating() != null && game.rating().compareTo(SHORT_GEM_MIN_RATING) >= 0
+                        && game.hours() > 0 && game.hours() <= SHORT_GEM_MAX_HOURS)
+                .map(game -> new GameRankingsDto.ShortGem(game.gameId(), nameOf(game.gameId(), names),
+                        game.rating().setScale(2, RoundingMode.HALF_UP), round1(game.hours())))
+                .sorted(Comparator.comparing(GameRankingsDto.ShortGem::rating).reversed()
+                        .thenComparingDouble(GameRankingsDto.ShortGem::hours)
+                        .thenComparing(GameRankingsDto.ShortGem::gameName, String.CASE_INSENSITIVE_ORDER))
+                .limit(cap)
+                .toList();
+    }
+
+    private List<GameRankingsDto.DaysPlayedGame> mostDaysPlayed(Long userId, Set<Long> confirmed,
+                                                                Map<Long, String> names, int cap) {
+        return diaryEntryGameRepository.countPlayedDaysByGame(userId).stream()
+                .filter(row -> confirmed.contains(row.gameId()))
+                .map(row -> new GameRankingsDto.DaysPlayedGame(row.gameId(), nameOf(row.gameId(), names), row.days()))
+                .sorted(Comparator.comparingLong(GameRankingsDto.DaysPlayedGame::days).reversed()
+                        .thenComparing(GameRankingsDto.DaysPlayedGame::gameName, String.CASE_INSENSITIVE_ORDER))
+                .limit(cap)
+                .toList();
+    }
+
+    /** A game is pending when its latest run (the library's status rule) is PENDIENTE; it waits since that run. */
+    private static List<GameRankingsDto.PendingGame> longestPending(Map<Long, List<Experience>> runsByGame,
+                                                                    Map<Long, String> names, int cap) {
+        return runsByGame.values().stream()
+                .map(runs -> runs.stream().max(ExperiencePeriod.RECENCY).orElseThrow())
+                .filter(latest -> latest.getStatus() == ExperienceStatus.PENDIENTE)
+                .sorted(Comparator.comparing(Experience::getCreatedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
+                        .thenComparing(Experience::getId))
+                .limit(cap)
+                .map(run -> new GameRankingsDto.PendingGame(run.getGameId(), nameOf(run.getGameId(), names),
+                        run.getId(), run.getRunLabel(), run.getCreatedAt()))
+                .toList();
+    }
+
+    private static String nameOf(Long gameId, Map<Long, String> names) {
+        return names.getOrDefault(gameId, "Unknown");
     }
 
     // ---------------------------------------------------------------- shared loaders

@@ -143,6 +143,12 @@ public class StatsController {
         return ResponseEntity.ok(statsInsightsService.getRatings(currentUserResolver.getCurrentUserId(), year));
     }
 
+    /** All-time rankings of the CONFIRMED games (replays, longest runs, short gems, diary days, pending), up to limit (1-50) each. */
+    @GetMapping("/game-rankings")
+    public ResponseEntity<GameRankingsDto> getGameRankings(@RequestParam(defaultValue = "50") int limit) {
+        return ResponseEntity.ok(statsInsightsService.getGameRankings(currentUserResolver.getCurrentUserId(), limit));
+    }
+
     /** Compact per-run facts (year, platform, status, hours, days to finish) and online play years, for library filters. */
     @GetMapping("/play-facts")
     public ResponseEntity<PlayFactsDto> getPlayFacts() {
