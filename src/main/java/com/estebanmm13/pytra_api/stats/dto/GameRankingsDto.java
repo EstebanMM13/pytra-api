@@ -8,14 +8,14 @@ import java.util.List;
  * Game rankings of the stats "Games" screen. Every list covers CONFIRMED games only and holds at most the
  * requested limit (1-50). The most played and top rated rankings live in their own endpoints.
  *
- * @param mostReplayed   games with 2+ runs that are not PENDIENTE, most runs first (ties: more run hours,
+ * @param mostReplayed   games with 2+ runs, most runs first (ties: more run hours,
  *                       then name)
- * @param longestRuns    single runs by their own hours, longest first (ties: lowest experience id); PENDIENTE
- *                       runs and runs with 0 hours are left out
+ * @param longestRuns    single runs by their own hours, longest first (ties: lowest experience id); runs with
+ *                       0 hours are left out
  * @param shortGems      games rated 8 or more with 0 < total hours (runs + online) <= 15, best rating first
  *                       (ties: fewer hours, then name)
  * @param mostDaysPlayed games by distinct diary days, most days first (ties: name)
- * @param longestPending pending games as the library's "Pendiente" tab sees them (latest run PENDIENTE, or a
+ * @param longestPending pending games as the library's "Pendiente" tab sees them (in the backlog, or a
  *                       SINGLEPLAYER game with no runs), oldest waiting first (ties: lowest game id)
  */
 public record GameRankingsDto(
@@ -40,9 +40,9 @@ public record GameRankingsDto(
     }
 
     /**
-     * @param experienceId the pending run; null (with runLabel) for a game without runs
-     * @param pendingSince when the pending run was created, or the game for a game without runs (estimated for
-     *                     rows created before V39/V40)
+     * @param experienceId always null since pending moved from runs to the game (V42); kept for older clients
+     * @param runLabel     always null, like experienceId
+     * @param pendingSince when the game was added (estimated for rows created before V40)
      */
     public record PendingGame(Long gameId, String gameName, Long experienceId, String runLabel,
                               LocalDateTime pendingSince) {

@@ -69,7 +69,7 @@ class StatsGameRankingsTest {
         when(diaryEntryGameRepository.countPlayedDaysByGame(USER_ID)).thenReturn(diaryDays);
         // The CONFIRMED games 1-4, single player unless a test says otherwise.
         for (long game = 1; game <= 4; game++) {
-            addedRows.add(new GameAddedRow(game, GameCategory.SINGLEPLAYER, LocalDateTime.of(2026, 1, 1, 0, 0)));
+            addedRows.add(new GameAddedRow(game, GameCategory.SINGLEPLAYER, LocalDateTime.of(2026, 1, 1, 0, 0), false));
         }
         when(gameRepository.findAddedRowsByUserIdAndReviewStatus(USER_ID, ReviewStatus.CONFIRMED)).thenReturn(addedRows);
     }
@@ -87,16 +87,14 @@ class StatsGameRankingsTest {
     // ---------------------------------------------------------------- most replayed
 
     @Test
-    void mostReplayedCountsRunsThatAreNotPendingOfGamesWithTwoOrMore() {
+    void mostReplayedRanksGamesWithTwoOrMoreRuns() {
         run(1L, ExperienceStatus.COMPLETADO, 10);
         run(1L, ExperienceStatus.COMPLETADO, 12);
-        run(1L, ExperienceStatus.PENDIENTE, 0);
         run(2L, ExperienceStatus.COMPLETADO, 5);
         run(2L, ExperienceStatus.ABANDONADO, 2);
         run(2L, ExperienceStatus.EN_CURSO, 1);
-        // One counted run plus a pending one: not a replayed game.
+        // A single run: not a replayed game.
         run(3L, ExperienceStatus.COMPLETADO, 40);
-        run(3L, ExperienceStatus.PENDIENTE, 0);
         // Same run count as game 1 but fewer hours: after it.
         run(4L, ExperienceStatus.COMPLETADO, 3);
         run(4L, ExperienceStatus.COMPLETADO, 3);
@@ -119,7 +117,6 @@ class StatsGameRankingsTest {
         Experience long1 = run(1L, ExperienceStatus.COMPLETADO, 120);
         Experience tieFirst = run(2L, ExperienceStatus.ABANDONADO, 30);
         Experience tieSecond = run(1L, ExperienceStatus.EN_CURSO, 30);
-        run(3L, ExperienceStatus.PENDIENTE, 50);
         run(4L, ExperienceStatus.COMPLETADO, 0);
         run(UNCONFIRMED, ExperienceStatus.COMPLETADO, 500);
 
@@ -181,51 +178,29 @@ class StatsGameRankingsTest {
     // ---------------------------------------------------------------- longest pending
 
     @Test
-    void longestPendingListsGamesWhoseLatestRunIsPendingOldestFirst() {
-        Experience recent = run(1L, ExperienceStatus.PENDIENTE, 0);
-        recent.setCreatedAt(LocalDateTime.of(2026, 6, 1, 10, 0));
-        Experience oldest = run(2L, ExperienceStatus.PENDIENTE, 0);
-        oldest.setCreatedAt(LocalDateTime.of(2024, 3, 5, 8, 0));
-        // Same date as game 1 (estimated rows share one): the lower id goes first, so game 1 stays ahead.
-        Experience sameDate = run(4L, ExperienceStatus.PENDIENTE, 0);
-        sameDate.setCreatedAt(LocalDateTime.of(2026, 6, 1, 10, 0));
-        // Game 3's latest run is completed (it has dates; a dateless run counts as the oldest): not pending.
-        run(3L, ExperienceStatus.PENDIENTE, 0);
-        Experience done = run(3L, ExperienceStatus.COMPLETADO, 20);
-        done.setEndDate(LocalDate.of(2025, 1, 1));
-        run(UNCONFIRMED, ExperienceStatus.PENDIENTE, 0).setCreatedAt(LocalDateTime.of(2020, 1, 1, 0, 0));
-
-        GameRankingsDto rankings = service.getGameRankings(USER_ID, 50);
-
-        assertThat(rankings.longestPending())
-                .extracting(GameRankingsDto.PendingGame::gameName, GameRankingsDto.PendingGame::experienceId,
-                        GameRankingsDto.PendingGame::pendingSince)
-                .containsExactly(
-                        tuple("Bravo", oldest.getId(), LocalDateTime.of(2024, 3, 5, 8, 0)),
-                        tuple("Alpha", recent.getId(), LocalDateTime.of(2026, 6, 1, 10, 0)),
-                        tuple("Delta", sameDate.getId(), LocalDateTime.of(2026, 6, 1, 10, 0)));
-    }
-
-    @Test
-    void longestPendingAlsoListsSingleplayerGamesWithoutRunsLikeTheLibrary() {
-        // The library's "Pendiente" tab: latest run pending, or no runs at all unless the game is online.
-        Experience pendingRun = run(1L, ExperienceStatus.PENDIENTE, 0);
-        pendingRun.setCreatedAt(LocalDateTime.of(2025, 5, 1, 0, 0));
+    void longestPendingListsBacklogGamesAndSingleplayerGamesWithoutRunsOldestFirst() {
+        // The library's "Pendientes" tab: games in the backlog (with or without runs), or with no runs at all
+        // unless the game is online. They wait since the game was added.
+        run(1L, ExperienceStatus.COMPLETADO, 20);
+        run(3L, ExperienceStatus.COMPLETADO, 5);
         addedRows.clear();
-        addedRows.add(new GameAddedRow(1L, GameCategory.SINGLEPLAYER, LocalDateTime.of(2020, 1, 1, 0, 0)));
-        addedRows.add(new GameAddedRow(2L, GameCategory.SINGLEPLAYER, LocalDateTime.of(2024, 1, 1, 0, 0)));
-        addedRows.add(new GameAddedRow(3L, GameCategory.ONLINE, LocalDateTime.of(2019, 1, 1, 0, 0)));
-        addedRows.add(new GameAddedRow(4L, GameCategory.HYBRID, LocalDateTime.of(2019, 1, 1, 0, 0)));
+        addedRows.add(new GameAddedRow(1L, GameCategory.SINGLEPLAYER, LocalDateTime.of(2025, 5, 1, 0, 0), true));
+        addedRows.add(new GameAddedRow(2L, GameCategory.SINGLEPLAYER, LocalDateTime.of(2024, 1, 1, 0, 0), false));
+        // Same date as game 2 (estimated rows share one): the lower id goes first.
+        addedRows.add(new GameAddedRow(4L, GameCategory.HYBRID, LocalDateTime.of(2024, 1, 1, 0, 0), true));
+        // Has a run and is not in the backlog; online games without runs are tracked by online playtime.
+        addedRows.add(new GameAddedRow(3L, GameCategory.SINGLEPLAYER, LocalDateTime.of(2019, 1, 1, 0, 0), false));
+        addedRows.add(new GameAddedRow(5L, GameCategory.ONLINE, LocalDateTime.of(2019, 1, 1, 0, 0), false));
 
         GameRankingsDto rankings = service.getGameRankings(USER_ID, 50);
 
-        // Game 2 (no runs) waits since it was added; game 1 since its pending run, not since the game.
         assertThat(rankings.longestPending())
-                .extracting(GameRankingsDto.PendingGame::gameName, GameRankingsDto.PendingGame::experienceId,
-                        GameRankingsDto.PendingGame::pendingSince)
+                .extracting(GameRankingsDto.PendingGame::gameId, GameRankingsDto.PendingGame::experienceId,
+                        GameRankingsDto.PendingGame::runLabel, GameRankingsDto.PendingGame::pendingSince)
                 .containsExactly(
-                        tuple("Bravo", null, LocalDateTime.of(2024, 1, 1, 0, 0)),
-                        tuple("Alpha", pendingRun.getId(), LocalDateTime.of(2025, 5, 1, 0, 0)));
+                        tuple(2L, null, null, LocalDateTime.of(2024, 1, 1, 0, 0)),
+                        tuple(4L, null, null, LocalDateTime.of(2024, 1, 1, 0, 0)),
+                        tuple(1L, null, null, LocalDateTime.of(2025, 5, 1, 0, 0)));
     }
 
     // ---------------------------------------------------------------- limit
@@ -235,10 +210,11 @@ class StatsGameRankingsTest {
         for (long game = 1; game <= 4; game++) {
             run(game, ExperienceStatus.COMPLETADO, 10 + game);
             run(game, ExperienceStatus.COMPLETADO, 1);
-            run(game, ExperienceStatus.PENDIENTE, 0).setStartDate(LocalDate.of(2027, 1, 1));
             diaryDays.add(new GameDiaryDays(game, game));
             runTotals.add(new GameRunTotals(game, 5.0, new BigDecimal("9"), 1L));
         }
+
+        addedRows.replaceAll(row -> new GameAddedRow(row.gameId(), row.category(), row.createdAt(), true));
 
         GameRankingsDto two = service.getGameRankings(USER_ID, 2);
         assertThat(two.mostReplayed()).hasSize(2);

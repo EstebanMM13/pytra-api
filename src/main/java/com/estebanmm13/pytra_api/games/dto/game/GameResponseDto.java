@@ -28,6 +28,8 @@ public class GameResponseDto {
     private ReviewStatus reviewStatus;
     private List<GenreResponseDto> genres;
     private LocalDateTime updatedAt;
+    /** In the backlog ("Pendiente"). */
+    private Boolean backlog;
 
     // Library aggregates over the game's experiences. Filled by the /games endpoints;
     // null on responses that don't compute them (Steam pending/confirm).

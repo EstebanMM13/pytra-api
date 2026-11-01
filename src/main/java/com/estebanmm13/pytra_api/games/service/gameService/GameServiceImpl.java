@@ -78,6 +78,7 @@ public class GameServiceImpl implements GameService {
                 .coverImageUrl(gameRequestDto.getCoverImageUrl())
                 .reviewStatus(ReviewStatus.CONFIRMED)
                 .genres(genres)
+                .backlog(Boolean.TRUE.equals(gameRequestDto.getBacklog()))
                 .build();
 
         gameRepository.save(game);
@@ -109,6 +110,9 @@ public class GameServiceImpl implements GameService {
         game.setSaga(saga);
         game.setCoverImageUrl(gameRequestDto.getCoverImageUrl());
         game.setGenres(genres);
+        if (gameRequestDto.getBacklog() != null) {
+            game.setBacklog(gameRequestDto.getBacklog());
+        }
 
         gameRepository.save(game);
         return gameMapper.toResponseDto(game, gameExperienceStatsCalculator.forGame(id, userId));

@@ -58,6 +58,11 @@ public class Game {
     )
     private Set<Genre> genres = new HashSet<>();
 
+    /** In the backlog ("Pendiente"): the user plans to play it. Starting a run takes it out. See V42. */
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean backlog = false;
+
     /** Name as a platform sync imported it; null for games created by hand. See V26. */
     private String importedName;
 

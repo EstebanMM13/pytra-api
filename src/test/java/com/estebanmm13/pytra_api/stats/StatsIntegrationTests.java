@@ -46,11 +46,10 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
         createExperienceVia(auth, gameId, run("A", "COMPLETADO", 9, 10.0, null, null, null, ", \"replay\": true, \"platinum\": true"));
         createExperienceVia(auth, gameId, run("B", "ABANDONADO", 8, 1.0, null, null, null, ""));
         createExperienceVia(auth, gameId, run("C", "EN_CURSO", 6, 1.0, null, null, null, ""));
-        createExperienceVia(auth, gameId, run("D", "PENDIENTE", null, 0.0, null, null, null, ""));
 
         performAs(auth, get("/api/v1/stats/summary"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalExperiences").value(4))
+                .andExpect(jsonPath("$.totalExperiences").value(3))
                 .andExpect(jsonPath("$.averageRating").value(7.67))
                 .andExpect(jsonPath("$.replayCount").value(1))
                 .andExpect(jsonPath("$.totalPlatinums").value(1))
@@ -87,7 +86,7 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
         createExperienceVia(auth, gameId, run("Explicit 2", "COMPLETADO", 6, 2.0, 2024, null, null, ""));
         createExperienceVia(auth, gameId, run("From end", "COMPLETADO", 7, 3.0, null, "2022-01-01", "2023-05-01", ""));
         createExperienceVia(auth, gameId, run("From start", "EN_CURSO", null, 1.0, null, "2021-03-01", null, ""));
-        createExperienceVia(auth, gameId, run("Undated", "PENDIENTE", 10, 50.0, null, null, null, ""));
+        createExperienceVia(auth, gameId, run("Undated", "ABANDONADO", 10, 50.0, null, null, null, ""));
 
         performAs(auth, get("/api/v1/stats/years"))
                 .andExpect(status().isOk())

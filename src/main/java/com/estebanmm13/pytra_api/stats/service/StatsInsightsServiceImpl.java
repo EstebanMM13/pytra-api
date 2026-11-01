@@ -735,10 +735,9 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
                                                                    Map<Long, String> names, int cap) {
         List<GameRankingsDto.ReplayedGame> replayed = new ArrayList<>();
         runsByGame.forEach((gameId, runs) -> {
-            List<Experience> counted = runs.stream().filter(run -> run.getStatus() != ExperienceStatus.PENDIENTE).toList();
-            if (counted.size() >= 2) {
-                double hours = counted.stream().mapToDouble(StatsInsightsServiceImpl::hoursOf).sum();
-                replayed.add(new GameRankingsDto.ReplayedGame(gameId, nameOf(gameId, names), counted.size(), round1(hours)));
+            if (runs.size() >= 2) {
+                double hours = runs.stream().mapToDouble(StatsInsightsServiceImpl::hoursOf).sum();
+                replayed.add(new GameRankingsDto.ReplayedGame(gameId, nameOf(gameId, names), runs.size(), round1(hours)));
             }
         });
         replayed.sort(Comparator.comparingLong(GameRankingsDto.ReplayedGame::runCount).reversed()
@@ -751,7 +750,7 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
                                                              Map<Long, String> names, int cap) {
         return runsByGame.values().stream()
                 .flatMap(List::stream)
-                .filter(run -> run.getStatus() != ExperienceStatus.PENDIENTE && hoursOf(run) > 0)
+                .filter(run -> hoursOf(run) > 0)
                 .sorted(Comparator.comparingDouble(StatsInsightsServiceImpl::hoursOf).reversed()
                         .thenComparing(Experience::getId))
                 .limit(cap)
@@ -785,26 +784,19 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
     }
 
     /**
-     * Pending games as the library's "Pendiente" tab sees them: the latest run (ExperiencePeriod.RECENCY) is
-     * PENDIENTE, waiting since that run was created; or a SINGLEPLAYER game with no runs yet, waiting since the
-     * game was added (online and hybrid games without runs are tracked by online playtime instead).
+     * Pending games as the library's "Pendiente" tab sees them: games in the backlog (Game#backlog), or
+     * SINGLEPLAYER games with no runs yet (online and hybrid games without runs are tracked by online playtime
+     * instead); all waiting since the game was added.
      */
     private List<GameRankingsDto.PendingGame> longestPending(Long userId, Map<Long, List<Experience>> runsByGame,
                                                              Map<Long, String> names, int cap) {
         List<GameRankingsDto.PendingGame> pending = new ArrayList<>();
         for (GameAddedRow game : gameRepository.findAddedRowsByUserIdAndReviewStatus(userId, ReviewStatus.CONFIRMED)) {
             List<Experience> runs = runsByGame.get(game.gameId());
-            if (runs == null || runs.isEmpty()) {
-                if (game.category() == GameCategory.SINGLEPLAYER) {
-                    pending.add(new GameRankingsDto.PendingGame(game.gameId(), nameOf(game.gameId(), names),
-                            null, null, game.createdAt()));
-                }
-                continue;
-            }
-            Experience latest = runs.stream().max(ExperiencePeriod.RECENCY).orElseThrow();
-            if (latest.getStatus() == ExperienceStatus.PENDIENTE) {
+            boolean unplayed = (runs == null || runs.isEmpty()) && game.category() == GameCategory.SINGLEPLAYER;
+            if (Boolean.TRUE.equals(game.backlog()) || unplayed) {
                 pending.add(new GameRankingsDto.PendingGame(game.gameId(), nameOf(game.gameId(), names),
-                        latest.getId(), latest.getRunLabel(), latest.getCreatedAt()));
+                        null, null, game.createdAt()));
             }
         }
         pending.sort(Comparator.comparing(GameRankingsDto.PendingGame::pendingSince,

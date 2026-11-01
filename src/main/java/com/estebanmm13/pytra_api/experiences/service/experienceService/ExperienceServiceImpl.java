@@ -91,6 +91,8 @@ public class ExperienceServiceImpl implements ExperienceService {
         applyPostgame(experience, experienceRequestDto);
 
         experienceRepository.save(experience);
+        // The game has been started: it is no longer waiting in the backlog (managed entity, saved on commit).
+        game.setBacklog(false);
         hybridPlaytimeReconciler.afterRunChange(game, syncedShareBefore);
         return experienceMapper.toResponseDto(experience);
     }

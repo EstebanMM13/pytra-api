@@ -69,6 +69,17 @@ class ExperienceServiceImplTest {
     }
 
     @Test
+    void newRunTakesTheGameOutOfTheBacklog() {
+        // The game has been started, so it is no longer waiting in the backlog.
+        Game game = ownedGame(GameCategory.SINGLEPLAYER);
+        game.setBacklog(true);
+
+        service.create(GAME_ID, request(), USER_ID);
+
+        assertThat(game.getBacklog()).isFalse();
+    }
+
+    @Test
     void createReconcilesHybridHoursAroundTheSave() {
         Game game = ownedGame(GameCategory.HYBRID);
         when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(60.0);
@@ -225,7 +236,7 @@ class ExperienceServiceImplTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = ExperienceStatus.class, names = {"EN_CURSO", "ABANDONADO", "PENDIENTE"})
+    @EnumSource(value = ExperienceStatus.class, names = {"EN_CURSO", "ABANDONADO"})
     void runThatIsNotCompletedLosesThePostgameAndItsEndDate(ExperienceStatus status) {
         ownedGame(GameCategory.SINGLEPLAYER);
         Experience run = ownedRun();

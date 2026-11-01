@@ -36,6 +36,7 @@ public class GameMapper {
                         .map(genreMapper::toResponseDto)
                         .toList(),
                 game.getUpdatedAt(),
+                Boolean.TRUE.equals(game.getBacklog()),
                 stats != null ? stats.experienceCount() : null,
                 stats != null ? stats.totalHours() : null,
                 stats != null ? stats.bestRating() : null,

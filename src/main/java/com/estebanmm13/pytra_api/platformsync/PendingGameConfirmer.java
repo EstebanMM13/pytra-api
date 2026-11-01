@@ -63,6 +63,9 @@ public class PendingGameConfirmer {
             game.setCoverImageUrl(cover);
         }
         game.setGenres(resolveGenres(gameRequestDto.getGenreIds()));
+        if (gameRequestDto.getBacklog() != null) {
+            game.setBacklog(gameRequestDto.getBacklog());
+        }
         game.setReviewStatus(ReviewStatus.CONFIRMED);
         gameRepository.save(game);
 

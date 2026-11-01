@@ -34,4 +34,7 @@ public class GameRequestDto {
     private String coverImageUrl;
 
     private Set<Long> genreIds = new HashSet<>();
+
+    /** In the backlog ("Pendiente"). Null (clients older than the flag) keeps the current value; false on create. */
+    private Boolean backlog;
 }

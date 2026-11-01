@@ -483,8 +483,13 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
         createExperienceVia(auth, saga, run("Replay", "COMPLETADO", 8, 40.0, 2022, null, null, ""));
         Long gem = createGameVia(auth, "Rank Gem", "");
         createExperienceVia(auth, gem, run("Only", "COMPLETADO", 9.5, 6.0, 2023, null, null, ""));
-        Long waiting = createGameVia(auth, "Rank Waiting", "");
-        Long pendingRun = createExperienceVia(auth, waiting, run("Someday", "PENDIENTE", null, 0.0, null, null, null, ""));
+        // In the backlog ("Pendiente") although it already has a run.
+        Long waiting = createGameVia(auth, "Rank Waiting", ", \"backlog\": true");
+        createExperienceVia(auth, waiting, run("Demo", "ABANDONADO", null, 1.0, null, null, null, ""));
+        // Starting a run took it out of the backlog: put it back, like the game dialog does.
+        performAs(auth, put("/api/v1/games/{gameId}", waiting),
+                "{\"name\": \"Rank Waiting\", \"category\": \"SINGLEPLAYER\", \"backlog\": true}")
+                .andExpect(status().isOk());
         // Announced and not started: no runs, so the library lists it as pending (an online game would not be).
         Long upcoming = createGameVia(auth, "Rank Upcoming", ", \"releaseDate\": \"2030-01-01\"");
         Long arena = createOnlineGame("Rank Arena");
@@ -505,11 +510,12 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.mostDaysPlayed[0].gameName").value("Rank Arena"))
                 .andExpect(jsonPath("$.mostDaysPlayed[0].days").value(2))
                 .andExpect(jsonPath("$.longestPending.length()").value(2))
-                .andExpect(jsonPath("$.longestPending[0].experienceId").value(pendingRun))
+                .andExpect(jsonPath("$.longestPending[0].gameId").value(waiting))
+                .andExpect(jsonPath("$.longestPending[0].experienceId").value(nullValue()))
                 .andExpect(jsonPath("$.longestPending[1].gameId").value(upcoming))
                 .andExpect(jsonPath("$.longestPending[1].experienceId").value(nullValue()))
                 .andExpect(jsonPath("$.longestPending[1].pendingSince").isNotEmpty())
-                // Set on insert (Hibernate @CreationTimestamp, V39 column), never sent by the client.
+                // The game's creation date (V40 column), never sent by the client.
                 .andExpect(jsonPath("$.longestPending[0].pendingSince").isNotEmpty());
 
         performAs(auth, get("/api/v1/stats/game-rankings").param("limit", "1"))
