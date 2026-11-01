@@ -504,7 +504,7 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.mostDaysPlayed[0].days").value(2))
                 .andExpect(jsonPath("$.longestPending.length()").value(1))
                 .andExpect(jsonPath("$.longestPending[0].experienceId").value(pendingRun))
-                // Set by the database on insert (V39), never sent by the client.
+                // Set on insert (Hibernate @CreationTimestamp, V39 column), never sent by the client.
                 .andExpect(jsonPath("$.longestPending[0].pendingSince").isNotEmpty());
 
         performAs(auth, get("/api/v1/stats/game-rankings").param("limit", "1"))
