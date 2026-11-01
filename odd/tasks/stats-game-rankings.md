@@ -33,5 +33,5 @@ Branches: pytra-api `feat/stats-game-rankings` (from `feat/run-postgame`, which 
 - L5 T2: RED observed (7 unit tests, UnsupportedOperationException), GREEN 7/7. Full API suite: 1157 run, 0 failures, 333 errors, all Spring contexts failing without Docker (Testcontainers), so V39 and the new integration tests are not checked against Postgres locally.
 - L6 Independent verifier (risk item 1): S5-S9 PASS, no blockers. Advisory fixed (test comment, 2af0ca8); advisories left: pre-V39 pending runs get their last-update time as an estimate; limit clamps to 1-50 like the other insights.
 - L7 T3/T4: web tests written after the code (no RED observed). Full web suite 119 files / 1129 tests passed; ng build clean. Dashboard link has no component test (dashboard has no spec). Prettier applied to new files only (existing files are not prettier-clean at base).
-- L8 RDD: API range cfa8a87..2af0ca8 assessed medium, escalated to high (item 1); consent asked.
-
+- L8 RDD: API range cfa8a87..0451dbc assessed medium, escalated to high (item 1); consent granted (re-derived once after the docs commit moved the candidate), lenses risk+reliability, approved, acknowledged (authority burned). Informational: V39 backfill and integration tests unproved without Docker; name-only tie-breaks have no gameId fallback. Web range bd05c0a..15a466e assessed medium, review_due false (under_budget).
+- L9 Next: deploy API (V39) before web; nothing pushed or merged.
