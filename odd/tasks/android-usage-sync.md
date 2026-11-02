@@ -20,7 +20,7 @@ Branches: pytra-api and pytra-web `feature/android-usage-sync` (api from origin/
 - [x] T1 [S3,S4,S6,S7] API: migrations V43/V44, ANDROID platform wiring (writer, run source, hybrid share, diary synced set). Route: inline. Commit 2066582.
 - [x] T2 [S3-S6,S10] API: link CRUD, sync endpoint, service, unit + controller + integration tests, README. Route: inline. Commit 9eba6e8 (+ README commit).
 - [x] T3 [S1] Android plugin (UsageStatsPlugin + DailyUsageCalculator, JVM test) + manifest + MainActivity. Route: inline. Commit in pytra-web.
-- [ ] T4 [S2,S8,S9,S10] Web: wrapper, API client, sync service, /sync panel, i18n, tests. Route: inline.
+- [x] T4 [S2,S8,S9,S10] Web: wrapper, API client, sync service, /sync panel, i18n, tests. Route: inline. Commit pytra-web 743d3f8 (plugin 97104f7).
 
 ## Log
 - L1 (2026-11-02) User request (pasted spec, summarised in S1-S11 with verbatim quotes): Android-only automatic diary record of play time from UsageStatsManager; plugin, V43 android_app_links, V44 android_usage_days, link CRUD, sync endpoint, Ajustes screen, 30-min throttled auto sync, tests, branch feature/android-usage-sync in each repo, "No toques los flujos de Steam/PSN."
@@ -28,3 +28,4 @@ Branches: pytra-api and pytra-web `feature/android-usage-sync` (api from origin/
 - L3 (2026-11-02) No "Ajustes" screen exists; user chose "Panel en Sincronización".
 - L4 Assumptions: A1 days before the link day are baseline only; A2 invalid items are ignored (counted) instead of failing the whole sync.
 - L5 (2026-11-02) API unit tests: AndroidUsageSyncServiceTest 11, AndroidLinkServiceTest 6, AndroidSyncControllerTest 6, ExternalPlaytimeWriterTest 30 (5 new), 0 failures. Full ./mvnw test: 1223 run, 350 errors, all in Spring/Testcontainers classes (no Docker locally; CI runs them, AndroidUsageIntegrationTests included). Android: DailyUsageCalculatorTest 5/5 via gradlew testDebugUnitTest. Web: 4 spec files, 24 tests passed.
+- L6 (2026-11-02) Web build: DatePipe in the panel pulled locale data into main (+10 kB, initial budget exceeded); replaced with formatRelativeTime, initial back to 423.02 kB (base 422.74). Web suite 1211 passed. Assess: web medium, under_budget (no review). API high (item 4, row locks): review granted, lenses risk/resilience/reliability, approved and acknowledged (lineage review-64fec5c15d764724). Advisories (non-blocking, follow-up): R3 hybrid Android path untested; R3/R4 concurrent link create race answers 500 instead of 409; R3 a malformed item (e.g. bad date) fails the whole sync with 400; R3 recorded count not cross-checked. Pending: push, PRs, deploy and APK are the user's decisions; integration tests run only in CI (no Docker locally).
