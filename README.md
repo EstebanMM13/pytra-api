@@ -155,6 +155,7 @@ com.estebanmm13.pytra_api/
 ├── platforms/    # Platform catalog (global, editable)
 ├── steamsync/    # Steam OpenID linking, Steam Web API client, library sync
 ├── psnsync/      # PSN online-ID linking, service-account auth, PS4/PS5 game list sync
+├── androidsync/  # Android app links and the daily usage sync sent by the phone
 ├── platformsync/ # Shared by both syncs: playtime writer, pending queue, pending confirm
 ├── metadata/     # IGDB and Steam store lookups: form autofill and pending-game enrichment
 ├── covers/       # Downscaled Steam cover thumbnails for list views
@@ -387,6 +388,16 @@ The NPSSO lasts about **2 months**. When it expires, PSN syncs answer `503 PSN_U
 
 Signing out of that browser session or changing the account's password can invalidate the NPSSO early.
 
+### Android play time (`/api/v1/android-links`, `/api/v1/android-usage`)
+
+The Android app reads the foreground time of installed apps (system usage stats) and sends it per local day. A linked app works like a Steam or PSN title: a `GamePlatformLink` with platform `ANDROID` and the package name as external id, played on the "Móvil" catalog platform. New minutes go to the game's only run being played on Móvil (or a new "Importado de Android" run), or to the online playtime on Móvil for `ONLINE`/`HYBRID` games, plus a record-only auto line in the diary on that day.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/android-links` | `[{packageName, gameId}]`, sorted by package |
+| POST | `/android-links` | Body `{packageName, gameId}`. The game must be the caller's (`404`); one game per package and one package per game (`409`). Play counts from the link's day on: earlier days only set the baseline |
+| DELETE | `/android-links/{packageName}` | `204`; the hours already added stay |
+| POST | `/android-usage/sync` | Body `[{date, packageName, minutes}]`: each day's whole total, re-sent on every sync (at most 1000 items, else `400 INVALID_ANDROID_USAGE`). `android_usage_days` keeps the minutes already recorded per package and day, and only the part above it is applied (deltas under 1 minute wait for a later sync). Unlinked packages, dates in the future or more than 14 days back (app time zone) and minutes outside 0-1440 are skipped. Answers `{recorded, ignored}` |
 ### Game metadata autofill (`/api/v1/metadata`)
 Read-only proxies used to prefill the game form; nothing is persisted. Results are cached in memory (searches 10 min, details 6 h); upstream calls use 3 s connect / 5 s read timeouts.
 
