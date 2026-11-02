@@ -3,8 +3,10 @@ package com.estebanmm13.pytra_api.androidsync.controller;
 import com.estebanmm13.pytra_api.androidsync.dto.AndroidLinkRequestDto;
 import com.estebanmm13.pytra_api.androidsync.dto.AndroidLinkResponseDto;
 import com.estebanmm13.pytra_api.androidsync.dto.AndroidUsageDayDto;
+import com.estebanmm13.pytra_api.androidsync.dto.AndroidUsageResetResponseDto;
 import com.estebanmm13.pytra_api.androidsync.dto.AndroidUsageSyncResponseDto;
 import com.estebanmm13.pytra_api.androidsync.service.AndroidLinkService;
+import com.estebanmm13.pytra_api.androidsync.service.AndroidUsageResetService;
 import com.estebanmm13.pytra_api.androidsync.service.AndroidUsageSyncService;
 import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
 import com.estebanmm13.pytra_api.error.DuplicateResourceException;
@@ -40,6 +42,7 @@ class AndroidSyncControllerTest {
 
     private final AndroidLinkService linkService = mock(AndroidLinkService.class);
     private final AndroidUsageSyncService syncService = mock(AndroidUsageSyncService.class);
+    private final AndroidUsageResetService resetService = mock(AndroidUsageResetService.class);
     private final CurrentUserResolver currentUserResolver = mock(CurrentUserResolver.class);
     private MockMvc mockMvc;
 
@@ -49,7 +52,7 @@ class AndroidSyncControllerTest {
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new AndroidLinkController(linkService, currentUserResolver),
-                        new AndroidUsageController(syncService, currentUserResolver))
+                        new AndroidUsageController(syncService, resetService, currentUserResolver))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
                 .build();
@@ -66,6 +69,16 @@ class AndroidSyncControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.recorded").value(1))
                 .andExpect(jsonPath("$.ignored").value(0));
+    }
+
+    @Test
+    void resetUndoesTheCurrentUsersAndroidPlay() throws Exception {
+        when(resetService.reset(USER_ID)).thenReturn(new AndroidUsageResetResponseDto(2, 1500));
+
+        mockMvc.perform(post("/api/v1/android-usage/reset"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.links").value(2))
+                .andExpect(jsonPath("$.minutesRemoved").value(1500));
     }
 
     @Test

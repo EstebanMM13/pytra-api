@@ -95,6 +95,35 @@ class AndroidUsageIntegrationTests extends AbstractIntegrationTest {
     }
 
     @Test
+    void resetTakesBackAnInflatedImportAndTheNextSyncImportsTheRightMinutes() throws Exception {
+        Long gameId = createGameVia(aliceAuth, "Android Reset Game", "");
+        performAs(aliceAuth, post("/api/v1/android-links"),
+                "{\"packageName\": \"com.example.resetgame\", \"gameId\": " + gameId + "}")
+                .andExpect(status().isCreated());
+        LocalDate day = today.minusDays(1);
+        // A bad measurement: the whole day.
+        performAs(aliceAuth, post("/api/v1/android-usage/sync"), """
+                [{"date": "%s", "packageName": "com.example.resetgame", "minutes": 1440}]
+                """.formatted(day)).andExpect(jsonPath("$.recorded").value(1));
+
+        performAs(aliceAuth, post("/api/v1/android-usage/reset"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minutesRemoved").value(1440));
+
+        assertThat(experienceRepository.findAllByGameIdAndUserId(gameId, alice.getId()).getFirst().getHours())
+                .isEqualTo(0.0);
+        performAs(aliceAuth, get("/api/v1/diary/{date}", day)).andExpect(status().isNotFound());
+
+        performAs(aliceAuth, post("/api/v1/android-usage/sync"), """
+                [{"date": "%s", "packageName": "com.example.resetgame", "minutes": 30}]
+                """.formatted(day)).andExpect(jsonPath("$.recorded").value(1));
+        assertThat(experienceRepository.findAllByGameIdAndUserId(gameId, alice.getId()).getFirst().getHours())
+                .isEqualTo(0.5);
+        performAs(aliceAuth, get("/api/v1/diary/{date}", day))
+                .andExpect(jsonPath("$.games[0].hours").value(0.5));
+    }
+
+    @Test
     void anotherUsersGameCannotBeLinkedAndAPackageLinksOnce() throws Exception {
         User bob = createVerifiedUser("androidsyncbob");
         Long bobGame = createGameVia(bearer(bob), "Bob Game", "");

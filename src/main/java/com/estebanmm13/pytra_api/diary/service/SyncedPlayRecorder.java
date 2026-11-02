@@ -132,7 +132,7 @@ public class SyncedPlayRecorder {
     }
 
     /** Minutes as diary hours (2 decimals, half up); zero for a non-positive delta. */
-    static BigDecimal hoursOf(long minutes) {
+    public static BigDecimal hoursOf(long minutes) {
         if (minutes <= 0) {
             return BigDecimal.ZERO;
         }

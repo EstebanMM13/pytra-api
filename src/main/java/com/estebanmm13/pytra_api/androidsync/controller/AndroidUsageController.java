@@ -1,7 +1,9 @@
 package com.estebanmm13.pytra_api.androidsync.controller;
 
 import com.estebanmm13.pytra_api.androidsync.dto.AndroidUsageDayDto;
+import com.estebanmm13.pytra_api.androidsync.dto.AndroidUsageResetResponseDto;
 import com.estebanmm13.pytra_api.androidsync.dto.AndroidUsageSyncResponseDto;
+import com.estebanmm13.pytra_api.androidsync.service.AndroidUsageResetService;
 import com.estebanmm13.pytra_api.androidsync.service.AndroidUsageSyncService;
 import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +22,17 @@ import java.util.List;
 public class AndroidUsageController {
 
     private final AndroidUsageSyncService androidUsageSyncService;
+    private final AndroidUsageResetService androidUsageResetService;
     private final CurrentUserResolver currentUserResolver;
 
     @PostMapping("/sync")
     public ResponseEntity<AndroidUsageSyncResponseDto> sync(@RequestBody List<AndroidUsageDayDto> days) {
         return ResponseEntity.ok(androidUsageSyncService.sync(currentUserResolver.getCurrentUserId(), days));
+    }
+
+    /** Takes back every hour and diary minute the Android sync added; the next sync imports the days again. */
+    @PostMapping("/reset")
+    public ResponseEntity<AndroidUsageResetResponseDto> reset() {
+        return ResponseEntity.ok(androidUsageResetService.reset(currentUserResolver.getCurrentUserId()));
     }
 }

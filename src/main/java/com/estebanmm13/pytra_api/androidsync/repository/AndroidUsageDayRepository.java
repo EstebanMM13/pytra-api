@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -33,4 +34,11 @@ public interface AndroidUsageDayRepository extends JpaRepository<AndroidUsageDay
             """)
     Optional<AndroidUsageDay> findForUpdate(@Param("userId") Long userId, @Param("packageName") String packageName,
                                             @Param("usageDate") LocalDate usageDate);
+
+    /** Every recorded day of one package of the user. */
+    List<AndroidUsageDay> findAllByUserIdAndPackageName(Long userId, String packageName);
+
+    @Modifying
+    @Query("DELETE FROM AndroidUsageDay d WHERE d.userId = :userId AND d.packageName = :packageName")
+    void deleteAllOf(@Param("userId") Long userId, @Param("packageName") String packageName);
 }
