@@ -10,6 +10,7 @@ import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,16 +63,21 @@ public class AndroidLinkService {
             throw new DuplicateResourceException("Game already linked to an Android app");
         }
         LocalDateTime now = LocalDateTime.now(clock);
-        GamePlatformLink link = linkRepository.save(GamePlatformLink.builder()
-                .userId(userId)
-                .game(game)
-                .platform(ExternalPlatform.ANDROID)
-                .externalId(request.packageName())
-                .lastSyncedPlaytimeMinutes(0L)
-                .lastSyncedAt(now)
-                .linkedAt(now)
-                .build());
-        return toDto(link);
+        try {
+            // Flushed here so a concurrent create of the same package or game (unique indexes) answers 409.
+            GamePlatformLink link = linkRepository.saveAndFlush(GamePlatformLink.builder()
+                    .userId(userId)
+                    .game(game)
+                    .platform(ExternalPlatform.ANDROID)
+                    .externalId(request.packageName())
+                    .lastSyncedPlaytimeMinutes(0L)
+                    .lastSyncedAt(now)
+                    .linkedAt(now)
+                    .build());
+            return toDto(link);
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateResourceException("Android app or game already linked");
+        }
     }
 
     @Transactional

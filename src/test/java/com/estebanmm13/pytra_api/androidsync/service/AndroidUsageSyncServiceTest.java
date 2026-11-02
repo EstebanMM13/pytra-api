@@ -74,7 +74,7 @@ class AndroidUsageSyncServiceTest {
     void firstSyncRecordsTheWholeDayAndStoresItAsTheBaseline() {
         LocalDate day = TODAY.minusDays(1);
 
-        AndroidUsageSyncResponseDto result = sync(new AndroidUsageDayDto(day, GAME_PACKAGE, 75));
+        AndroidUsageSyncResponseDto result = sync(item(day, GAME_PACKAGE, 75));
 
         assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(1, 0));
         verify(playtimeWriter).applyObservedPlay(link, 75, day, LocalDateTime.of(2026, 11, 2, 9, 0));
@@ -84,9 +84,9 @@ class AndroidUsageSyncServiceTest {
     @Test
     void resendingTheSameTotalAddsNothing() {
         LocalDate day = TODAY.minusDays(1);
-        sync(new AndroidUsageDayDto(day, GAME_PACKAGE, 75));
+        sync(item(day, GAME_PACKAGE, 75));
 
-        AndroidUsageSyncResponseDto again = sync(new AndroidUsageDayDto(day, GAME_PACKAGE, 75));
+        AndroidUsageSyncResponseDto again = sync(item(day, GAME_PACKAGE, 75));
 
         assertThat(again).isEqualTo(new AndroidUsageSyncResponseDto(0, 1));
         verify(playtimeWriter).applyObservedPlay(any(), anyLong(), any(), any());
@@ -95,9 +95,9 @@ class AndroidUsageSyncServiceTest {
 
     @Test
     void aGrowingTotalRecordsOnlyTheNewMinutes() {
-        sync(new AndroidUsageDayDto(TODAY, GAME_PACKAGE, 30));
+        sync(item(TODAY, GAME_PACKAGE, 30));
 
-        AndroidUsageSyncResponseDto result = sync(new AndroidUsageDayDto(TODAY, GAME_PACKAGE, 50));
+        AndroidUsageSyncResponseDto result = sync(item(TODAY, GAME_PACKAGE, 50));
 
         assertThat(result.recorded()).isEqualTo(1);
         verify(playtimeWriter).applyObservedPlay(link, 30, TODAY, LocalDateTime.of(2026, 11, 2, 9, 0));
@@ -107,9 +107,9 @@ class AndroidUsageSyncServiceTest {
 
     @Test
     void aSmallerTotalKeepsTheBaselineAndAddsNothing() {
-        sync(new AndroidUsageDayDto(TODAY, GAME_PACKAGE, 50));
+        sync(item(TODAY, GAME_PACKAGE, 50));
 
-        AndroidUsageSyncResponseDto result = sync(new AndroidUsageDayDto(TODAY, GAME_PACKAGE, 40));
+        AndroidUsageSyncResponseDto result = sync(item(TODAY, GAME_PACKAGE, 40));
 
         assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(0, 1));
         assertThat(baseline(TODAY)).isEqualTo(50);
@@ -117,7 +117,7 @@ class AndroidUsageSyncServiceTest {
 
     @Test
     void anUnlinkedPackageIsIgnoredWithoutABaseline() {
-        AndroidUsageSyncResponseDto result = sync(new AndroidUsageDayDto(TODAY, "com.whatsapp", 120));
+        AndroidUsageSyncResponseDto result = sync(item(TODAY, "com.whatsapp", 120));
 
         assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(0, 1));
         assertThat(baselines).isEmpty();
@@ -127,13 +127,13 @@ class AndroidUsageSyncServiceTest {
     @Test
     void datesOutOfTheWindowAndMinutesOutOfRangeAreIgnored() {
         AndroidUsageSyncResponseDto result = sync(
-                new AndroidUsageDayDto(TODAY.plusDays(1), GAME_PACKAGE, 10),
-                new AndroidUsageDayDto(TODAY.minusDays(15), GAME_PACKAGE, 10),
-                new AndroidUsageDayDto(TODAY, GAME_PACKAGE, -1),
-                new AndroidUsageDayDto(TODAY, GAME_PACKAGE, 1441),
-                new AndroidUsageDayDto(null, GAME_PACKAGE, 10),
-                new AndroidUsageDayDto(TODAY, GAME_PACKAGE, null),
-                new AndroidUsageDayDto(TODAY.minusDays(14), GAME_PACKAGE, 1440));
+                item(TODAY.plusDays(1), GAME_PACKAGE, 10),
+                item(TODAY.minusDays(15), GAME_PACKAGE, 10),
+                item(TODAY, GAME_PACKAGE, -1),
+                item(TODAY, GAME_PACKAGE, 1441),
+                item(null, GAME_PACKAGE, 10),
+                item(TODAY, GAME_PACKAGE, null),
+                item(TODAY.minusDays(14), GAME_PACKAGE, 1440));
 
         // Only the last one (14 days back, a whole day) is in range... but before the link: baseline only.
         assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(0, 7));
@@ -147,8 +147,8 @@ class AndroidUsageSyncServiceTest {
         link.setLinkedAt(null);
 
         AndroidUsageSyncResponseDto result = sync(
-                new AndroidUsageDayDto(TODAY, GAME_PACKAGE, 1440),
-                new AndroidUsageDayDto(TODAY.minusDays(14), GAME_PACKAGE, 1));
+                item(TODAY, GAME_PACKAGE, 1440),
+                item(TODAY.minusDays(14), GAME_PACKAGE, 1));
 
         assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(2, 0));
     }
@@ -160,7 +160,7 @@ class AndroidUsageSyncServiceTest {
                 playtimeWriter, MADRID, Clock.fixed(Instant.parse("2026-11-02T23:30:00Z"), UTC));
 
         AndroidUsageSyncResponseDto result = lateService.sync(USER_ID,
-                List.of(new AndroidUsageDayDto(TODAY.plusDays(1), GAME_PACKAGE, 10)));
+                List.of(item(TODAY.plusDays(1), GAME_PACKAGE, 10)));
 
         assertThat(result.recorded()).isEqualTo(1);
     }
@@ -170,8 +170,8 @@ class AndroidUsageSyncServiceTest {
         link.setLinkedAt(LocalDateTime.of(2026, 11, 1, 8, 0));
 
         AndroidUsageSyncResponseDto result = sync(
-                new AndroidUsageDayDto(TODAY.minusDays(2), GAME_PACKAGE, 60),
-                new AndroidUsageDayDto(TODAY.minusDays(1), GAME_PACKAGE, 40));
+                item(TODAY.minusDays(2), GAME_PACKAGE, 60),
+                item(TODAY.minusDays(1), GAME_PACKAGE, 40));
 
         assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(1, 1));
         verify(playtimeWriter).applyObservedPlay(link, 40, TODAY.minusDays(1), LocalDateTime.of(2026, 11, 2, 9, 0));
@@ -184,8 +184,8 @@ class AndroidUsageSyncServiceTest {
         links.add(other);
 
         AndroidUsageSyncResponseDto result = sync(
-                new AndroidUsageDayDto(TODAY, GAME_PACKAGE, 10),
-                new AndroidUsageDayDto(TODAY, "com.mojang.minecraftpe", 25));
+                item(TODAY, GAME_PACKAGE, 10),
+                item(TODAY, "com.mojang.minecraftpe", 25));
 
         assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(2, 0));
         verify(playtimeWriter).applyObservedPlay(other, 25, TODAY, LocalDateTime.of(2026, 11, 2, 9, 0));
@@ -194,11 +194,26 @@ class AndroidUsageSyncServiceTest {
     @Test
     void aMissingOrOversizedBodyIsRejected() {
         List<AndroidUsageDayDto> tooMany = Collections.nCopies(AndroidUsageSyncService.MAX_ITEMS + 1,
-                new AndroidUsageDayDto(TODAY, GAME_PACKAGE, 1));
+                item(TODAY, GAME_PACKAGE, 1));
 
         assertThatThrownBy(() -> service.sync(USER_ID, null)).isInstanceOf(InvalidRequestException.class)
                 .hasMessage(InvalidRequestException.INVALID_ANDROID_USAGE);
         assertThatThrownBy(() -> service.sync(USER_ID, tooMany)).isInstanceOf(InvalidRequestException.class);
+    }
+
+    @Test
+    void aMalformedDateIsIgnoredWithoutFailingTheRest() {
+        AndroidUsageSyncResponseDto result = sync(
+                new AndroidUsageDayDto("2026-13-40", GAME_PACKAGE, 10),
+                new AndroidUsageDayDto("yesterday", GAME_PACKAGE, 10),
+                item(TODAY, GAME_PACKAGE, 10));
+
+        assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(1, 2));
+        verify(playtimeWriter).applyObservedPlay(link, 10, TODAY, LocalDateTime.of(2026, 11, 2, 9, 0));
+    }
+
+    private static AndroidUsageDayDto item(LocalDate date, String packageName, Integer minutes) {
+        return new AndroidUsageDayDto(date == null ? null : date.toString(), packageName, minutes);
     }
 
     private AndroidUsageSyncResponseDto sync(AndroidUsageDayDto... days) {

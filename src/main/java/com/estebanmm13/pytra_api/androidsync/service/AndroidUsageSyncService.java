@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -89,10 +90,11 @@ public class AndroidUsageSyncService {
     /** True when the item added new play. */
     private boolean record(Long userId, AndroidUsageDayDto day, Map<String, GamePlatformLink> links,
                            LocalDate today, LocalDateTime now) {
-        if (day == null || day.date() == null || day.packageName() == null || day.minutes() == null) {
+        LocalDate date = day == null ? null : parseDate(day.date());
+        if (date == null || day.packageName() == null || day.minutes() == null) {
             return false;
         }
-        if (day.date().isAfter(today) || day.date().isBefore(today.minusDays(MAX_DAYS_BACK))
+        if (date.isAfter(today) || date.isBefore(today.minusDays(MAX_DAYS_BACK))
                 || day.minutes() < 0 || day.minutes() > MAX_DAY_MINUTES) {
             return false;
         }
@@ -101,8 +103,8 @@ public class AndroidUsageSyncService {
             return false;
         }
 
-        usageDayRepository.ensureExists(userId, day.packageName(), day.date());
-        AndroidUsageDay baseline = usageDayRepository.findForUpdate(userId, day.packageName(), day.date())
+        usageDayRepository.ensureExists(userId, day.packageName(), date);
+        AndroidUsageDay baseline = usageDayRepository.findForUpdate(userId, day.packageName(), date)
                 .orElseThrow(() -> new IllegalStateException("Android usage baseline missing after insert"));
         int delta = day.minutes() - baseline.getMinutesRecorded();
         if (delta < 1) {
@@ -110,12 +112,24 @@ public class AndroidUsageSyncService {
         }
         baseline.setMinutesRecorded(day.minutes());
         usageDayRepository.save(baseline);
-        if (day.date().isBefore(linkedDay(link))) {
+        if (date.isBefore(linkedDay(link))) {
             // Play before the link existed is history: only the baseline moves (Steam/PSN never import it either).
             return false;
         }
-        playtimeWriter.applyObservedPlay(link, delta, day.date(), now);
+        playtimeWriter.applyObservedPlay(link, delta, date, now);
         return true;
+    }
+
+    /** The yyyy-MM-dd date, or null when it is missing or malformed. */
+    private static LocalDate parseDate(String date) {
+        if (date == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(date);
+        } catch (DateTimeParseException e) {
+            return null;
+        }
     }
 
     /** First day (users' zone) whose play counts; a link without a creation time counts every day. */

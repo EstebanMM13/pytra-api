@@ -496,6 +496,27 @@ class ExternalPlaytimeWriterTest {
     }
 
     @Test
+    void androidHybridPlayBeyondTheMobileRunsGoesToOnlineHoursOnMobile() {
+        Game game = game(GameCategory.HYBRID, ReviewStatus.CONFIRMED);
+        GamePlatformLink android = link(game, ExternalPlatform.ANDROID, 60);
+        when(platformService.requireByLegacyCode("MOBILE"))
+                .thenReturn(Platform.builder().id(4L).name("Móvil").legacyCode("MOBILE").build());
+        when(gamePlatformLinkRepository.findAllByUserIdAndGameId(USER_ID, GAME_ID)).thenReturn(List.of(android));
+        // 1 h already logged in a run on Móvil and 3 h of PC runs (not covered by Android).
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID))
+                .thenReturn(List.of(run("MOBILE", 1.0), run("PC", 3.0)));
+        OnlinePlaytime stored = OnlinePlaytime.builder().userId(USER_ID).gameId(GAME_ID).totalHours(0.0).build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(stored));
+
+        // 60 -> 180 minutes: the Android share goes from 0 h (covered by the Móvil run) to 2 h.
+        boolean added = writer.applyObservedPlay(android, 120, LocalDate.of(2026, 11, 1), LocalDateTime.of(2026, 11, 2, 9, 0));
+
+        assertThat(added).isTrue();
+        assertThat(stored.getTotalHours()).isEqualTo(2.0);
+        assertThat(stored.getPlatformHours()).containsExactlyEntriesOf(java.util.Map.of(4L, 2.0));
+    }
+
+    @Test
     void androidPlayOfAnUnconfirmedGameOnlyMovesTheLinkTotal() {
         Game game = game(GameCategory.ONLINE, ReviewStatus.PENDING_REVIEW);
         GamePlatformLink android = link(game, ExternalPlatform.ANDROID, 10);

@@ -12,6 +12,7 @@ import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -46,7 +47,7 @@ class AndroidLinkServiceTest {
         when(gameRepository.findByIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(game));
         when(linkRepository.findByUserIdAndPlatformAndExternalId(any(), any(), any())).thenReturn(Optional.empty());
         when(linkRepository.findByUserIdAndGameIdAndPlatform(any(), any(), any())).thenReturn(Optional.empty());
-        when(linkRepository.save(any(GamePlatformLink.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(linkRepository.saveAndFlush(any(GamePlatformLink.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
     @Test
@@ -55,7 +56,7 @@ class AndroidLinkServiceTest {
 
         assertThat(created).isEqualTo(new AndroidLinkResponseDto(PACKAGE, GAME_ID));
         ArgumentCaptor<GamePlatformLink> saved = ArgumentCaptor.forClass(GamePlatformLink.class);
-        verify(linkRepository).save(saved.capture());
+        verify(linkRepository).saveAndFlush(saved.capture());
         GamePlatformLink link = saved.getValue();
         assertThat(link.getUserId()).isEqualTo(USER_ID);
         assertThat(link.getGame()).isSameAs(game);
@@ -72,7 +73,7 @@ class AndroidLinkServiceTest {
 
         assertThatThrownBy(() -> service.create(USER_ID, new AndroidLinkRequestDto(PACKAGE, GAME_ID)))
                 .isInstanceOf(ResourceNotFoundException.class);
-        verify(linkRepository, never()).save(any());
+        verify(linkRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -82,7 +83,7 @@ class AndroidLinkServiceTest {
 
         assertThatThrownBy(() -> service.create(USER_ID, new AndroidLinkRequestDto(PACKAGE, GAME_ID)))
                 .isInstanceOf(DuplicateResourceException.class);
-        verify(linkRepository, never()).save(any());
+        verify(linkRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -92,7 +93,17 @@ class AndroidLinkServiceTest {
 
         assertThatThrownBy(() -> service.create(USER_ID, new AndroidLinkRequestDto(PACKAGE, GAME_ID)))
                 .isInstanceOf(DuplicateResourceException.class);
-        verify(linkRepository, never()).save(any());
+        verify(linkRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void aConcurrentCreateOfTheSameLinkIsAConflict() {
+        // Both requests passed the checks; the unique index stops the second one at flush.
+        when(linkRepository.saveAndFlush(any(GamePlatformLink.class)))
+                .thenThrow(new DataIntegrityViolationException("uq_game_platform_links_android_package"));
+
+        assertThatThrownBy(() -> service.create(USER_ID, new AndroidLinkRequestDto(PACKAGE, GAME_ID)))
+                .isInstanceOf(DuplicateResourceException.class);
     }
 
     @Test

@@ -17,7 +17,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
-import java.time.LocalDate;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -59,7 +58,7 @@ class AndroidSyncControllerTest {
 
     @Test
     void syncPassesTheDaysOfTheCurrentUserAndAnswersTheSummary() throws Exception {
-        List<AndroidUsageDayDto> days = List.of(new AndroidUsageDayDto(LocalDate.of(2026, 11, 1), PACKAGE, 75));
+        List<AndroidUsageDayDto> days = List.of(new AndroidUsageDayDto("2026-11-01", PACKAGE, 75));
         when(syncService.sync(USER_ID, days)).thenReturn(new AndroidUsageSyncResponseDto(1, 0));
 
         mockMvc.perform(post("/api/v1/android-usage/sync").contentType(MediaType.APPLICATION_JSON)
