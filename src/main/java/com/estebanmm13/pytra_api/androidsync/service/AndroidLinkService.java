@@ -22,7 +22,7 @@ import java.util.List;
 /**
  * Links between installed Android apps and the user's games: {@link GamePlatformLink}s with platform
  * {@link ExternalPlatform#ANDROID} and the package name as external id. One package per game and one game per
- * package. A new link starts at 0 synced minutes; its creation time marks the first day whose play counts.
+ * package. A new link starts at 0 synced minutes; its first sync imports every day the phone still keeps (~7).
  * Unlinking keeps the hours already added and the usage baselines (a relinked package never re-imports a day).
  */
 @Service

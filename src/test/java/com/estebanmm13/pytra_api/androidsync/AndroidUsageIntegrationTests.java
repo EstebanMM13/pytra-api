@@ -74,6 +74,27 @@ class AndroidUsageIntegrationTests extends AbstractIntegrationTest {
     }
 
     @Test
+    void theFirstSyncImportsTheDaysBeforeTheLink() throws Exception {
+        Long gameId = createGameVia(aliceAuth, "Android Past Game", "");
+        performAs(aliceAuth, post("/api/v1/android-links"),
+                "{\"packageName\": \"com.example.pastgame\", \"gameId\": " + gameId + "}")
+                .andExpect(status().isCreated());
+
+        performAs(aliceAuth, post("/api/v1/android-usage/sync"), """
+                [{"date": "%s", "packageName": "com.example.pastgame", "minutes": 45}]
+                """.formatted(today.minusDays(3)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recorded").value(1));
+
+        performAs(aliceAuth, get("/api/v1/diary/{date}", today.minusDays(3)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.games[0].gameId").value(gameId))
+                .andExpect(jsonPath("$.games[0].hours").value(0.75));
+        assertThat(experienceRepository.findAllByGameIdAndUserId(gameId, alice.getId()).getFirst().getHours())
+                .isEqualTo(0.75);
+    }
+
+    @Test
     void anotherUsersGameCannotBeLinkedAndAPackageLinksOnce() throws Exception {
         User bob = createVerifiedUser("androidsyncbob");
         Long bobGame = createGameVia(bearer(bob), "Bob Game", "");

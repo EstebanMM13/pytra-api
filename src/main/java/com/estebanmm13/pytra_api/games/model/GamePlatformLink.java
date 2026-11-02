@@ -53,7 +53,7 @@ public class GamePlatformLink {
     // PSN titles that did not report one; refreshed on every PSN sync.
     private Long psnConceptId;
 
-    // When the link was created (V43). Set for Android links only: their usage days before it only set the
-    // baseline, never hours. Null for Steam/PSN links.
+    // When the link was created (V43). Set for Android links only; informative (days before it are imported
+    // too, see V45). Null for Steam/PSN links.
     private LocalDateTime linkedAt;
 }

@@ -132,20 +132,15 @@ class AndroidUsageSyncServiceTest {
                 item(TODAY, GAME_PACKAGE, -1),
                 item(TODAY, GAME_PACKAGE, 1441),
                 item(null, GAME_PACKAGE, 10),
-                item(TODAY, GAME_PACKAGE, null),
-                item(TODAY.minusDays(14), GAME_PACKAGE, 1440));
+                item(TODAY, GAME_PACKAGE, null));
 
-        // Only the last one (14 days back, a whole day) is in range... but before the link: baseline only.
-        assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(0, 7));
+        assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(0, 6));
         verify(playtimeWriter, never()).applyObservedPlay(any(), anyLong(), any(), any());
-        assertThat(baselines).hasSize(1);
-        assertThat(baseline(TODAY.minusDays(14))).isEqualTo(1440);
+        assertThat(baselines).isEmpty();
     }
 
     @Test
     void theWindowEdgesAreAccepted() {
-        link.setLinkedAt(null);
-
         AndroidUsageSyncResponseDto result = sync(
                 item(TODAY, GAME_PACKAGE, 1440),
                 item(TODAY.minusDays(14), GAME_PACKAGE, 1));
@@ -166,16 +161,18 @@ class AndroidUsageSyncServiceTest {
     }
 
     @Test
-    void daysBeforeTheLinkOnlySetTheBaseline() {
-        link.setLinkedAt(LocalDateTime.of(2026, 11, 1, 8, 0));
+    void daysBeforeTheLinkAreImportedToo() {
+        // Linked today: the first sync still brings the days the phone keeps.
+        link.setLinkedAt(LocalDateTime.of(2026, 11, 2, 8, 0));
 
         AndroidUsageSyncResponseDto result = sync(
-                item(TODAY.minusDays(2), GAME_PACKAGE, 60),
+                item(TODAY.minusDays(6), GAME_PACKAGE, 60),
                 item(TODAY.minusDays(1), GAME_PACKAGE, 40));
 
-        assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(1, 1));
+        assertThat(result).isEqualTo(new AndroidUsageSyncResponseDto(2, 0));
+        verify(playtimeWriter).applyObservedPlay(link, 60, TODAY.minusDays(6), LocalDateTime.of(2026, 11, 2, 9, 0));
         verify(playtimeWriter).applyObservedPlay(link, 40, TODAY.minusDays(1), LocalDateTime.of(2026, 11, 2, 9, 0));
-        assertThat(baseline(TODAY.minusDays(2))).isEqualTo(60);
+        assertThat(baseline(TODAY.minusDays(6))).isEqualTo(60);
     }
 
     @Test

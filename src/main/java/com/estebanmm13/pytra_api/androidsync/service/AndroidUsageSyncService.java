@@ -112,10 +112,7 @@ public class AndroidUsageSyncService {
         }
         baseline.setMinutesRecorded(day.minutes());
         usageDayRepository.save(baseline);
-        if (date.isBefore(linkedDay(link))) {
-            // Play before the link existed is history: only the baseline moves (Steam/PSN never import it either).
-            return false;
-        }
+        // Days before the link count too (user's choice): the first sync imports the ~7 days the phone keeps.
         playtimeWriter.applyObservedPlay(link, delta, date, now);
         return true;
     }
@@ -130,13 +127,5 @@ public class AndroidUsageSyncService {
         } catch (DateTimeParseException e) {
             return null;
         }
-    }
-
-    /** First day (users' zone) whose play counts; a link without a creation time counts every day. */
-    private LocalDate linkedDay(GamePlatformLink link) {
-        if (link.getLinkedAt() == null) {
-            return LocalDate.MIN;
-        }
-        return link.getLinkedAt().atZone(clock.getZone()).withZoneSameInstant(appZone).toLocalDate();
     }
 }

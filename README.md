@@ -395,7 +395,7 @@ The Android app reads the foreground time of installed apps (system usage stats)
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/android-links` | `[{packageName, gameId}]`, sorted by package |
-| POST | `/android-links` | Body `{packageName, gameId}`. The game must be the caller's (`404`); one game per package and one package per game (`409`). Play counts from the link's day on: earlier days only set the baseline |
+| POST | `/android-links` | Body `{packageName, gameId}`. The game must be the caller's (`404`); one game per package and one package per game (`409`). The first sync imports every day the phone still keeps (about 7) |
 | DELETE | `/android-links/{packageName}` | `204`; the hours already added stay |
 | POST | `/android-usage/sync` | Body `[{date, packageName, minutes}]`: each day's whole total, re-sent on every sync (at most 1000 items, else `400 INVALID_ANDROID_USAGE`). `android_usage_days` keeps the minutes already recorded per package and day, and only the part above it is applied (deltas under 1 minute wait for a later sync). Unlinked packages, dates in the future or more than 14 days back (app time zone) and minutes outside 0-1440 are skipped. Answers `{recorded, ignored}` |
 ### Game metadata autofill (`/api/v1/metadata`)
