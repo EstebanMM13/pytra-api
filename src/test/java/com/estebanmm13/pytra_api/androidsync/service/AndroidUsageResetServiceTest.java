@@ -6,7 +6,8 @@ import com.estebanmm13.pytra_api.androidsync.repository.AndroidUsageDayRepositor
 import com.estebanmm13.pytra_api.diary.model.DiaryEntry;
 import com.estebanmm13.pytra_api.diary.model.DiaryEntryGame;
 import com.estebanmm13.pytra_api.diary.repository.DiaryEntryRepository;
-import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
+import com.estebanmm13.pytra_api.experiences.model.Experience;
+import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.service.experienceService.ExperienceService;
 import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.HybridPlaytimeReconciler;
 import com.estebanmm13.pytra_api.experiences.service.onlinePlaytimeService.OnlinePlaytimeService;
@@ -32,7 +33,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -48,17 +48,19 @@ class AndroidUsageResetServiceTest {
     private final GamePlatformLinkRepository linkRepository = mock(GamePlatformLinkRepository.class);
     private final AndroidUsageDayRepository usageDayRepository = mock(AndroidUsageDayRepository.class);
     private final DiaryEntryRepository diaryEntryRepository = mock(DiaryEntryRepository.class);
+    private final ExperienceRepository experienceRepository = mock(ExperienceRepository.class);
     private final ExperienceService experienceService = mock(ExperienceService.class);
     private final OnlinePlaytimeService onlinePlaytimeService = mock(OnlinePlaytimeService.class);
     private final HybridPlaytimeReconciler hybridPlaytimeReconciler = mock(HybridPlaytimeReconciler.class);
     private final PlatformService platformService = mock(PlatformService.class);
     private final AndroidUsageResetService service = new AndroidUsageResetService(linkRepository, usageDayRepository,
-            diaryEntryRepository, experienceService, onlinePlaytimeService, hybridPlaytimeReconciler, platformService);
+            diaryEntryRepository, experienceRepository, experienceService, onlinePlaytimeService, hybridPlaytimeReconciler, platformService);
 
     @BeforeEach
     void setUp() {
         when(platformService.requireByLegacyCode("MOBILE")).thenReturn(Platform.builder().id(9L).legacyCode("MOBILE").build());
         when(usageDayRepository.findAllByUserIdAndPackageName(USER_ID, PACKAGE)).thenReturn(List.of());
+        when(experienceRepository.findByIdAndUserId(7L, USER_ID)).thenReturn(Optional.of(Experience.builder().id(7L).build()));
     }
 
     @Test
@@ -97,12 +99,12 @@ class AndroidUsageResetServiceTest {
     void aDeletedRunStillRestartsTheLink() {
         GamePlatformLink link = link(GameCategory.SINGLEPLAYER, 60);
         link.setExperienceId(7L);
-        doThrow(new ResourceNotFoundException("Experience not found"))
-                .when(experienceService).addHours(eq(7L), any(), eq(USER_ID));
+        when(experienceRepository.findByIdAndUserId(7L, USER_ID)).thenReturn(Optional.empty());
 
         AndroidUsageResetResponseDto result = service.reset(USER_ID);
 
         assertThat(result.minutesRemoved()).isZero();
+        verify(experienceService, never()).addHours(any(), any(), any());
         assertThat(link.getLastSyncedPlaytimeMinutes()).isZero();
         verify(usageDayRepository).deleteAllOf(USER_ID, PACKAGE);
     }

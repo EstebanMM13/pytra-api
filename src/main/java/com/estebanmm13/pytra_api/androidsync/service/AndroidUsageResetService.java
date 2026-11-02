@@ -7,7 +7,7 @@ import com.estebanmm13.pytra_api.diary.model.DiaryEntry;
 import com.estebanmm13.pytra_api.diary.model.DiaryEntryGame;
 import com.estebanmm13.pytra_api.diary.repository.DiaryEntryRepository;
 import com.estebanmm13.pytra_api.diary.service.SyncedPlayRecorder;
-import com.estebanmm13.pytra_api.error.ResourceNotFoundException;
+import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.service.experienceService.ExperienceService;
 import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.HybridPlaytimeReconciler;
 import com.estebanmm13.pytra_api.experiences.service.onlinePlaytimeService.OnlinePlaytimeService;
@@ -48,6 +48,7 @@ public class AndroidUsageResetService {
     private final GamePlatformLinkRepository linkRepository;
     private final AndroidUsageDayRepository usageDayRepository;
     private final DiaryEntryRepository diaryEntryRepository;
+    private final ExperienceRepository experienceRepository;
     private final ExperienceService experienceService;
     private final OnlinePlaytimeService onlinePlaytimeService;
     private final HybridPlaytimeReconciler hybridPlaytimeReconciler;
@@ -75,24 +76,22 @@ public class AndroidUsageResetService {
             return 0;
         }
         BigDecimal hours = BigDecimal.valueOf(minutes).divide(BigDecimal.valueOf(60), 6, RoundingMode.HALF_UP);
-        try {
-            if (game.getCategory() == GameCategory.SINGLEPLAYER) {
-                if (link.getExperienceId() == null) {
-                    return 0;
-                }
-                experienceService.addHours(link.getExperienceId(), hours.negate(), link.getUserId());
-            } else if (game.getCategory() == GameCategory.ONLINE) {
-                Long mobile = platformService.requireByLegacyCode("MOBILE").getId();
-                onlinePlaytimeService.addHours(game.getId(), hours.negate(), mobile, link.getUserId());
-            } else {
-                // HYBRID: the online hours moved by the change of the synced share; move them back.
-                link.setLastSyncedPlaytimeMinutes(0L);
-                hybridPlaytimeReconciler.applySyncedChange(link, minutes, LocalDateTime.now());
+        if (game.getCategory() == GameCategory.SINGLEPLAYER) {
+            // Checked first, not caught: a not-found thrown inside addHours' transaction would mark the whole
+            // reset rollback-only. A run the user deleted has nothing left to take back.
+            if (link.getExperienceId() == null
+                    || experienceRepository.findByIdAndUserId(link.getExperienceId(), link.getUserId()).isEmpty()) {
+                return 0;
             }
-        } catch (ResourceNotFoundException e) {
-            // The run or the online record was deleted by the user: nothing left to take back.
-            log.debug("Android reset of link {}: {}", link.getId(), e.getMessage());
-            return 0;
+            experienceService.addHours(link.getExperienceId(), hours.negate(), link.getUserId());
+        } else if (game.getCategory() == GameCategory.ONLINE) {
+            // A deleted online record is left deleted (addHours does nothing for a negative delta then).
+            Long mobile = platformService.requireByLegacyCode("MOBILE").getId();
+            onlinePlaytimeService.addHours(game.getId(), hours.negate(), mobile, link.getUserId());
+        } else {
+            // HYBRID: the online hours moved by the change of the synced share; move them back.
+            link.setLastSyncedPlaytimeMinutes(0L);
+            hybridPlaytimeReconciler.applySyncedChange(link, minutes, LocalDateTime.now());
         }
         return minutes;
     }
