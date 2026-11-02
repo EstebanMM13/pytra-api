@@ -23,11 +23,12 @@ import java.util.Set;
  */
 public final class SyncedOnlineHours {
 
-    private enum Source { STEAM, PSN }
+    private enum Source { STEAM, PSN, ANDROID }
 
     private static final Map<Source, Set<String>> COVERED_PLATFORMS = Map.of(
             Source.STEAM, Set.of("PC"),
-            Source.PSN, Set.of("PS4", "PS5"));
+            Source.PSN, Set.of("PS4", "PS5"),
+            Source.ANDROID, Set.of("MOBILE"));
 
     private SyncedOnlineHours() {
     }
@@ -57,6 +58,7 @@ public final class SyncedOnlineHours {
         return switch (platform) {
             case STEAM -> Source.STEAM;
             case PSN_PS4, PSN_PS5 -> Source.PSN;
+            case ANDROID -> Source.ANDROID;
             // Never written by any sync: no hours to share.
             default -> null;
         };

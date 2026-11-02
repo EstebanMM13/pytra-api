@@ -61,7 +61,8 @@ import java.util.stream.Collectors;
 public class DiaryServiceImpl implements DiaryService {
 
     static final Set<ExternalPlatform> SYNCED_PLATFORMS =
-            EnumSet.of(ExternalPlatform.STEAM, ExternalPlatform.PSN, ExternalPlatform.PSN_PS4, ExternalPlatform.PSN_PS5);
+            EnumSet.of(ExternalPlatform.STEAM, ExternalPlatform.PSN, ExternalPlatform.PSN_PS4, ExternalPlatform.PSN_PS5,
+                    ExternalPlatform.ANDROID);
     static final int MAX_RANGE_DAYS = 400;
 
     private final DiaryEntryRepository diaryEntryRepository;

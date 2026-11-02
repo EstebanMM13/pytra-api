@@ -5,8 +5,9 @@ package com.estebanmm13.pytra_api.games.model;
  *
  * <p>PlayStation titles are split by console generation ({@link #PSN_PS4}, {@link #PSN_PS5}): PSN reports
  * the PS4 and PS5 versions of the same game as separate titles with separate playtime, and both must be
- * able to link to the same Pytra game. {@link #PSN} predates the PSN sync and is never written.
+ * able to link to the same Pytra game. {@link #PSN} predates the PSN sync and is never written. {@link #ANDROID}
+ * links an installed Android app (external id = package name) whose daily usage the phone reports.
  */
 public enum ExternalPlatform {
-    STEAM, XBOX, PSN, EPIC, MANUAL, PSN_PS4, PSN_PS5
+    STEAM, XBOX, PSN, EPIC, MANUAL, PSN_PS4, PSN_PS5, ANDROID
 }

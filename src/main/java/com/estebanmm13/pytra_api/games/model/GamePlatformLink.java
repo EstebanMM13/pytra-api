@@ -52,4 +52,8 @@ public class GamePlatformLink {
     // PSN concept id: one id for every version of the same game (see V29). Null for Steam links and for
     // PSN titles that did not report one; refreshed on every PSN sync.
     private Long psnConceptId;
+
+    // When the link was created (V43). Set for Android links only: their usage days before it only set the
+    // baseline, never hours. Null for Steam/PSN links.
+    private LocalDateTime linkedAt;
 }

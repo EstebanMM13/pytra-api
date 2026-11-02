@@ -20,12 +20,15 @@ public record ImportedRunSource(String runLabel, String note, String platformLeg
             "Importado de PlayStation", "Horas importadas automáticamente desde PlayStation Network", "PS5");
     static final ImportedRunSource PSN_PS4 = new ImportedRunSource(
             "Importado de PlayStation", "Horas importadas automáticamente desde PlayStation Network", "PS4");
+    static final ImportedRunSource ANDROID = new ImportedRunSource(
+            "Importado de Android", "Horas importadas automáticamente desde Android", "MOBILE");
 
     public static ImportedRunSource of(ExternalPlatform platform) {
         return switch (platform) {
             case STEAM -> STEAM;
             case PSN_PS5 -> PSN_PS5;
             case PSN_PS4 -> PSN_PS4;
+            case ANDROID -> ANDROID;
             default -> throw new IllegalArgumentException("No import source for platform " + platform);
         };
     }

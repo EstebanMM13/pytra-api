@@ -93,6 +93,33 @@ public class ExternalPlaytimeWriter {
     }
 
     /**
+     * Applies {@code deltaMinutes} of play observed on a known {@code day} (Android reports usage per local
+     * day, so no last-played guess is needed): the link's total grows by the delta and the hours go where
+     * {@link #applySyncedTotal} would put them (canonical run, online playtime or hybrid share), with the
+     * diary line on {@code day}.
+     *
+     * @return true when hours were added to a confirmed game
+     */
+    public boolean applyObservedPlay(GamePlatformLink link, long deltaMinutes, LocalDate day, LocalDateTime now) {
+        if (deltaMinutes <= 0) {
+            return false;
+        }
+        long baselineMinutes = link.getLastSyncedPlaytimeMinutes();
+        link.setLastSyncedPlaytimeMinutes(baselineMinutes + deltaMinutes);
+        link.setLastSyncedAt(now);
+
+        Game game = link.getGame();
+        if (game.getReviewStatus() != ReviewStatus.CONFIRMED) {
+            return false;
+        }
+        boolean added = game.getCategory() == GameCategory.HYBRID
+                ? hybridPlaytimeReconciler.applySyncedChange(link, baselineMinutes, now)
+                : addDelta(link, game, deltaMinutes / 60.0, now);
+        recordInDiary(link, game, deltaMinutes, day);
+        return added;
+    }
+
+    /**
      * Records the observed play in the diary (record only: the hours were just added above). Only deltas of a
      * confirmed, categorised game reach this point, so the first import of a title (its link created with
      * the whole history as baseline, or the confirm-time import) never lands in the diary. The recorder
@@ -103,11 +130,18 @@ public class ExternalPlaytimeWriter {
         if (game.getCategory() == null || deltaMinutes <= 0) {
             return;
         }
+        LocalDate day = playDate(link.getLastPlayedAt(), previousSyncAt, now, ZoneId.systemDefault(),
+                appTimeZone.zone());
+        recordInDiary(link, game, deltaMinutes, day);
+    }
+
+    private void recordInDiary(GamePlatformLink link, Game game, long deltaMinutes, LocalDate day) {
+        if (game.getCategory() == null || deltaMinutes <= 0) {
+            return;
+        }
         // SINGLEPLAYER hours went to the link's canonical run (set by addDelta); ONLINE/HYBRID ones to the
         // online playtime.
         Long run = game.getCategory() == GameCategory.SINGLEPLAYER ? link.getExperienceId() : null;
-        LocalDate day = playDate(link.getLastPlayedAt(), previousSyncAt, now, ZoneId.systemDefault(),
-                appTimeZone.zone());
         syncedPlayRecorder.record(link.getUserId(), game.getId(), run, day, deltaMinutes);
     }
 
@@ -271,14 +305,14 @@ public class ExternalPlaytimeWriter {
         link.setExperienceId(experience.getId());
     }
 
-    /** Catalog platform of a link's hours (Steam: PC; PSN: the PS4 or PS5 version); null when unknown. */
+    /** Catalog platform of a link's hours (Steam: PC; PSN: the PS4 or PS5 version; Android: Móvil); null when unknown. */
     private Platform catalogPlatformOf(GamePlatformLink link) {
         return catalogPlatformOf(link, platformService);
     }
 
     public static Platform catalogPlatformOf(GamePlatformLink link, PlatformService platformService) {
         return switch (link.getPlatform()) {
-            case STEAM, PSN_PS4, PSN_PS5 ->
+            case STEAM, PSN_PS4, PSN_PS5, ANDROID ->
                     platformService.requireByLegacyCode(ImportedRunSource.of(link.getPlatform()).platformLegacyCode());
             default -> null;
         };

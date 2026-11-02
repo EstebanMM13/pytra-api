@@ -440,6 +440,84 @@ class ExternalPlaytimeWriterTest {
         verify(platformService, never()).requireByLegacyCode(any());
     }
 
+    @Test
+    void androidPlayGoesToTheOnlyRunBeingPlayedOnMobileWithTheDiaryLineOnThatDay() {
+        Game game = game(GameCategory.SINGLEPLAYER, ReviewStatus.CONFIRMED);
+        GamePlatformLink android = link(game, ExternalPlatform.ANDROID, 30);
+        Experience mobileRun = inProgressRun(7L, "MOBILE", 5.0);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID))
+                .thenReturn(List.of(mobileRun, inProgressRun(8L, "PC", 1.0)));
+        LocalDate day = LocalDate.of(2026, 10, 30);
+        LocalDateTime now = LocalDateTime.of(2026, 11, 2, 9, 0);
+
+        boolean added = writer.applyObservedPlay(android, 90, day, now);
+
+        assertThat(added).isTrue();
+        assertThat(mobileRun.getHours()).isEqualTo(6.5);
+        assertThat(android.getExperienceId()).isEqualTo(7L);
+        assertThat(android.getLastSyncedPlaytimeMinutes()).isEqualTo(120L);
+        assertThat(android.getLastSyncedAt()).isEqualTo(now);
+        verify(syncedPlayRecorder).record(USER_ID, GAME_ID, 7L, day, 90);
+    }
+
+    @Test
+    void androidPlayWithoutARunOnMobileCreatesTheImportedAndroidRun() {
+        Game game = game(GameCategory.SINGLEPLAYER, ReviewStatus.CONFIRMED);
+        GamePlatformLink android = link(game, ExternalPlatform.ANDROID, 0);
+        when(platformService.requireByLegacyCode("MOBILE"))
+                .thenReturn(Platform.builder().id(4L).name("Móvil").legacyCode("MOBILE").build());
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(List.of());
+
+        writer.applyObservedPlay(android, 45, LocalDate.of(2026, 11, 1), LocalDateTime.of(2026, 11, 2, 9, 0));
+
+        ArgumentCaptor<Experience> run = ArgumentCaptor.forClass(Experience.class);
+        verify(experienceRepository).save(run.capture());
+        assertThat(run.getValue().getRunLabel()).isEqualTo("Importado de Android");
+        assertThat(run.getValue().getPlatform().getLegacyCode()).isEqualTo("MOBILE");
+        assertThat(run.getValue().getHours()).isEqualTo(0.75);
+        assertThat(run.getValue().getStatus()).isEqualTo(ExperienceStatus.EN_CURSO);
+    }
+
+    @Test
+    void androidOnlinePlayCountsOnTheMobilePlatform() {
+        Game game = game(GameCategory.ONLINE, ReviewStatus.CONFIRMED);
+        GamePlatformLink android = link(game, ExternalPlatform.ANDROID, 0);
+        when(platformService.requireByLegacyCode("MOBILE"))
+                .thenReturn(Platform.builder().id(4L).name("Móvil").legacyCode("MOBILE").build());
+        OnlinePlaytime stored = OnlinePlaytime.builder().userId(USER_ID).gameId(GAME_ID).totalHours(10.0).build();
+        when(onlinePlaytimeRepository.findByGameIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(stored));
+        LocalDate day = LocalDate.of(2026, 11, 1);
+
+        writer.applyObservedPlay(android, 120, day, LocalDateTime.of(2026, 11, 2, 9, 0));
+
+        assertThat(stored.getTotalHours()).isEqualTo(12.0);
+        assertThat(stored.getPlatformHours()).containsExactlyEntriesOf(java.util.Map.of(4L, 2.0));
+        verify(syncedPlayRecorder).record(USER_ID, GAME_ID, null, day, 120);
+    }
+
+    @Test
+    void androidPlayOfAnUnconfirmedGameOnlyMovesTheLinkTotal() {
+        Game game = game(GameCategory.ONLINE, ReviewStatus.PENDING_REVIEW);
+        GamePlatformLink android = link(game, ExternalPlatform.ANDROID, 10);
+
+        boolean added = writer.applyObservedPlay(android, 20, LocalDate.of(2026, 11, 1), LocalDateTime.of(2026, 11, 2, 9, 0));
+
+        assertThat(added).isFalse();
+        assertThat(android.getLastSyncedPlaytimeMinutes()).isEqualTo(30L);
+        verify(onlinePlaytimeRepository, never()).save(any());
+        verify(syncedPlayRecorder, never()).record(any(), any(), any(), any(), anyLong());
+    }
+
+    @Test
+    void androidPlayWithoutNewMinutesChangesNothing() {
+        Game game = game(GameCategory.ONLINE, ReviewStatus.CONFIRMED);
+        GamePlatformLink android = link(game, ExternalPlatform.ANDROID, 10);
+
+        assertThat(writer.applyObservedPlay(android, 0, LocalDate.of(2026, 11, 1), LocalDateTime.now())).isFalse();
+        assertThat(android.getLastSyncedPlaytimeMinutes()).isEqualTo(10L);
+        verify(syncedPlayRecorder, never()).record(any(), any(), any(), any(), anyLong());
+    }
+
     private static Experience inProgressRun(Long id, String platformCode, double hours) {
         Experience run = run(platformCode, hours);
         run.setId(id);
