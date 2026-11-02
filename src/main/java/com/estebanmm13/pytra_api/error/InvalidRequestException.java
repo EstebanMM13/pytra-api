@@ -39,6 +39,8 @@ public class InvalidRequestException extends RuntimeException {
      * {@code platformId}. fieldErrors names each game as {@code games[i].platformId}.
      */
     public static final String DIARY_PLATFORM_REQUIRED = "DIARY_PLATFORM_REQUIRED";
+    /** An Android usage sync without a body or with more items than one sync may carry. */
+    public static final String INVALID_ANDROID_USAGE = "INVALID_ANDROID_USAGE";
 
     private final Map<String, String> fieldErrors;
 

@@ -2,7 +2,9 @@ package com.estebanmm13.pytra_api.games.repository;
 
 import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
 import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -36,4 +38,10 @@ public interface GamePlatformLinkRepository extends JpaRepository<GamePlatformLi
     @Query("SELECT DISTINCT l.game.id FROM GamePlatformLink l WHERE l.userId = :userId AND l.platform IN :platforms")
     Set<Long> findGameIdsByUserIdAndPlatformIn(@Param("userId") Long userId,
                                                @Param("platforms") Collection<ExternalPlatform> platforms);
+
+    /** Every link of the user on one platform, locked until the transaction ends (serialises concurrent syncs). */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT l FROM GamePlatformLink l WHERE l.userId = :userId AND l.platform = :platform")
+    List<GamePlatformLink> findAllByUserIdAndPlatformForUpdate(@Param("userId") Long userId,
+                                                               @Param("platform") ExternalPlatform platform);
 }
