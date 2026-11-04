@@ -12,8 +12,9 @@ Branch: pytra-api `fix/auth-session-revocation`. Delivery: ask-on-risk. Runner: 
 
 ## Tasks
 
-- [ ] T1 S1-S4 migration + revocation check + atomic consumption + tests — inline (no writer trigger; one understood change)
+- [x] T1 S1-S4 migration + revocation check + atomic consumption + tests — inline (no writer trigger; one understood change) — 215b6d2
 
 ## Log
 
 - L1 (2026-11-04) User: "me puedes hacer un analisis de toda la app y me dices que se puede mejorar, tanto en la api como visualmente" -> audit delivered -> "si empieza por lo más importante".
+- L2 (2026-11-04) T1 done inline: RED (compile failure on missing API) then GREEN. Focused unit tests 31/31 pass; full suite 1249 tests, 0 failures, 356 errors, all Testcontainers integration classes failing to start without Docker on this machine (SessionRevocationIntegrationTests included: pending CI). Independent verifier (Risk item 2): S1-S4 pass, no blockers; advisories: null-iat binding unproven on live Postgres (out of domain), pending exchange codes not invalidated by a reset (baseline), clock skew if scaled out. Native review (risk, reliability) granted -> approved and acknowledged; two non-blocking suggestions (same-second window; no concurrent-race integration test).
