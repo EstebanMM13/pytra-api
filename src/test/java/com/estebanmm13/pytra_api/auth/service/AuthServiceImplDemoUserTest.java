@@ -163,6 +163,7 @@ class AuthServiceImplDemoUserTest {
         when(tokenGenerator.hashToken("reset")).thenReturn("reset-hash");
         when(passwordResetTokenRepository.findByTokenHash("reset-hash")).thenReturn(Optional.of(PasswordResetToken.builder()
                 .user(user).tokenHash("reset-hash").expiresAt(LocalDateTime.now().plusHours(1)).build()));
+        when(passwordResetTokenRepository.markConsumed(any(), any())).thenReturn(1);
         ResetPasswordRequestDto request = new ResetPasswordRequestDto();
         request.setToken("reset");
         request.setNewPassword("new-password-123");

@@ -68,6 +68,8 @@ public class GoogleOidcUserService implements OAuth2UserService<OidcUserRequest,
                 // attacker pre-registering it) can no longer sign in with it.
                 existing.setEmailVerified(true);
                 existing.setPasswordHash(null);
+                // Their sessions end too (the real owner signs in right after this, so theirs stay valid).
+                existing.revokeIssuedTokens();
             }
             userRepository.save(existing);
             return new PytraOidcUser(oidcUser,user.get());

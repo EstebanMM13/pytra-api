@@ -71,9 +71,10 @@ public class JwtFilter extends OncePerRequestFilter {
             return;
         }
 
-        // A validly signed token of a deleted account must not authenticate anything (stays anonymous -> 401).
+        // A validly signed token of a deleted account, or one issued before a password reset, must not
+        // authenticate anything (stays anonymous -> 401). One query covers both.
         if (username != null && userId != null && SecurityContextHolder.getContext().getAuthentication() == null
-                && userRepository.existsById(userId)) {
+                && userRepository.isTokenStillValid(userId, issuedAt)) {
             AuthenticatedUser authenticatedUser = new AuthenticatedUser(username, userId, issuedAt, demo);
 
             UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(

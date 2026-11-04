@@ -15,6 +15,15 @@ import java.util.Optional;
 public interface ExchangeCodeTokenRepository extends JpaRepository<ExchangeCodeToken, Long> {
     Optional<ExchangeCodeToken> findByTokenHash(String code);
 
+    /**
+     * Consumes the code only if nobody did yet; returns 1 for the single winner and 0 otherwise. Concurrent
+     * callers serialize on the row lock, and the loser re-evaluates {@code consumedAt IS NULL} after the commit.
+     */
+    @Transactional
+    @Modifying
+    @Query("UPDATE ExchangeCodeToken t SET t.consumedAt = :now WHERE t.id = :id AND t.consumedAt IS NULL")
+    int markConsumed(@Param("id") Long id, @Param("now") LocalDateTime now);
+
     /** Deletes the tokens that expired, or were consumed, before {@code cutoff}; returns how many. */
     @Transactional
     @Modifying

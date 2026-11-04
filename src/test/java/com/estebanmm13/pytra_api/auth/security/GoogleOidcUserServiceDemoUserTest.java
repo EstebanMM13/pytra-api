@@ -67,6 +67,32 @@ class GoogleOidcUserServiceDemoUserTest {
     }
 
     @Test
+    void claimingAnUnverifiedAccountDropsItsPasswordAndRevokesItsSessions() {
+        User squatted = user(8L, null);
+        squatted.setEmailVerified(false);
+        when(userRepository.findByGoogleId("google-sub")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(squatted));
+
+        service.resolveUser(googleIdentity());
+
+        assertThat(squatted.getPasswordHash()).isNull();
+        assertThat(squatted.getCredentialsChangedAt()).isNotNull();
+        verify(userRepository).save(squatted);
+    }
+
+    @Test
+    void linkingAVerifiedAccountKeepsItsSessions() {
+        User verified = user(8L, null);
+        when(userRepository.findByGoogleId("google-sub")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(verified));
+
+        service.resolveUser(googleIdentity());
+
+        assertThat(verified.getPasswordHash()).isEqualTo("hash");
+        assertThat(verified.getCredentialsChangedAt()).isNull();
+    }
+
+    @Test
     void otherAccountsStillSignIn() {
         when(userRepository.findByGoogleId("google-sub")).thenReturn(Optional.of(user(8L, "google-sub")));
 

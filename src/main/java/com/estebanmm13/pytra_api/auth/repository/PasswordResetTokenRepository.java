@@ -16,6 +16,12 @@ import java.util.Optional;
 public interface PasswordResetTokenRepository extends JpaRepository<PasswordResetToken, Long> {
     Optional<PasswordResetToken> findByTokenHash(String tokenHash);
 
+    /** Consumes the token only if nobody did yet; returns 1 for the single winner and 0 otherwise. */
+    @Transactional
+    @Modifying
+    @Query("UPDATE PasswordResetToken t SET t.consumedAt = :now WHERE t.id = :id AND t.consumedAt IS NULL")
+    int markConsumed(@Param("id") Long id, @Param("now") LocalDateTime now);
+
     Optional<PasswordResetToken> findFirstByUser_IdOrderByExpiresAtDesc(Long userId);
 
     List<PasswordResetToken> findAllByUser_IdAndConsumedAtIsNull(Long userId);

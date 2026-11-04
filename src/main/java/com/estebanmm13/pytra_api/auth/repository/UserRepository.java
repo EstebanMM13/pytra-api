@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.Optional;
 
 @Repository
@@ -31,5 +32,13 @@ public interface UserRepository extends JpaRepository<User,Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT u FROM User u WHERE u.id = :id")
     Optional<User> findByIdForUpdate(@Param("id") Long id);
+
+    /**
+     * True when the account exists and a JWT issued at {@code issuedAt} is not revoked by its credentials cut-off.
+     * A null {@code issuedAt} only passes for accounts that were never revoked.
+     */
+    @Query("SELECT COUNT(u) > 0 FROM User u WHERE u.id = :id"
+            + " AND (u.credentialsChangedAt IS NULL OR u.credentialsChangedAt <= :issuedAt)")
+    boolean isTokenStillValid(@Param("id") Long id, @Param("issuedAt") Instant issuedAt);
 
 }

@@ -3,7 +3,9 @@ package com.estebanmm13.pytra_api.auth.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 @NoArgsConstructor
 @AllArgsConstructor
@@ -45,4 +47,15 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
+
+    /** JWTs issued before this instant no longer authenticate (see JwtFilter); null = never revoked. */
+    private Instant credentialsChangedAt;
+
+    /**
+     * Ends every JWT issued before now. JWT {@code iat} has second precision, so the cut-off is truncated to the
+     * second: a token minted later in the same second (e.g. the login right after a reset) keeps working.
+     */
+    public void revokeIssuedTokens() {
+        this.credentialsChangedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+    }
 }

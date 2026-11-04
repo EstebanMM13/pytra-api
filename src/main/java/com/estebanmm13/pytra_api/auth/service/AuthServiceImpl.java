@@ -266,13 +266,17 @@ public class AuthServiceImpl implements AuthService {
         if (demoMode.isDemoUser(passwordResetToken.get().getUser().getId())) {
             throw new InvalidTokenException("Invalid token");
         }
-        passwordResetToken.get().setConsumedAt(LocalDateTime.now());
-        passwordResetTokenRepository.save(passwordResetToken.get());
+        // Atomic consume: of two concurrent requests with the same token only one gets past this line.
+        if (passwordResetTokenRepository.markConsumed(passwordResetToken.get().getId(), LocalDateTime.now()) == 0) {
+            throw new InvalidTokenException("Invalid token");
+        }
 
         User user = passwordResetToken.get().getUser();
         user.setPasswordHash(passwordEncoder.encode(resetPasswordRequestDto.getNewPassword()));
         // The reset link was delivered to this inbox, which proves ownership of the email.
         user.setEmailVerified(true);
+        // Whoever held a session (possibly the reason for the reset) is signed out.
+        user.revokeIssuedTokens();
         userRepository.save(user);
         // A new password ends every long-lived credential too (same transaction as the password update).
         personalAccessTokenRepository.deleteAllByUserId(user.getId());
@@ -280,6 +284,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional
     public LoginResponseDto exchangeCodeToken(ExchangeCodeTokenRequestDto exchangeCodeTokenRequestDto) {
 
         String codeHash = tokenGenerator.hashToken(exchangeCodeTokenRequestDto.getCode());
@@ -299,8 +304,10 @@ public class AuthServiceImpl implements AuthService {
             throw new InvalidTokenException("Invalid token");
         }
 
-        exchangeCodeTokenRequest.get().setConsumedAt(LocalDateTime.now());
-        exchangeCodeTokenRepository.save(exchangeCodeTokenRequest.get());
+        // Atomic consume: of two concurrent requests with the same code only one gets a JWT.
+        if (exchangeCodeTokenRepository.markConsumed(exchangeCodeTokenRequest.get().getId(), LocalDateTime.now()) == 0) {
+            throw new InvalidTokenException("Invalid token");
+        }
 
         User user = exchangeCodeTokenRequest.get().getUser();
         String token = jwtService.generateTokenWithRole(user.getUsername(), user.getRole().name(), user.getId());
