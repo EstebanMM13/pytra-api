@@ -198,7 +198,8 @@ class ObsidianExportIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(status().is2xxSuccessful());
 
         performAs(aliceToken, get(EXPORT)).andExpect(status().isUnauthorized());
-        performAs(aliceAuth, get(TOKENS)).andExpect(jsonPath("$", hasSize(0)));
+        // The reset also ends earlier sessions, so list with a session opened after it.
+        performAs(bearer(alice), get(TOKENS)).andExpect(jsonPath("$", hasSize(0)));
         // Other users keep theirs.
         performAs(bobToken, get(EXPORT)).andExpect(status().isOk());
     }
