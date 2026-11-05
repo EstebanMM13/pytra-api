@@ -461,6 +461,12 @@ There is no Dockerfile in this repo; Railway builds the Maven project directly. 
 
 The service's healthcheck path is `/actuator/health`: public, `200 {"status":"UP"}` while the app and its database answer (`503` with `DOWN` otherwise), never with details. It is the only actuator endpoint exposed over HTTP.
 
+### Database backups
+
+`pytra-db-backup` (source in `ops/db-backup/`) is a Railway cron job, every Sunday at 04:00 UTC. It runs `pg_dump --format=custom`, then `verify-restore.sh` restores the dump into a throwaway local Postgres inside the job and checks it: the restore must not error, its newest Flyway migration must match the source, and `users`, `games`, `experiences` and `diary_entries` must not come back empty when the source has rows (row counts are logged). Only a dump that passes is uploaded to the Railway bucket; then only the newest `KEEP_BACKUPS` (default 8) are kept. A failed check exits non-zero, so the run shows as failed and no old dump is deleted.
+
+To restore a dump by hand: `pg_restore --no-owner --no-acl --exit-on-error -d <database-url> pytra-<timestamp>.dump` into an empty database.
+
 ## Roadmap
 
 - [x] Auth: register, login, email verification, password reset, Google OAuth2/OIDC (web and Android), invite-only mode

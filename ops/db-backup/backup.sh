@@ -12,6 +12,8 @@ name="pytra-$(date -u +%Y-%m-%dT%H%M%SZ).dump"
 file="/tmp/$name"
 
 pg_dump --format=custom --file="$file" "$DATABASE_URL"
+# A dump that does not restore is not a backup: on failure nothing is uploaded and no old dump is deleted.
+verify-restore.sh "$file" "$DATABASE_URL"
 aws s3 cp "$file" "s3://$BUCKET/$name" --endpoint-url "$ENDPOINT" --only-show-errors
 echo "Uploaded $name ($(wc -c < "$file") bytes)"
 
