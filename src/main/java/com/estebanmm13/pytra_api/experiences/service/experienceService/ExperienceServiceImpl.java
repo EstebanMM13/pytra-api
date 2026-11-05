@@ -176,7 +176,8 @@ public class ExperienceServiceImpl implements ExperienceService {
 
         changes.accept(experience);
 
-        experienceRepository.save(experience);
+        // Flush so @UpdateTimestamp lands in the response (open-in-view is off).
+        experienceRepository.saveAndFlush(experience);
         hybridPlaytimeReconciler.afterRunChange(game, syncedShareBefore);
         return experienceMapper.toResponseDto(experience);
     }

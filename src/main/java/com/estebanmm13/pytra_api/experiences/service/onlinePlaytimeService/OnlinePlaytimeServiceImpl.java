@@ -74,7 +74,8 @@ public class OnlinePlaytimeServiceImpl implements OnlinePlaytimeService {
         }
         applyPlatformHours(onlinePlaytime, onlinePlaytimeRequestDto.getPlatformHours());
 
-        onlinePlaytimeRepository.save(onlinePlaytime);
+        // Flush so @UpdateTimestamp lands in the response (open-in-view is off).
+        onlinePlaytimeRepository.saveAndFlush(onlinePlaytime);
         return onlinePlaytimeMapper.toResponseDto(onlinePlaytime);
     }
 

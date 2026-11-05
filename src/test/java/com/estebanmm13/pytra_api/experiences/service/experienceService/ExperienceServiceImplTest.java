@@ -102,7 +102,7 @@ class ExperienceServiceImplTest {
 
         InOrder order = inOrder(hybridPlaytimeReconciler, experienceRepository);
         order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
-        order.verify(experienceRepository).save(run);
+        order.verify(experienceRepository).saveAndFlush(run);
         order.verify(hybridPlaytimeReconciler).afterRunChange(game, 60.0);
     }
 
@@ -123,7 +123,7 @@ class ExperienceServiceImplTest {
         assertThat(run.getRunLabel()).isEqualTo("Run 1");
         InOrder order = inOrder(hybridPlaytimeReconciler, experienceRepository);
         order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
-        order.verify(experienceRepository).save(run);
+        order.verify(experienceRepository).saveAndFlush(run);
         order.verify(hybridPlaytimeReconciler).afterRunChange(game, 40.0);
     }
 
@@ -154,7 +154,7 @@ class ExperienceServiceImplTest {
 
         service.patch(RUN_ID, patch, USER_ID);
 
-        verify(experienceRepository).save(run);
+        verify(experienceRepository).saveAndFlush(run);
     }
 
     @Test
@@ -163,7 +163,7 @@ class ExperienceServiceImplTest {
 
         assertThatThrownBy(() -> service.patch(RUN_ID, new ExperiencePatchDto(), USER_ID))
                 .isInstanceOf(ResourceNotFoundException.class);
-        verify(experienceRepository, never()).save(any());
+        verify(experienceRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -206,7 +206,7 @@ class ExperienceServiceImplTest {
 
         InOrder order = inOrder(hybridPlaytimeReconciler, experienceRepository);
         order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
-        order.verify(experienceRepository).save(run);
+        order.verify(experienceRepository).saveAndFlush(run);
         order.verify(hybridPlaytimeReconciler).afterRunChange(game, 5.0);
     }
 

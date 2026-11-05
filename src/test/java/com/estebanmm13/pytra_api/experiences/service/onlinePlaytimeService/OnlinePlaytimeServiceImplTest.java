@@ -67,7 +67,7 @@ class OnlinePlaytimeServiceImplTest {
         assertThatThrownBy(() -> service.upsert(GAME_ID, request(ids), USER_ID))
                 .isInstanceOf(InvalidRequestException.class)
                 .hasMessage(InvalidRequestException.INVALID_PLATFORM);
-        verify(onlinePlaytimeRepository, never()).save(any());
+        verify(onlinePlaytimeRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -185,7 +185,7 @@ class OnlinePlaytimeServiceImplTest {
 
         assertThat(response.getPlatformHours())
                 .containsExactlyInAnyOrderEntriesOf(Map.of(TestPlatforms.PC.getId(), 4.0, TestPlatforms.PS5.getId(), 6.5));
-        verify(onlinePlaytimeRepository).save(any());
+        verify(onlinePlaytimeRepository).saveAndFlush(any());
     }
 
     @Test
@@ -199,7 +199,7 @@ class OnlinePlaytimeServiceImplTest {
         assertThatThrownBy(() -> service.upsert(GAME_ID, dto, USER_ID))
                 .isInstanceOf(InvalidRequestException.class)
                 .hasMessage(InvalidRequestException.INVALID_PLATFORM);
-        verify(onlinePlaytimeRepository, never()).save(any());
+        verify(onlinePlaytimeRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -213,7 +213,7 @@ class OnlinePlaytimeServiceImplTest {
         assertThatThrownBy(() -> service.upsert(GAME_ID, dto, USER_ID))
                 .isInstanceOf(InvalidRequestException.class)
                 .hasMessage(InvalidRequestException.PLATFORM_HOURS_EXCEED_TOTAL);
-        verify(onlinePlaytimeRepository, never()).save(any());
+        verify(onlinePlaytimeRepository, never()).saveAndFlush(any());
     }
 
     @Test

@@ -63,4 +63,38 @@ class UpdateTimestampIntegrationTests extends AbstractIntegrationTest {
 
         assertThat(updatedAt(updated)).isAfter(before).isEqualTo(updatedAt(reread));
     }
+
+    @Test
+    void experienceUpdateReturnsTheNewUpdatedAt() throws Exception {
+        Long gameId = createGameVia(auth, "Celeste", "");
+        Long runId = createExperienceVia(auth, gameId, run("First", "JUGANDO", null, 2.0, null, null, null, ""));
+        LocalDateTime before = updatedAt(performAs(auth, get("/api/v1/experiences/{id}", runId))
+                .andReturn().getResponse().getContentAsString());
+        Thread.sleep(20);
+
+        String updated = performAs(auth, put("/api/v1/experiences/{id}", runId),
+                        run("First", "JUGANDO", null, 5.0, null, null, null, ""))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String reread = performAs(auth, get("/api/v1/experiences/{id}", runId))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(updatedAt(updated)).isAfter(before).isEqualTo(updatedAt(reread));
+    }
+
+    @Test
+    void onlinePlaytimeUpsertOfAnExistingRowReturnsTheNewUpdatedAt() throws Exception {
+        Long gameId = createGameVia(auth, "Rocket League", "");
+        LocalDateTime before = updatedAt(performAs(auth, put("/api/v1/games/{gameId}/online-playtime", gameId),
+                        "{\"totalHours\": 4.0}")
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        Thread.sleep(20);
+
+        String updated = performAs(auth, put("/api/v1/games/{gameId}/online-playtime", gameId),
+                        "{\"totalHours\": 6.0}")
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String reread = performAs(auth, get("/api/v1/games/{gameId}/online-playtime", gameId))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(updatedAt(updated)).isAfter(before).isEqualTo(updatedAt(reread));
+    }
 }
