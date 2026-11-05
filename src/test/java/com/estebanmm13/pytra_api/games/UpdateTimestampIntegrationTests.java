@@ -67,13 +67,13 @@ class UpdateTimestampIntegrationTests extends AbstractIntegrationTest {
     @Test
     void experienceUpdateReturnsTheNewUpdatedAt() throws Exception {
         Long gameId = createGameVia(auth, "Celeste", "");
-        Long runId = createExperienceVia(auth, gameId, run("First", "JUGANDO", null, 2.0, null, null, null, ""));
+        Long runId = createExperienceVia(auth, gameId, run("First", "EN_CURSO", null, 2.0, null, null, null, ""));
         LocalDateTime before = updatedAt(performAs(auth, get("/api/v1/experiences/{id}", runId))
                 .andReturn().getResponse().getContentAsString());
         Thread.sleep(20);
 
         String updated = performAs(auth, put("/api/v1/experiences/{id}", runId),
-                        run("First", "JUGANDO", null, 5.0, null, null, null, ""))
+                        run("First", "EN_CURSO", null, 5.0, null, null, null, ""))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String reread = performAs(auth, get("/api/v1/experiences/{id}", runId))
                 .andReturn().getResponse().getContentAsString();
