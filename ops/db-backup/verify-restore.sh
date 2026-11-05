@@ -36,7 +36,7 @@ cleanup() {
     status=$?
     as_pg pg_ctl -D "$work/data" -m immediate stop >/dev/null 2>&1 || true
     # The container is gone after the run: on failure, keep the throwaway server's side in the job log
-    # (terse verbosity: no CONTEXT lines, so no row data ends up there).
+    # (terse verbosity drops DETAIL and CONTEXT lines, so little row data can reach it).
     if [ "$status" -ne 0 ] && [ -f "$work/server.log" ]; then
         echo "--- restore-check server log ---" >&2
         cat "$work/server.log" >&2
