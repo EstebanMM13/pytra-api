@@ -6,7 +6,7 @@ set -eu
 : "${DATABASE_URL:?DATABASE_URL is required}"
 : "${BUCKET:?BUCKET is required}"
 : "${ENDPOINT:?ENDPOINT is required}"
-KEEP_BACKUPS="${KEEP_BACKUPS:-8}"
+KEEP_BACKUPS="${KEEP_BACKUPS:-30}"
 
 name="pytra-$(date -u +%Y-%m-%dT%H%M%SZ).dump"
 file="/tmp/$name"
