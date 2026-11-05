@@ -180,7 +180,9 @@ Each module uses the same internal layout: `model/`, `dto/`, `mapper/`, `reposit
 
 ## API overview
 
-All endpoints except auth, the Google OAuth2 endpoints, Steam `login`/`callback`, `GET /api/v1/covers/thumb` and the OpenAPI/Swagger paths require `Authorization: Bearer <jwt>`. A validly signed token whose user no longer exists (deleted account) is treated as anonymous (`401`).
+All endpoints except auth, the Google OAuth2 endpoints, Steam `login`/`callback`, `GET /api/v1/covers/thumb` and the OpenAPI/Swagger paths require `Authorization: Bearer <jwt>`. A validly signed token whose user no longer exists (deleted account), or that was issued before the account's last password reset, is treated as anonymous (`401`).
+
+Errors always have the same JSON body: `{"status": 400, "message": "...", "fieldErrors": {"field": "..."}, "timestamp": "..."}`. Besides the domain errors, a malformed JSON body is `400 "Malformed request body"`, a missing query parameter `400 "Missing parameter"` and a wrongly typed parameter `400 "Invalid parameter"` (both name the parameter in `fieldErrors`). Other framework errors (unknown route, wrong method, unsupported media type…) keep their status with the status reason as `message`, and an unexpected failure is `500 "Internal server error"`, logged server-side, with no details in the body.
 
 Outside the `prod` profile, the OpenAPI spec is served at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`. Both are disabled in `prod` (`springdoc.api-docs.enabled=false`, `springdoc.swagger-ui.enabled=false` in `application-prod.yaml`).
 

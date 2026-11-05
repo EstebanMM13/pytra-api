@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.auth.security;
 
+import com.estebanmm13.pytra_api.error.ApiErrorResponses;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
@@ -8,7 +9,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -78,11 +78,8 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
         String key = path + "|" + clientIp(request);
         if (!tryAcquire(key)) {
             log.warn("Rate limit exceeded on {}", path);
-            response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setHeader("Retry-After", String.valueOf(WINDOW.toSeconds()));
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.getWriter().write("{\"status\":429,\"message\":\"Too many requests\",\"fieldErrors\":{},\"timestamp\":\""
-                    + LocalDateTime.now(clock) + "\"}");
+            ApiErrorResponses.write(response, HttpStatus.TOO_MANY_REQUESTS, "Too many requests", LocalDateTime.now(clock));
             return;
         }
         filterChain.doFilter(request, response);

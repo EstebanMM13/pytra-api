@@ -1,18 +1,27 @@
 package com.estebanmm13.pytra_api.error;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -120,5 +129,42 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(apiError);
     }
 
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleMessageNotReadable(HttpMessageNotReadableException e) {
+        // The parser message quotes the payload and Java types; keep it out of the response.
+        return error(HttpStatus.BAD_REQUEST, "Malformed request body", Map.of());
+    }
 
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiError> handleMissingParameter(MissingServletRequestParameterException e) {
+        return error(HttpStatus.BAD_REQUEST, "Missing parameter", Map.of(e.getParameterName(), "Required"));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        return error(HttpStatus.BAD_REQUEST, "Invalid parameter", Map.of(e.getName(), "Invalid value"));
+    }
+
+    /**
+     * Last resort. Spring's own request errors (404 no route, 405, 415, method validation...) keep their status
+     * in the ApiError shape; anything else is an unexpected failure: logged here, answered as a bare 500.
+     * Security exceptions are rethrown so Spring Security still turns them into 401/403.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiError> handleUnexpected(Exception e) throws Exception {
+        if (e instanceof AccessDeniedException || e instanceof AuthenticationException) {
+            throw e;
+        }
+        if (e instanceof ErrorResponse errorResponse) {
+            HttpStatusCode status = errorResponse.getStatusCode();
+            HttpStatus known = HttpStatus.resolve(status.value());
+            return error(status, known != null ? known.getReasonPhrase() : "Request failed", Map.of());
+        }
+        log.error("Unhandled exception", e);
+        return error(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", Map.of());
+    }
+
+    private static ResponseEntity<ApiError> error(HttpStatusCode status, String message, Map<String, String> fieldErrors) {
+        return ResponseEntity.status(status).body(new ApiError(status.value(), message, fieldErrors, LocalDateTime.now()));
+    }
 }

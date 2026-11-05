@@ -1,11 +1,11 @@
 package com.estebanmm13.pytra_api.auth.security;
 
+import com.estebanmm13.pytra_api.error.ApiErrorResponses;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -57,10 +57,7 @@ public class DemoReadOnlyFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         if (isDemoSession() && !isAllowed(request)) {
-            response.setStatus(HttpStatus.FORBIDDEN.value());
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.getWriter().write("{\"status\":403,\"message\":\"" + CODE + "\",\"fieldErrors\":{},\"timestamp\":\""
-                    + LocalDateTime.now() + "\"}");
+            ApiErrorResponses.write(response, HttpStatus.FORBIDDEN, CODE, LocalDateTime.now());
             return;
         }
         filterChain.doFilter(request, response);
