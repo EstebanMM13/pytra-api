@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,7 +30,7 @@ class UpdateTimestampIntegrationTests extends AbstractIntegrationTest {
 
     private LocalDateTime updatedAt(String json) {
         // Millisecond precision: the stored column may hold fewer fractional digits than the JVM clock.
-        return LocalDateTime.parse(JsonPath.<String>read(json, "$.updatedAt")).truncatedTo(ChronoUnit.MILLIS);
+        return OffsetDateTime.parse(JsonPath.<String>read(json, "$.updatedAt")).toLocalDateTime().truncatedTo(ChronoUnit.MILLIS);
     }
 
     @Test

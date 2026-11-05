@@ -51,7 +51,7 @@ class AchievementIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].id").value("multitasker"))
-                .andExpect(jsonPath("$[0].unlockedAt").value("2026-03-02T09:00:30"))
+                .andExpect(jsonPath("$[0].unlockedAt").value("2026-03-02T09:00:30Z"))
                 .andExpect(jsonPath("$[1].id").value("years10"));
 
         MvcResult list = performAs(auth, get("/api/v1/achievements")).andExpect(status().isOk()).andReturn();

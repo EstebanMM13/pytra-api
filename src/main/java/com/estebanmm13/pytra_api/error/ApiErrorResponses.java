@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.error;
 
+import com.estebanmm13.pytra_api.config.UtcDateTimeModule;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -16,7 +17,7 @@ import java.util.Map;
  */
 public final class ApiErrorResponses {
 
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final JsonMapper JSON = JsonMapper.builder().addModule(new UtcDateTimeModule()).build();
 
     private ApiErrorResponses() {
     }

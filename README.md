@@ -184,6 +184,8 @@ All endpoints except auth, the Google OAuth2 endpoints, Steam `login`/`callback`
 
 Errors always have the same JSON body: `{"status": 400, "message": "...", "fieldErrors": {"field": "..."}, "timestamp": "..."}`. Besides the domain errors, a malformed JSON body is `400 "Malformed request body"`, a missing query parameter `400 "Missing parameter"` and a wrongly typed parameter `400 "Invalid parameter"` (both name the parameter in `fieldErrors`). Other framework errors (unknown route, wrong method, unsupported media type…) keep their status with the status reason as `message`, and an unexpected failure is `500 "Internal server error"`, logged server-side, with no details in the body.
 
+Date-times are UTC instants with a `Z` (`"2026-11-05T21:00:00Z"`); the server pins its JVM to UTC at startup. Request date-times may carry the `Z`, another offset (converted to UTC) or none (taken as UTC). Plain dates (`"2026-11-05"`) have no time zone.
+
 Outside the `prod` profile, the OpenAPI spec is served at `/v3/api-docs` and Swagger UI at `/swagger-ui.html`. Both are disabled in `prod` (`springdoc.api-docs.enabled=false`, `springdoc.swagger-ui.enabled=false` in `application-prod.yaml`).
 
 ### Auth (`/api/v1/auth`, public)

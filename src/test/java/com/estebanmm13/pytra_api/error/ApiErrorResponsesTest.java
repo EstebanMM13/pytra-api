@@ -21,6 +21,6 @@ class ApiErrorResponsesTest {
         assertThat(response.getStatus()).isEqualTo(429);
         assertThat(response.getContentType()).startsWith("application/json");
         assertThat(response.getContentAsString()).isEqualTo(
-                "{\"status\":429,\"message\":\"Too \\\"many\\\" requests\",\"fieldErrors\":{},\"timestamp\":\"2026-11-05T18:30:00\"}");
+                "{\"status\":429,\"message\":\"Too \\\"many\\\" requests\",\"fieldErrors\":{},\"timestamp\":\"2026-11-05T18:30:00Z\"}");
     }
 }
