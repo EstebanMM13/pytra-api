@@ -164,7 +164,9 @@ public class GlobalExceptionHandler {
         if (e instanceof ErrorResponse errorResponse) {
             HttpStatusCode status = errorResponse.getStatusCode();
             HttpStatus known = HttpStatus.resolve(status.value());
-            return error(status, known != null ? known.getReasonPhrase() : "Request failed", Map.of());
+            // Keep the headers Spring attaches (Allow on 405, Accept on 415...).
+            return ResponseEntity.status(status).headers(errorResponse.getHeaders()).body(new ApiError(status.value(),
+                    known != null ? known.getReasonPhrase() : "Request failed", Map.of(), LocalDateTime.now()));
         }
         log.error("Unhandled exception", e);
         return error(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", Map.of());

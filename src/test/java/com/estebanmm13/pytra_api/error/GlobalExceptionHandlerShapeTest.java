@@ -25,6 +25,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -110,6 +111,7 @@ class GlobalExceptionHandlerShapeTest {
     void otherFrameworkErrorsKeepTheirStatusInTheApiErrorShape() throws Exception {
         ResultActions result = mockMvc.perform(get("/probe/body"));
         assertApiError(result, 405);
+        result.andExpect(header().string("Allow", "POST"));
     }
 
     @Test
