@@ -11,9 +11,11 @@ KEEP_BACKUPS="${KEEP_BACKUPS:-8}"
 name="pytra-$(date -u +%Y-%m-%dT%H%M%SZ).dump"
 file="/tmp/$name"
 
+# Read before dumping, so a deploy that migrates the source during the check cannot reject a good dump.
+flyway_version="$(verify-restore.sh --flyway-version "$DATABASE_URL")"
 pg_dump --format=custom --file="$file" "$DATABASE_URL"
 # A dump that does not restore is not a backup: on failure nothing is uploaded and no old dump is deleted.
-verify-restore.sh "$file" "$DATABASE_URL"
+verify-restore.sh "$file" "$DATABASE_URL" "$flyway_version"
 aws s3 cp "$file" "s3://$BUCKET/$name" --endpoint-url "$ENDPOINT" --only-show-errors
 echo "Uploaded $name ($(wc -c < "$file") bytes)"
 
