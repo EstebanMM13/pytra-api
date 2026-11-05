@@ -2,8 +2,8 @@
 # Proves a dump restores: loads it into a throwaway local Postgres and checks it.
 # Usage: verify-restore.sh <dump-file> <source-database-url> <flyway-version-before-dump>
 #        verify-restore.sh --flyway-version <database-url>   (prints the newest versioned migration)
-# Fails (non-zero) when the restore errors, when the dump's newest versioned migration is neither the
-# source's version from before pg_dump nor its version now (a deploy may migrate it in between), or when a
+# Fails (non-zero) when the restore errors, when the dump's newest versioned migration is not between the
+# source's version from before pg_dump and its version now (a deploy may migrate it in between), or when a
 # core table the source has rows in comes back empty. Row counts are printed for the log; they are not
 # compared exactly, because the source may change between the dump and the check.
 set -eu
@@ -35,7 +35,8 @@ if [ "$(id -u)" = "0" ]; then chown -R postgres "$work"; fi
 cleanup() {
     status=$?
     as_pg pg_ctl -D "$work/data" -m immediate stop >/dev/null 2>&1 || true
-    # The container is gone after the run: on failure, keep the throwaway server's side in the job log.
+    # The container is gone after the run: on failure, keep the throwaway server's side in the job log
+    # (terse verbosity: no CONTEXT lines, so no row data ends up there).
     if [ "$status" -ne 0 ] && [ -f "$work/server.log" ]; then
         echo "--- restore-check server log ---" >&2
         cat "$work/server.log" >&2
@@ -47,7 +48,7 @@ trap cleanup EXIT
 
 as_pg initdb -D "$work/data" -A trust -U postgres >/dev/null
 as_pg pg_ctl -D "$work/data" -w -l "$work/server.log" \
-    -o "-c listen_addresses=$host -p $port" start >/dev/null
+    -o "-c listen_addresses=$host -p $port -c log_error_verbosity=terse" start >/dev/null
 
 # Results go through assignments, so a failing query aborts the script (set -e) instead of comparing "".
 restored() {
@@ -62,7 +63,8 @@ as_pg pg_restore -h "$host" -p "$port" -U postgres -d restore_check --no-owner -
 
 restored_version="$(restored "$FLYWAY_VERSION_SQL")"
 version_now="$(original "$FLYWAY_VERSION_SQL")"
-if [ -z "$restored_version" ] || { [ "$restored_version" != "$version_before" ] && [ "$restored_version" != "$version_now" ]; }; then
+# Pytra's migrations are plain integers (V1..Vn): the dump must sit between the version before it and now.
+if ! [ "$restored_version" -ge "$version_before" ] 2>/dev/null || ! [ "$restored_version" -le "$version_now" ] 2>/dev/null; then
     echo "Restore check FAILED: dump is at Flyway version '$restored_version'," \
         "source was '$version_before' before the dump and is '$version_now' now" >&2
     exit 1
