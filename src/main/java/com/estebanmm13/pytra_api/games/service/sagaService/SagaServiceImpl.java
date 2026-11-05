@@ -9,6 +9,7 @@ import com.estebanmm13.pytra_api.games.model.Saga;
 import com.estebanmm13.pytra_api.games.repository.SagaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +45,7 @@ public class SagaServiceImpl implements SagaService {
     }
 
     @Override
+    @Transactional
     public SagaResponseDto create(SagaRequestDto sagaRequestDto, Long userId) {
 
         if (sagaRepository.existsByUserIdAndNameIgnoreCase(userId, sagaRequestDto.getName())) {
@@ -59,6 +61,7 @@ public class SagaServiceImpl implements SagaService {
     }
 
     @Override
+    @Transactional
     public SagaResponseDto update(Long id, SagaRequestDto sagaRequestDto, Long userId) {
 
         // Ownership first: a saga that isn't the caller's must be a plain 404, whatever the payload.
@@ -69,11 +72,13 @@ public class SagaServiceImpl implements SagaService {
             throw new DuplicateResourceException("Saga already exists");
         }
         saga.setName(sagaRequestDto.getName());
-        sagaRepository.save(saga);
+        // Flush now: @UpdateTimestamp is applied at flush, and the response below must carry it.
+        sagaRepository.saveAndFlush(saga);
         return sagaMapper.toResponseDto(saga);
     }
 
     @Override
+    @Transactional
     public void delete(Long id, Long userId) {
         Optional<Saga> saga = sagaRepository.findByIdAndUserId(id,userId);
         if (saga.isPresent()) {

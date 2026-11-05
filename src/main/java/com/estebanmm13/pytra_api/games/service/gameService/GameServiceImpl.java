@@ -16,6 +16,7 @@ import com.estebanmm13.pytra_api.games.repository.GenreRepository;
 import com.estebanmm13.pytra_api.games.repository.SagaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -59,6 +60,7 @@ public class GameServiceImpl implements GameService {
     }
 
     @Override
+    @Transactional
     public GameResponseDto create(GameRequestDto gameRequestDto, Long userId) {
         if (gameRepository.existsByUserIdAndNameIgnoreCase(userId, gameRequestDto.getName())) {
             throw new DuplicateResourceException("Game already exists");
@@ -86,6 +88,7 @@ public class GameServiceImpl implements GameService {
     }
 
     @Override
+    @Transactional
     public GameResponseDto update(Long id, GameRequestDto gameRequestDto, Long userId) {
         // Ownership first: a game that isn't the caller's must be a plain 404, whatever the payload.
         Optional<Game> gameOptional = gameRepository.findByIdAndUserId(id, userId);
@@ -114,11 +117,13 @@ public class GameServiceImpl implements GameService {
             game.setBacklog(gameRequestDto.getBacklog());
         }
 
-        gameRepository.save(game);
+        // Flush now: @UpdateTimestamp is applied at flush, and the response below must carry it.
+        gameRepository.saveAndFlush(game);
         return gameMapper.toResponseDto(game, gameExperienceStatsCalculator.forGame(id, userId));
     }
 
     @Override
+    @Transactional
     public void delete(Long id, Long userId) {
         Optional<Game> game = gameRepository.findByIdAndUserId(id, userId);
         if (game.isPresent()) {
