@@ -55,7 +55,7 @@ class AchievementIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[1].id").value("years10"));
 
         MvcResult list = performAs(auth, get("/api/v1/achievements")).andExpect(status().isOk()).andReturn();
-        assertThat(list.getResponse().getContentAsString()).contains("\"2026-03-02T09:00:30\"");
+        assertThat(list.getResponse().getContentAsString()).contains("\"2026-03-02T09:00:30Z\"");
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM unlocked_achievements WHERE user_id = ?", Long.class, user.getId())).isEqualTo(2);
     }
