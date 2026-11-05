@@ -77,8 +77,10 @@ public class SteamLinkServiceImpl implements SteamLinkService {
             throw new InvalidTokenException("Invalid Steam link state");
         }
 
-        state.setConsumedAt(LocalDateTime.now());
-        steamLinkStateRepository.save(state);
+        // Conditional UPDATE: two concurrent callbacks with the same state cannot both pass.
+        if (steamLinkStateRepository.markConsumed(state.getId(), LocalDateTime.now()) != 1) {
+            throw new InvalidTokenException("Invalid Steam link state");
+        }
 
         return state.getUserId();
     }
