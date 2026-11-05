@@ -457,6 +457,8 @@ railway up --service pytra-api --environment production --detach
 
 There is no Dockerfile in this repo; Railway builds the Maven project directly. Before deploying, make sure the service has `SPRING_PROFILES_ACTIVE=prod` and every variable marked **Prod** or **Yes** in the configuration table. `server.forward-headers-strategy: framework` makes generated URLs (such as the OAuth2 redirect URI) use the public HTTPS host behind Railway's proxy.
 
+The service's healthcheck path is `/actuator/health`: public, `200 {"status":"UP"}` while the app and its database answer (`503` with `DOWN` otherwise), never with details. It is the only actuator endpoint exposed over HTTP.
+
 ## Roadmap
 
 - [x] Auth: register, login, email verification, password reset, Google OAuth2/OIDC (web and Android), invite-only mode

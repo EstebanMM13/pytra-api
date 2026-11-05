@@ -82,7 +82,8 @@ public class SecurityConfig {
                         // Loaded by <img> tags, which can't send the bearer token; limited to Steam CDN URLs.
                         .requestMatchers(HttpMethod.GET, "/api/v1/covers/thumb").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        //.requestMatchers("/actuator/health", "/actuator/prometheus", "/actuator/info").permitAll()
+                        // Railway's healthcheck (only health is exposed, without details; see management.* config).
+                        .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

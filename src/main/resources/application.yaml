@@ -51,6 +51,18 @@ spring:
           google:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
+# Only /actuator/health is exposed (Railway's healthcheck, public in SecurityConfig): it reports UP/DOWN,
+# including the database check, without details. No other actuator endpoint is reachable over HTTP.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+
 steam:
   api-key: ${STEAM_API_KEY:}
 # PSN service account (NPSSO cookie, 64 chars, valid ~2 months). Empty = PSN sync disabled (status configured=false).
