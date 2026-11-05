@@ -1,6 +1,7 @@
 package com.estebanmm13.pytra_api.error;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -13,7 +14,9 @@ import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
@@ -148,11 +151,14 @@ public class GlobalExceptionHandler {
     /**
      * Last resort. Spring's own request errors (404 no route, 405, 415, method validation...) keep their status
      * in the ApiError shape; anything else is an unexpected failure: logged here, answered as a bare 500.
-     * Security exceptions are rethrown so Spring Security still turns them into 401/403.
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleUnexpected(Exception e) throws Exception {
-        if (e instanceof AccessDeniedException || e instanceof AuthenticationException) {
+        // Left to their usual resolvers: Spring Security (401/403), @ResponseStatus exceptions (their own status)
+        // and client disconnects (nothing to answer, not worth an error log).
+        if (e instanceof AccessDeniedException || e instanceof AuthenticationException
+                || e instanceof AsyncRequestNotUsableException
+                || AnnotatedElementUtils.hasAnnotation(e.getClass(), ResponseStatus.class)) {
             throw e;
         }
         if (e instanceof ErrorResponse errorResponse) {

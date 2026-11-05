@@ -2,6 +2,7 @@ package com.estebanmm13.pytra_api.error;
 
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.web.servlet.MockMvc;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
@@ -28,6 +30,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Framework-level request errors and unexpected failures answer with the same ApiError body as domain errors. */
 class GlobalExceptionHandlerShapeTest {
+
+    @ResponseStatus(HttpStatus.I_AM_A_TEAPOT)
+    static class TeapotException extends RuntimeException {
+    }
 
     @RestController
     static class ProbeController {
@@ -49,6 +55,11 @@ class GlobalExceptionHandlerShapeTest {
         @GetMapping("/probe/boom")
         String boom() {
             throw new IllegalStateException("SELECT secret FROM internals");
+        }
+
+        @GetMapping("/probe/teapot")
+        String teapot() {
+            throw new TeapotException();
         }
 
         @GetMapping("/probe/denied")
@@ -107,6 +118,11 @@ class GlobalExceptionHandlerShapeTest {
         assertApiError(result, 500);
         result.andExpect(jsonPath("$.message").value("Internal server error"))
                 .andExpect(content().string(not(containsString("secret"))));
+    }
+
+    @Test
+    void responseStatusExceptionsKeepTheirAnnotatedStatus() throws Exception {
+        mockMvc.perform(get("/probe/teapot")).andExpect(status().is(418));
     }
 
     @Test
