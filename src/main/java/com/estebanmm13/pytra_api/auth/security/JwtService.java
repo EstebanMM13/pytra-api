@@ -18,10 +18,18 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 
 @Service
 public class JwtService {
+
+    /** Everything a verified token says about its session. */
+    public record TokenClaims(
+            String username,
+            Long userId,
+            Instant issuedAt,
+            boolean demo,
+            List<GrantedAuthority> authorities) {
+    }
 
     /** Claim marking a read-only demo session (see DemoReadOnlyFilter). */
     public static final String DEMO_CLAIM = "demo";
@@ -46,27 +54,22 @@ public class JwtService {
                 .signWith(getSignInKey(), SignatureAlgorithm.HS256).compact();
     }
 
-    public String getUserName(String token) {
-        return getClaim(token, Claims::getSubject);
-    }
-
-    public Long getUserId(String token) {
-        return getClaim(token, claims -> ((Number) claims.get("userId")).longValue());
-    }
-
-    /** {@code iat} claim, or null when the token has none. */
-    public Instant getIssuedAt(String token) {
-        Date issuedAt = getClaim(token, Claims::getIssuedAt);
-        return issuedAt != null ? issuedAt.toInstant() : null;
-    }
-
-    public <T> T getClaim(String token, Function<Claims, T> claimsResolver) {
-        final Claims claims = getAllClaims(token);
-        return claimsResolver.apply(claims);
-    }
-
-    private Claims getAllClaims(String token) {
-        return Jwts.parser().verifyWith(getSignInKey()).build().parseSignedClaims(token).getPayload();
+    /**
+     * Verifies the signature and expiry once and reads every claim from that result.
+     *
+     * @throws RuntimeException when the token is invalid or lacks the claims of a Pytra session;
+     *                          callers must treat that as unauthenticated
+     */
+    public TokenClaims parse(String token) {
+        Claims claims = Jwts.parser().verifyWith(getSignInKey()).build().parseSignedClaims(token).getPayload();
+        Date issuedAt = claims.getIssuedAt();
+        String role = claims.get("role", String.class);
+        return new TokenClaims(
+                claims.getSubject(),
+                ((Number) claims.get("userId")).longValue(),
+                issuedAt != null ? issuedAt.toInstant() : null,
+                Boolean.TRUE.equals(claims.get(DEMO_CLAIM, Boolean.class)),
+                role != null ? List.of(new SimpleGrantedAuthority("ROLE_" + role)) : List.of());
     }
 
     private SecretKey getSignInKey() {
@@ -89,23 +92,4 @@ public class JwtService {
         claims.put(DEMO_CLAIM, true);
         return generateToken(claims, subject, DEMO_TOKEN_TTL.toMillis());
     }
-
-    public boolean isDemo(String token) {
-        return getClaim(token, claims -> Boolean.TRUE.equals(claims.get(DEMO_CLAIM, Boolean.class)));
-    }
-
-    public String extractRole(String token) {
-        return getClaim(token, claims -> claims.get("role", String.class));
-    }
-
-    public List<GrantedAuthority> getAuthorities(String token) {
-        String role = extractRole(token);
-        if (role != null) {
-            return List.of(new SimpleGrantedAuthority("ROLE_" + role));
-        }
-        return List.of(); // Lista vacía si no hay rol
-    }
-
-
-
 }

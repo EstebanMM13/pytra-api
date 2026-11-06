@@ -73,7 +73,7 @@ class DemoModeIntegrationTests extends AbstractIntegrationTest {
         enableDemo();
         String demoAuth = demoAuth();
 
-        assertThat(jwtService.isDemo(demoAuth.substring(7))).isTrue();
+        assertThat(jwtService.parse(demoAuth.substring(7)).demo()).isTrue();
         performAs(demoAuth, get("/api/v1/games"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(demoGameId));

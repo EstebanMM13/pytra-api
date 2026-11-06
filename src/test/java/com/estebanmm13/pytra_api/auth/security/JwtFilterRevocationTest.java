@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,11 +33,7 @@ class JwtFilterRevocationTest {
     @BeforeEach
     void validSignature() {
         SecurityContextHolder.clearContext();
-        when(jwtService.getUserName(JWT)).thenReturn("owner");
-        when(jwtService.getUserId(JWT)).thenReturn(5L);
-        when(jwtService.getIssuedAt(JWT)).thenReturn(ISSUED_AT);
-        when(jwtService.isDemo(JWT)).thenReturn(false);
-        when(jwtService.getAuthorities(JWT)).thenReturn(List.of());
+        when(jwtService.parse(JWT)).thenReturn(new JwtService.TokenClaims("owner", 5L, ISSUED_AT, false, List.of()));
     }
 
     @AfterEach
@@ -77,5 +74,14 @@ class JwtFilterRevocationTest {
         filter();
 
         verify(userRepository, never()).existsById(anyLong());
+    }
+
+    @Test
+    void tokenIsParsedOncePerRequest() throws Exception {
+        when(userRepository.isTokenStillValid(5L, ISSUED_AT)).thenReturn(true);
+
+        filter();
+
+        verify(jwtService, times(1)).parse(JWT);
     }
 }

@@ -1,6 +1,10 @@
 package com.estebanmm13.pytra_api.auth.security;
 
 import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtBuilder;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.RequiredTypeException;
+import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SignatureException;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.GrantedAuthority;
@@ -32,11 +36,11 @@ class JwtServiceTest {
 
         String token = jwt.generateTokenWithRole("owner", "ADMIN", 5L);
 
-        assertThat(jwt.getUserName(token)).isEqualTo("owner");
-        assertThat(jwt.getUserId(token)).isEqualTo(5L);
-        assertThat(jwt.getAuthorities(token)).extracting(GrantedAuthority::getAuthority).containsExactly("ROLE_ADMIN");
-        assertThat(jwt.getIssuedAt(token)).isBetween(before, Instant.now());
-        assertThat(jwt.isDemo(token)).isFalse();
+        assertThat(jwt.parse(token).username()).isEqualTo("owner");
+        assertThat(jwt.parse(token).userId()).isEqualTo(5L);
+        assertThat(jwt.parse(token).authorities()).extracting(GrantedAuthority::getAuthority).containsExactly("ROLE_ADMIN");
+        assertThat(jwt.parse(token).issuedAt()).isBetween(before, Instant.now());
+        assertThat(jwt.parse(token).demo()).isFalse();
     }
 
     @Test
@@ -45,9 +49,9 @@ class JwtServiceTest {
 
         String token = jwt.generateDemoToken("demo", 7L);
 
-        assertThat(jwt.isDemo(token)).isTrue();
-        assertThat(jwt.getUserId(token)).isEqualTo(7L);
-        assertThat(jwt.getAuthorities(token)).extracting(GrantedAuthority::getAuthority).containsExactly("ROLE_USER");
+        assertThat(jwt.parse(token).demo()).isTrue();
+        assertThat(jwt.parse(token).userId()).isEqualTo(7L);
+        assertThat(jwt.parse(token).authorities()).extracting(GrantedAuthority::getAuthority).containsExactly("ROLE_USER");
     }
 
     @Test
@@ -56,14 +60,14 @@ class JwtServiceTest {
 
         String token = jwt.generateTokenWithRole("owner", "USER", 5L);
 
-        assertThatThrownBy(() -> jwt.getUserName(token)).isInstanceOf(ExpiredJwtException.class);
+        assertThatThrownBy(() -> jwt.parse(token)).isInstanceOf(ExpiredJwtException.class);
     }
 
     @Test
     void tokenSignedWithAnotherKeyIsRejected() {
         String foreign = service(OTHER_SECRET, 60_000).generateTokenWithRole("owner", "ADMIN", 5L);
 
-        assertThatThrownBy(() -> service(SECRET, 60_000).getUserName(foreign)).isInstanceOf(SignatureException.class);
+        assertThatThrownBy(() -> service(SECRET, 60_000).parse(foreign)).isInstanceOf(SignatureException.class);
     }
 
     @Test
@@ -74,7 +78,25 @@ class JwtServiceTest {
         String forgedPayload = Base64.getUrlEncoder().withoutPadding().encodeToString(
                 "{\"role\":\"ADMIN\",\"userId\":5,\"sub\":\"owner\"}".getBytes());
 
-        assertThatThrownBy(() -> jwt.getUserName(parts[0] + "." + forgedPayload + "." + parts[2]))
+        assertThatThrownBy(() -> jwt.parse(parts[0] + "." + forgedPayload + "." + parts[2]))
                 .isInstanceOf(SignatureException.class);
+    }
+
+    @Test
+    void validTokenWithoutUserIdIsRejected() {
+        String token = signed(Jwts.builder().subject("owner").claim("role", "USER"));
+
+        assertThatThrownBy(() -> service(SECRET, 60_000).parse(token)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void validTokenWithANonTextRoleIsRejected() {
+        String token = signed(Jwts.builder().subject("owner").claim("userId", 5).claim("role", 1));
+
+        assertThatThrownBy(() -> service(SECRET, 60_000).parse(token)).isInstanceOf(RequiredTypeException.class);
+    }
+
+    private static String signed(JwtBuilder builder) {
+        return builder.signWith(Keys.hmacShaKeyFor(Base64.getDecoder().decode(SECRET))).compact();
     }
 }
