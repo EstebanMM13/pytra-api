@@ -152,8 +152,8 @@ final class YearSummaryBuilder {
     private YearOnline yearOnline(Long userId, int year, Map<Long, Game> games) {
         double total = 0;
         double[] byMonth = new double[12];
-        // Per game: hours and diary days (StatsServiceImpl.Accumulator.count).
-        Map<Long, StatsServiceImpl.Accumulator> byGame = new LinkedHashMap<>();
+        // Per game: hours and diary days (Accumulator.count).
+        Map<Long, Accumulator> byGame = new LinkedHashMap<>();
         for (OnlineDiaryMonthHours row : diaryEntryGameRepository.sumCountedOnlineHoursByMonthAndGame(
                 userId, LocalDate.of(year, 1, 1), LocalDate.of(year, 12, 31))) {
             double hours = doubleOf(row.hours());
@@ -162,16 +162,16 @@ final class YearSummaryBuilder {
                 byMonth[row.month() - 1] += hours;
             }
             Game game = games.get(row.gameId());
-            StatsServiceImpl.Accumulator acc = byGame.computeIfAbsent(row.gameId(),
-                    id -> new StatsServiceImpl.Accumulator(game != null ? game.getName() : "Unknown"));
+            Accumulator acc = byGame.computeIfAbsent(row.gameId(),
+                    id -> new Accumulator(game != null ? game.getName() : "Unknown"));
             acc.hours += hours;
             acc.count += longOf(row.dayCount());
         }
 
         List<YearOnlineGameDto> onlineGames = new ArrayList<>();
-        for (Map.Entry<Long, StatsServiceImpl.Accumulator> entry : byGame.entrySet()) {
+        for (Map.Entry<Long, Accumulator> entry : byGame.entrySet()) {
             Game game = games.get(entry.getKey());
-            StatsServiceImpl.Accumulator acc = entry.getValue();
+            Accumulator acc = entry.getValue();
             onlineGames.add(new YearOnlineGameDto(entry.getKey(), acc.name,
                     game != null ? game.getCoverImageUrl() : null, acc.hours, acc.count));
         }
