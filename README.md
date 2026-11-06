@@ -12,17 +12,10 @@ Backend REST API for **Pytra** ("Play, Track, Remember"), a personal video game 
 
 1. Start PostgreSQL with Docker (the bundled `docker-compose.yml` runs `postgres:16-alpine`):
    ```bash
-   cp .env.example .env      # then set POSTGRES_PASSWORD
+   cp .env.example .env
    docker compose up -d
    ```
-2. Add the remaining local settings to `.env` (it is loaded as a properties file on startup):
-   ```properties
-   PGHOST=localhost
-   JWT_SECRET=<base64-encoded key, at least 256 bits>
-   JWT_EXPIRATION=2592000000
-   GOOGLE_CLIENT_ID=<google oauth client id>
-   GOOGLE_CLIENT_SECRET=<google oauth client secret>
-   ```
+2. Fill in the required values in `.env` (it is loaded as a properties file on startup): `POSTGRES_PASSWORD`, `JWT_SECRET` (`openssl rand -base64 32`), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. `.env.example` lists every setting; the rest are optional.
 3. Run the app:
    ```bash
    ./mvnw spring-boot:run
