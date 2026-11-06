@@ -430,11 +430,11 @@ class StatsInsightsServiceImplTest {
 
     @Test
     void ratingBucketsAreHalfPointsWithPerfectScoresApart() {
-        assertThat(StatsInsightsServiceImpl.ratingBucketOf(new BigDecimal("0"))).isZero();
-        assertThat(StatsInsightsServiceImpl.ratingBucketOf(new BigDecimal("0.49"))).isZero();
-        assertThat(StatsInsightsServiceImpl.ratingBucketOf(new BigDecimal("0.5"))).isEqualTo(1);
-        assertThat(StatsInsightsServiceImpl.ratingBucketOf(new BigDecimal("9.99"))).isEqualTo(19);
-        assertThat(StatsInsightsServiceImpl.ratingBucketOf(new BigDecimal("10.00"))).isEqualTo(20);
+        assertThat(RatingInsights.ratingBucketOf(new BigDecimal("0"))).isZero();
+        assertThat(RatingInsights.ratingBucketOf(new BigDecimal("0.49"))).isZero();
+        assertThat(RatingInsights.ratingBucketOf(new BigDecimal("0.5"))).isEqualTo(1);
+        assertThat(RatingInsights.ratingBucketOf(new BigDecimal("9.99"))).isEqualTo(19);
+        assertThat(RatingInsights.ratingBucketOf(new BigDecimal("10.00"))).isEqualTo(20);
     }
 
     @Test

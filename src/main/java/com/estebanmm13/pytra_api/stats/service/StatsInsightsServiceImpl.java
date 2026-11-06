@@ -6,19 +6,9 @@ import com.estebanmm13.pytra_api.diary.repository.DiaryEntryGameRepository;
 import com.estebanmm13.pytra_api.diary.repository.OnlineDiaryYearGameHours;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperiencePeriod;
-import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.model.OnlinePlaytime;
-import com.estebanmm13.pytra_api.experiences.model.Ratings;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
-import com.estebanmm13.pytra_api.experiences.repository.GameRunTotals;
 import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRepository;
-import com.estebanmm13.pytra_api.experiences.repository.OnlinePlaytimeRow;
-import com.estebanmm13.pytra_api.games.model.GameCategory;
-import com.estebanmm13.pytra_api.games.model.ReviewStatus;
-import com.estebanmm13.pytra_api.games.repository.GameAddedRow;
-import com.estebanmm13.pytra_api.games.repository.GameGenreRow;
-import com.estebanmm13.pytra_api.games.repository.GameLabel;
-import com.estebanmm13.pytra_api.games.repository.GameReleaseRow;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.platforms.mapper.PlatformMapper;
 import com.estebanmm13.pytra_api.platforms.model.Platform;
@@ -28,13 +18,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.function.Function;
+
+import static com.estebanmm13.pytra_api.stats.service.InsightMath.doubleOf;
+import static com.estebanmm13.pytra_api.stats.service.InsightMath.hoursOf;
 
 /**
  * Loads each breakdown with a few whole-user queries (runs, online playtimes, diary aggregates, projections)
@@ -44,23 +34,22 @@ import java.util.function.Function;
  * <p>Counting rules shared with the other stats: run figures cover every run of the user (like the summary);
  * game-grouped figures (genres, developers, release eras) cover CONFIRMED games only (like by-genre and
  * by-saga), since pending imports are not in the library yet.
+ *
+ * <p>Each larger breakdown lives in its own {@code *Insights} class; this service is their read-only
+ * transaction boundary.
  */
 @Service
 public class StatsInsightsServiceImpl implements StatsInsightsService {
 
-    private static final int MAX_LIMIT = 50;
-    /** Scale of the intermediate per-game rating means, so group means round only once. */
-    private static final int GAME_RATING_SCALE = 10;
-    /** "Short gems": games rated at least this, over at most SHORT_GEM_MAX_HOURS total hours. */
-    private static final BigDecimal SHORT_GEM_MIN_RATING = new BigDecimal("8");
-    /** Total hours (runs + online) cap of a short gem. */
-    private static final double SHORT_GEM_MAX_HOURS = 15;
-
     private final DiaryEntryGameRepository diaryEntryGameRepository;
     private final ExperienceRepository experienceRepository;
     private final OnlinePlaytimeRepository onlinePlaytimeRepository;
-    private final GameRepository gameRepository;
     private final Clock clock;
+    private final PlatformInsights platformInsights;
+    private final StudioInsights studioInsights;
+    private final CompletionInsights completionInsights;
+    private final RatingInsights ratingInsights;
+    private final GameRankingInsights gameRankingInsights;
 
     @Autowired
     public StatsInsightsServiceImpl(DiaryEntryGameRepository diaryEntryGameRepository,
@@ -81,11 +70,14 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
         this.diaryEntryGameRepository = diaryEntryGameRepository;
         this.experienceRepository = experienceRepository;
         this.onlinePlaytimeRepository = onlinePlaytimeRepository;
-        this.gameRepository = gameRepository;
         this.clock = clock;
+        InsightSources sources = new InsightSources(experienceRepository, onlinePlaytimeRepository, gameRepository);
+        this.platformInsights = new PlatformInsights(diaryEntryGameRepository, experienceRepository, onlinePlaytimeRepository);
+        this.studioInsights = new StudioInsights(sources);
+        this.completionInsights = new CompletionInsights(sources, gameRepository);
+        this.ratingInsights = new RatingInsights(sources);
+        this.gameRankingInsights = new GameRankingInsights(sources, diaryEntryGameRepository, experienceRepository, gameRepository);
     }
-
-    // ---------------------------------------------------------------- activity
 
     @Override
     @Transactional(readOnly = true)
@@ -130,477 +122,35 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
                 weekdays);
     }
 
-    // ---------------------------------------------------------------- platforms
-
     @Override
     @Transactional(readOnly = true)
     public PlatformStatsDto getPlatforms(Long userId, Integer year) {
-        requireValidYearIfPresent(year);
-        List<Experience> runs = experienceRepository.findAllByUserId(userId);
-        List<OnlinePlaytime> onlinePlaytimes = onlinePlaytimeRepository.findAllByUserId(userId);
-        List<OnlineDiaryYearGameHours> onlineDiary = diaryEntryGameRepository.sumCountedOnlineHoursByYearAndGame(userId);
-
-        Map<Long, Platform> catalog = new HashMap<>();
-        Map<Long, OnlineSplit> onlineSplitByGame = new HashMap<>();
-        for (OnlinePlaytime playtime : onlinePlaytimes) {
-            OnlineSplit split = OnlineSplit.of(playtime);
-            split.platforms().forEach(platform -> catalog.put(platform.getId(), platform));
-            onlineSplitByGame.put(playtime.getGameId(), split);
-        }
-
-        // Platforms in scope.
-        Map<Long, PlatformAccumulator> byPlatform = new HashMap<>();
-        double unassigned = 0;
-        for (Experience run : runs) {
-            // Catalog every run's platform before the year filter: the per-year breakdown covers all years.
-            Platform platform = run.getPlatform();
-            catalog.put(platform.getId(), platform);
-            if (year != null && !year.equals(ExperiencePeriod.yearOf(run))) {
-                continue;
-            }
-            PlatformAccumulator acc = byPlatform.computeIfAbsent(platform.getId(), id -> new PlatformAccumulator());
-            acc.runHours += hoursOf(run);
-            acc.gameIds.add(run.getGameId());
-            acc.runCount++;
-            if (run.getStatus() == ExperienceStatus.COMPLETADO) acc.completedRunCount++;
-            acc.ratings.add(run.getRating());
-        }
-        if (year == null) {
-            for (OnlinePlaytime playtime : onlinePlaytimes) {
-                unassigned += splitOnline(playtime.getGameId(), doubleOf(playtime.getTotalHours()),
-                        onlineSplitByGame, byPlatform);
-            }
-        } else {
-            for (OnlineDiaryYearGameHours row : onlineDiary) {
-                if (year.equals(row.year())) {
-                    unassigned += splitOnline(row.gameId(), doubleOf(row.hours()), onlineSplitByGame, byPlatform);
-                }
-            }
-        }
-
-        List<PlatformStatsDto.PlatformStat> platforms = new ArrayList<>();
-        for (Map.Entry<Long, PlatformAccumulator> entry : byPlatform.entrySet()) {
-            Platform platform = catalog.get(entry.getKey());
-            PlatformAccumulator acc = entry.getValue();
-            platforms.add(new PlatformStatsDto.PlatformStat(
-                    platform.getId(),
-                    platform.getName(),
-                    PlatformMapper.colorOf(platform),
-                    platform.getFamily() != null ? platform.getFamily().name() : null,
-                    StatsMath.round2(acc.runHours + acc.onlineHours),
-                    StatsMath.round2(acc.runHours),
-                    StatsMath.round2(acc.onlineHours),
-                    acc.gameIds.size(),
-                    acc.runCount,
-                    acc.completedRunCount,
-                    acc.ratings.stream().filter(Objects::nonNull).count(),
-                    StatsMath.averageRating(acc.ratings)));
-        }
-        platforms.sort(Comparator
-                .comparingDouble(PlatformStatsDto.PlatformStat::hours).reversed()
-                .thenComparing(stat -> catalog.get(stat.platformId()), PlatformMapper.CATALOG_ORDER));
-
-        return new PlatformStatsDto(year, platforms, StatsMath.round2(unassigned),
-                platformHoursByYear(runs, onlineDiary, onlineSplitByGame, catalog));
+        return platformInsights.platforms(userId, year);
     }
-
-    /** Every year's hours per platform: runs by their year, online by the diary year (same split rule). */
-    private static List<PlatformStatsDto.YearPlatforms> platformHoursByYear(
-            List<Experience> runs, List<OnlineDiaryYearGameHours> onlineDiary,
-            Map<Long, OnlineSplit> onlineSplitByGame, Map<Long, Platform> catalog) {
-        SortedMap<Integer, Map<Long, PlatformAccumulator>> byYear = new TreeMap<>();
-        Map<Integer, Double> unassignedByYear = new HashMap<>();
-        for (Experience run : runs) {
-            Integer year = ExperiencePeriod.yearOf(run);
-            double hours = hoursOf(run);
-            if (year == null || hours <= 0) {
-                continue;
-            }
-            byYear.computeIfAbsent(year, y -> new HashMap<>())
-                    .computeIfAbsent(run.getPlatform().getId(), id -> new PlatformAccumulator())
-                    .runHours += hours;
-        }
-        for (OnlineDiaryYearGameHours row : onlineDiary) {
-            if (row.year() == null) {
-                continue;
-            }
-            double unassigned = splitOnline(row.gameId(), doubleOf(row.hours()), onlineSplitByGame,
-                    byYear.computeIfAbsent(row.year(), y -> new HashMap<>()));
-            if (unassigned > 0) {
-                unassignedByYear.merge(row.year(), unassigned, Double::sum);
-            }
-        }
-
-        List<PlatformStatsDto.YearPlatforms> result = new ArrayList<>();
-        for (Map.Entry<Integer, Map<Long, PlatformAccumulator>> entry : byYear.entrySet()) {
-            double unassigned = unassignedByYear.getOrDefault(entry.getKey(), 0.0);
-            double total = unassigned;
-            List<PlatformStatsDto.PlatformHours> platforms = new ArrayList<>();
-            for (Map.Entry<Long, PlatformAccumulator> platformEntry : entry.getValue().entrySet()) {
-                Platform platform = catalog.get(platformEntry.getKey());
-                double hours = platformEntry.getValue().runHours + platformEntry.getValue().onlineHours;
-                total += hours;
-                platforms.add(new PlatformStatsDto.PlatformHours(platform.getId(), platform.getName(),
-                        PlatformMapper.colorOf(platform), StatsMath.round2(hours)));
-            }
-            if (platforms.isEmpty() && unassigned <= 0) {
-                continue;
-            }
-            platforms.sort(Comparator
-                    .comparingDouble(PlatformStatsDto.PlatformHours::hours).reversed()
-                    .thenComparing(hours -> catalog.get(hours.platformId()), PlatformMapper.CATALOG_ORDER));
-            result.add(new PlatformStatsDto.YearPlatforms(entry.getKey(), StatsMath.round2(total),
-                    StatsMath.round2(unassigned), platforms));
-        }
-        return result;
-    }
-
-    /**
-     * Splits a game's online hours across the platforms of its online playtime with its {@link OnlineSplit}.
-     * Returns the hours that have no platform to go to.
-     */
-    private static double splitOnline(Long gameId, double hours, Map<Long, OnlineSplit> onlineSplitByGame,
-                                      Map<Long, PlatformAccumulator> byPlatform) {
-        if (hours <= 0) {
-            return 0;
-        }
-        OnlineSplit split = onlineSplitByGame.get(gameId);
-        if (split == null || split.platforms().isEmpty()) {
-            return hours;
-        }
-        for (Platform platform : split.platforms()) {
-            PlatformAccumulator acc = byPlatform.computeIfAbsent(platform.getId(), id -> new PlatformAccumulator());
-            acc.onlineHours += hours * split.shares().get(platform.getId());
-            acc.gameIds.add(gameId);
-        }
-        return hours * split.unassignedShare();
-    }
-
-    /**
-     * How a game's online hours (all-time or one year's) go to its online platforms, as shares of 1.
-     * With the user's per-platform breakdown each platform gets its assigned part of the total and the
-     * rest is unassigned; a breakdown above a total lowered later is scaled down to it. Without a
-     * breakdown the hours are split evenly (the documented default).
-     */
-    private record OnlineSplit(List<Platform> platforms, Map<Long, Double> shares, double unassignedShare) {
-
-        static OnlineSplit of(OnlinePlaytime playtime) {
-            List<Platform> platforms = new ArrayList<>(playtime.getPlatforms());
-            platforms.sort(PlatformMapper.CATALOG_ORDER);
-            Map<Long, Double> shares = new HashMap<>();
-            double assigned = platforms.stream()
-                    .mapToDouble(platform -> playtime.getPlatformHours().getOrDefault(platform.getId(), 0.0))
-                    .sum();
-            double base = Math.max(doubleOf(playtime.getTotalHours()), assigned);
-            if (platforms.size() < 2 || assigned <= 0) {
-                platforms.forEach(platform -> shares.put(platform.getId(), 1.0 / platforms.size()));
-                return new OnlineSplit(platforms, shares, 0);
-            }
-            platforms.forEach(platform -> shares.put(platform.getId(),
-                    playtime.getPlatformHours().getOrDefault(platform.getId(), 0.0) / base));
-            return new OnlineSplit(platforms, shares, 1 - assigned / base);
-        }
-    }
-
-    private static final class PlatformAccumulator {
-        double runHours;
-        double onlineHours;
-        final Set<Long> gameIds = new HashSet<>();
-        long runCount;
-        long completedRunCount;
-        final List<BigDecimal> ratings = new ArrayList<>();
-    }
-
-    // ---------------------------------------------------------------- developers & release eras
 
     @Override
     @Transactional(readOnly = true)
     public DeveloperStatsDto getDevelopers(Long userId, int limit, int minRatedGames) {
-        return studios(userId, limit, minRatedGames, GameFacts::developer);
+        return studioInsights.developers(userId, limit, minRatedGames);
     }
 
     @Override
     @Transactional(readOnly = true)
     public DeveloperStatsDto getPublishers(Long userId, int limit, int minRatedGames) {
-        return studios(userId, limit, minRatedGames, GameFacts::publisher);
-    }
-
-    /** Studios (developers or publishers, by {@code studioOf}) ranked by hours and by rating. */
-    private DeveloperStatsDto studios(Long userId, int limit, int minRatedGames, Function<GameFacts, String> studioOf) {
-        // 0 (or less) lists every studio: the studios page shows them all.
-        int max = limit <= 0 ? Integer.MAX_VALUE : clampLimit(limit);
-        int threshold = Math.max(minRatedGames, 1);
-
-        // Grouping key: trimmed, lower-cased name; the label is the first spelling met (games in id order).
-        Map<String, GroupAccumulator> byStudio = new LinkedHashMap<>();
-        for (GameFacts game : confirmedGameFacts(userId)) {
-            String name = studioOf.apply(game);
-            String studio = name != null ? name.trim() : "";
-            if (studio.isEmpty()) {
-                continue;
-            }
-            byStudio.computeIfAbsent(studio.toLowerCase(Locale.ROOT), key -> new GroupAccumulator(studio)).add(game);
-        }
-
-        List<DeveloperStatsDto.DeveloperStat> developers = new ArrayList<>();
-        for (GroupAccumulator acc : byStudio.values()) {
-            developers.add(new DeveloperStatsDto.DeveloperStat(acc.label, acc.gameCount,
-                    StatsMath.round2(acc.hours), acc.ratings.size(), StatsMath.averageRating(acc.ratings)));
-        }
-        Comparator<DeveloperStatsDto.DeveloperStat> byName =
-                Comparator.comparing(DeveloperStatsDto.DeveloperStat::developer, String.CASE_INSENSITIVE_ORDER);
-
-        List<DeveloperStatsDto.DeveloperStat> topByHours = developers.stream()
-                .sorted(Comparator.comparingDouble(DeveloperStatsDto.DeveloperStat::hours).reversed()
-                        .thenComparing(byName))
-                .limit(max)
-                .toList();
-        List<DeveloperStatsDto.DeveloperStat> topByRating = developers.stream()
-                .filter(developer -> developer.ratedGameCount() >= threshold)
-                .sorted(Comparator.comparing(DeveloperStatsDto.DeveloperStat::averageRating, Comparator.reverseOrder())
-                        .thenComparing(Comparator.comparingLong(DeveloperStatsDto.DeveloperStat::ratedGameCount).reversed())
-                        .thenComparing(byName))
-                .limit(max)
-                .toList();
-        return new DeveloperStatsDto(threshold, topByHours, topByRating);
+        return studioInsights.publishers(userId, limit, minRatedGames);
     }
 
     @Override
     @Transactional(readOnly = true)
     public ReleaseEraStatsDto getReleaseEras(Long userId) {
-        SortedMap<Integer, GroupAccumulator> byDecade = new TreeMap<>();
-        SortedMap<Integer, GroupAccumulator> byYear = new TreeMap<>();
-        long undated = 0;
-        for (GameFacts game : confirmedGameFacts(userId)) {
-            if (game.releaseDate() == null) {
-                undated++;
-                continue;
-            }
-            int year = game.releaseDate().getYear();
-            byYear.computeIfAbsent(year, y -> new GroupAccumulator(null)).add(game);
-            byDecade.computeIfAbsent(Math.floorDiv(year, 10) * 10, d -> new GroupAccumulator(null)).add(game);
-        }
-
-        List<ReleaseEraStatsDto.DecadeStat> decades = new ArrayList<>();
-        byDecade.forEach((decade, acc) -> decades.add(new ReleaseEraStatsDto.DecadeStat(decade, acc.gameCount,
-                StatsMath.round2(acc.hours), acc.ratings.size(), StatsMath.averageRating(acc.ratings))));
-        List<ReleaseEraStatsDto.YearStat> years = new ArrayList<>();
-        byYear.forEach((year, acc) -> years.add(new ReleaseEraStatsDto.YearStat(year, acc.gameCount,
-                StatsMath.round2(acc.hours), acc.ratings.size(), StatsMath.averageRating(acc.ratings))));
-        return new ReleaseEraStatsDto(decades, years, undated);
-    }
-
-    /** A CONFIRMED game with its total hours (runs + online) and its rating (null when unrated). */
-    private record GameFacts(Long gameId, String developer, String publisher, LocalDate releaseDate, double hours, BigDecimal rating) {
-    }
-
-    /**
-     * Three whole-user queries: game projections, run totals per game and online playtime rows. A game's
-     * rating is the mean of its rated runs and its online general rating, each counting once (like the summary).
-     */
-    private List<GameFacts> confirmedGameFacts(Long userId) {
-        Map<Long, GameRunTotals> runsByGame = new HashMap<>();
-        for (GameRunTotals totals : experienceRepository.totalsGroupedByGameId(userId)) {
-            runsByGame.put(totals.gameId(), totals);
-        }
-        Map<Long, OnlinePlaytimeRow> onlineByGame = new HashMap<>();
-        for (OnlinePlaytimeRow row : onlinePlaytimeRepository.findRowsByUserId(userId)) {
-            onlineByGame.put(row.gameId(), row);
-        }
-
-        List<GameFacts> facts = new ArrayList<>();
-        for (GameReleaseRow game : gameRepository.findReleaseRowsByUserIdAndReviewStatus(userId, ReviewStatus.CONFIRMED)) {
-            GameRunTotals runs = runsByGame.get(game.gameId());
-            OnlinePlaytimeRow online = onlineByGame.get(game.gameId());
-            double hours = (runs != null ? doubleOf(runs.hours()) : 0)
-                    + (online != null ? doubleOf(online.totalHours()) : 0);
-            BigDecimal ratingSum = runs != null ? runs.ratingSum() : null;
-            long ratedCount = runs != null && runs.ratedCount() != null ? runs.ratedCount() : 0;
-            if (online != null && online.generalRating() != null) {
-                ratingSum = StatsMath.sum(ratingSum, online.generalRating());
-                ratedCount++;
-            }
-            BigDecimal rating = ratedCount == 0 || ratingSum == null ? null
-                    : ratingSum.divide(BigDecimal.valueOf(ratedCount), GAME_RATING_SCALE, RoundingMode.HALF_UP);
-            facts.add(new GameFacts(game.gameId(), game.developer(), game.publisher(), game.releaseDate(), hours, rating));
-        }
-        return facts;
-    }
-
-    /** Games of one group: how many, their hours and their (non-null) ratings. */
-    private static final class GroupAccumulator {
-        final String label;
-        long gameCount;
-        double hours;
-        final List<BigDecimal> ratings = new ArrayList<>();
-
-        GroupAccumulator(String label) {
-            this.label = label;
-        }
-
-        void add(GameFacts game) {
-            gameCount++;
-            hours += game.hours();
-            if (game.rating() != null) {
-                ratings.add(game.rating());
-            }
-        }
-    }
-
-    // ---------------------------------------------------------------- completion habits
-
-    private record DayRange(String label, int min, Integer max) {
-        boolean contains(long days) {
-            return days >= min && (max == null || days <= max);
-        }
-    }
-
-    private record HourRange(String label, double min, Double max) {
-        boolean contains(double hours) {
-            return hours >= min && (max == null || hours < max);
-        }
-    }
-
-    private static final List<DayRange> DAY_BUCKETS = List.of(
-            new DayRange("0-7", 0, 7),
-            new DayRange("8-30", 8, 30),
-            new DayRange("31-90", 31, 90),
-            new DayRange("91-180", 91, 180),
-            new DayRange("181-365", 181, 365),
-            new DayRange("366+", 366, null));
-
-    private static final List<HourRange> HOUR_BUCKETS = List.of(
-            new HourRange("<10", 0, 10.0),
-            new HourRange("10-30", 10, 30.0),
-            new HourRange("30-60", 30, 60.0),
-            new HourRange("60+", 60, null));
-
-    private record TimedRun(Experience run, long days) {
+        return studioInsights.releaseEras(userId);
     }
 
     @Override
     @Transactional(readOnly = true)
     public CompletionStatsDto getCompletion(Long userId, Integer year) {
-        requireValidYearIfPresent(year);
-        List<Experience> runs = runsInScope(userId, year);
-        Map<Long, List<GameGenreRow>> genresByGame = confirmedGenresByGame(userId);
-
-        long completed = 0;
-        long abandoned = 0;
-        long replays = 0;
-        List<TimedRun> timed = new ArrayList<>();
-        Map<Long, long[]> outcomesByGenre = new LinkedHashMap<>(); // [completed, abandoned]
-        Map<Long, String> genreNames = new HashMap<>();
-        List<List<BigDecimal>> ratingsByHours = new ArrayList<>();
-        List<Set<Long>> gamesByHours = new ArrayList<>();
-        HOUR_BUCKETS.forEach(bucket -> {
-            ratingsByHours.add(new ArrayList<>());
-            gamesByHours.add(new HashSet<>());
-        });
-
-        for (Experience run : runs) {
-            if (Boolean.TRUE.equals(run.getReplay())) replays++;
-            boolean isCompleted = run.getStatus() == ExperienceStatus.COMPLETADO;
-            boolean isAbandoned = run.getStatus() == ExperienceStatus.ABANDONADO;
-            if (isCompleted) {
-                completed++;
-                Long days = daysToFinish(run);
-                if (days != null) {
-                    timed.add(new TimedRun(run, days));
-                }
-                for (int i = 0; i < HOUR_BUCKETS.size(); i++) {
-                    if (HOUR_BUCKETS.get(i).contains(hoursOf(run))) {
-                        ratingsByHours.get(i).add(run.getRating());
-                        gamesByHours.get(i).add(run.getGameId());
-                        break;
-                    }
-                }
-            }
-            if (isAbandoned) abandoned++;
-            if (isCompleted || isAbandoned) {
-                for (GameGenreRow genre : genresByGame.getOrDefault(run.getGameId(), List.of())) {
-                    genreNames.put(genre.genreId(), genre.genreName());
-                    outcomesByGenre.computeIfAbsent(genre.genreId(), id -> new long[2])[isCompleted ? 0 : 1]++;
-                }
-            }
-        }
-
-        List<CompletionStatsDto.GenreAbandonment> abandonment = new ArrayList<>();
-        outcomesByGenre.forEach((genreId, counts) -> abandonment.add(new CompletionStatsDto.GenreAbandonment(
-                genreId, genreNames.get(genreId), counts[0], counts[1],
-                BigDecimal.valueOf(counts[1])
-                        .divide(BigDecimal.valueOf(counts[0] + counts[1]), 4, RoundingMode.HALF_UP)
-                        .doubleValue())));
-        abandonment.sort(Comparator
-                .comparingDouble(CompletionStatsDto.GenreAbandonment::abandonmentRate).reversed()
-                .thenComparing(Comparator.comparingLong(
-                        (CompletionStatsDto.GenreAbandonment g) -> g.completedCount() + g.abandonedCount()).reversed())
-                .thenComparing(CompletionStatsDto.GenreAbandonment::genreName, String.CASE_INSENSITIVE_ORDER));
-
-        List<CompletionStatsDto.HoursBucket> hoursBuckets = new ArrayList<>();
-        for (int i = 0; i < HOUR_BUCKETS.size(); i++) {
-            HourRange range = HOUR_BUCKETS.get(i);
-            List<BigDecimal> ratings = ratingsByHours.get(i);
-            hoursBuckets.add(new CompletionStatsDto.HoursBucket(range.label(), range.min(), range.max(),
-                    ratings.size(), ratings.stream().filter(Objects::nonNull).count(),
-                    StatsMath.averageRating(ratings), gamesByHours.get(i).size()));
-        }
-
-        return new CompletionStatsDto(year, completed, abandoned, replays,
-                timeToFinish(userId, timed), abandonment, hoursBuckets);
+        return completionInsights.completion(userId, year);
     }
-
-    private CompletionStatsDto.TimeToFinish timeToFinish(Long userId, List<TimedRun> timed) {
-        List<CompletionStatsDto.DaysBucket> buckets = new ArrayList<>();
-        for (DayRange range : DAY_BUCKETS) {
-            List<TimedRun> inRange = timed.stream().filter(t -> range.contains(t.days())).toList();
-            long games = inRange.stream().map(t -> t.run().getGameId()).distinct().count();
-            buckets.add(new CompletionStatsDto.DaysBucket(range.label(), range.min(), range.max(), inRange.size(), games));
-        }
-        if (timed.isEmpty()) {
-            return new CompletionStatsDto.TimeToFinish(0, null, null, null, null, buckets);
-        }
-
-        // Fewest days first; on equal days the lowest id first, so both ends break ties by lowest id.
-        List<TimedRun> sorted = new ArrayList<>(timed);
-        sorted.sort(Comparator.comparingLong(TimedRun::days).thenComparing(t -> t.run().getId()));
-        TimedRun fastest = sorted.getFirst();
-        long maxDays = sorted.getLast().days();
-        TimedRun slowest = sorted.stream().filter(t -> t.days() == maxDays).findFirst().orElseThrow();
-
-        int n = sorted.size();
-        double median = n % 2 == 1
-                ? sorted.get(n / 2).days()
-                : (sorted.get(n / 2 - 1).days() + sorted.get(n / 2).days()) / 2.0;
-        double average = sorted.stream().mapToLong(TimedRun::days).sum() / (double) n;
-
-        Map<Long, String> names = new HashMap<>();
-        for (GameLabel label : gameRepository.findLabelsByUserId(userId)) {
-            names.put(label.id(), label.name());
-        }
-        return new CompletionStatsDto.TimeToFinish(n, round1(average), round1(median),
-                toDuration(fastest, names), toDuration(slowest, names), buckets);
-    }
-
-    private static CompletionStatsDto.RunDuration toDuration(TimedRun timed, Map<Long, String> names) {
-        Experience run = timed.run();
-        return new CompletionStatsDto.RunDuration(run.getId(), run.getGameId(),
-                names.getOrDefault(run.getGameId(), "Unknown"), run.getRunLabel(), timed.days());
-    }
-
-    /**
-     * Calendar days from start to end of a COMPLETADO run with both dates, end not before start (0 when started
-     * and finished the same day); null for any other run. Shared by the completion stats and the play facts.
-     */
-    static Long daysToFinish(Experience run) {
-        if (run.getStatus() != ExperienceStatus.COMPLETADO || run.getStartDate() == null || run.getEndDate() == null
-                || run.getEndDate().isBefore(run.getStartDate())) {
-            return null;
-        }
-        return ChronoUnit.DAYS.between(run.getStartDate(), run.getEndDate());
-    }
-
-    // ---------------------------------------------------------------- play facts
 
     @Override
     @Transactional(readOnly = true)
@@ -609,7 +159,7 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
         for (Experience run : experienceRepository.findAllByUserId(userId)) {
             runs.add(new PlayFactsDto.RunFact(run.getId(), run.getGameId(),
                     run.getPlatform() != null ? run.getPlatform().getId() : null,
-                    ExperiencePeriod.yearOf(run), run.getStatus(), StatsMath.round2(hoursOf(run)), daysToFinish(run)));
+                    ExperiencePeriod.yearOf(run), run.getStatus(), StatsMath.round2(hoursOf(run)), CompletionInsights.daysToFinish(run)));
         }
         runs.sort(Comparator.comparing(PlayFactsDto.RunFact::experienceId, Comparator.nullsLast(Comparator.naturalOrder())));
 
@@ -631,225 +181,15 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
         return new PlayFactsDto(runs, onlineYears);
     }
 
-    // ---------------------------------------------------------------- rating profile
-
-    /** Histogram step: half points, since ratings cluster high and are often given as x.5. */
-    private static final BigDecimal RATING_BUCKET_SIZE = new BigDecimal("0.5");
-    /** 20 half-point buckets below 10, plus one for perfect 10s. */
-    private static final int RATING_BUCKETS = 21;
-
     @Override
     @Transactional(readOnly = true)
     public RatingStatsDto getRatings(Long userId, Integer year) {
-        requireValidYearIfPresent(year);
-        List<Experience> rated = runsInScope(userId, year).stream()
-                .filter(run -> run.getRating() != null)
-                .toList();
-        Map<Long, List<GameGenreRow>> genresByGame = confirmedGenresByGame(userId);
-
-        long[] counts = new long[RATING_BUCKETS];
-        List<BigDecimal> ratings = new ArrayList<>(rated.size());
-        Map<Long, List<BigDecimal>> byGenre = new LinkedHashMap<>();
-        Map<Long, String> genreNames = new HashMap<>();
-        Map<Long, List<BigDecimal>> byPlatform = new LinkedHashMap<>();
-        Map<Long, Platform> platforms = new HashMap<>();
-        for (Experience run : rated) {
-            BigDecimal rating = run.getRating();
-            ratings.add(rating);
-            counts[ratingBucketOf(rating)]++;
-            for (GameGenreRow genre : genresByGame.getOrDefault(run.getGameId(), List.of())) {
-                genreNames.put(genre.genreId(), genre.genreName());
-                byGenre.computeIfAbsent(genre.genreId(), id -> new ArrayList<>()).add(rating);
-            }
-            Platform platform = run.getPlatform();
-            platforms.put(platform.getId(), platform);
-            byPlatform.computeIfAbsent(platform.getId(), id -> new ArrayList<>()).add(rating);
-        }
-
-        List<RatingStatsDto.RatingBucket> histogram = new ArrayList<>(RATING_BUCKETS);
-        for (int i = 0; i < RATING_BUCKETS; i++) {
-            BigDecimal from = RATING_BUCKET_SIZE.multiply(BigDecimal.valueOf(i));
-            BigDecimal to = i < RATING_BUCKETS - 1 ? from.add(RATING_BUCKET_SIZE) : from;
-            histogram.add(new RatingStatsDto.RatingBucket(Ratings.normalize(from), Ratings.normalize(to), counts[i]));
-        }
-
-        List<RatingStatsDto.GenreRating> genres = new ArrayList<>();
-        byGenre.forEach((genreId, values) -> genres.add(new RatingStatsDto.GenreRating(
-                genreId, genreNames.get(genreId), values.size(), StatsMath.averageRating(values))));
-        genres.sort(Comparator
-                .comparing(RatingStatsDto.GenreRating::averageRating, Comparator.reverseOrder())
-                .thenComparing(Comparator.comparingLong(RatingStatsDto.GenreRating::ratedCount).reversed())
-                .thenComparing(RatingStatsDto.GenreRating::genreName, String.CASE_INSENSITIVE_ORDER));
-
-        List<RatingStatsDto.PlatformRating> platformRatings = new ArrayList<>();
-        byPlatform.forEach((platformId, values) -> {
-            Platform platform = platforms.get(platformId);
-            platformRatings.add(new RatingStatsDto.PlatformRating(platformId, platform.getName(),
-                    PlatformMapper.colorOf(platform), values.size(), StatsMath.averageRating(values)));
-        });
-        platformRatings.sort(Comparator
-                .comparing(RatingStatsDto.PlatformRating::averageRating, Comparator.reverseOrder())
-                .thenComparing(Comparator.comparingLong(RatingStatsDto.PlatformRating::ratedCount).reversed())
-                .thenComparing(RatingStatsDto.PlatformRating::name, String.CASE_INSENSITIVE_ORDER));
-
-        return new RatingStatsDto(year, RATING_BUCKET_SIZE, ratings.size(),
-                StatsMath.averageRating(ratings), StatsMath.medianRating(ratings), StatsMath.standardDeviation(ratings),
-                histogram, genres, platformRatings);
+        return ratingInsights.ratings(userId, year);
     }
-
-    /** Half-point bucket index: 9.75 -> 19 ([9.5, 10)), 10 -> 20 (perfect scores). */
-    static int ratingBucketOf(BigDecimal rating) {
-        int index = rating.multiply(BigDecimal.TWO).setScale(0, RoundingMode.FLOOR).intValue();
-        return Math.min(Math.max(index, 0), RATING_BUCKETS - 1);
-    }
-
-    // ---------------------------------------------------------------- game rankings
 
     @Override
     @Transactional(readOnly = true)
     public GameRankingsDto getGameRankings(Long userId, int limit) {
-        int cap = clampLimit(limit);
-        List<GameFacts> facts = confirmedGameFacts(userId);
-        Set<Long> confirmed = new HashSet<>();
-        facts.forEach(game -> confirmed.add(game.gameId()));
-        Map<Long, String> names = new HashMap<>();
-        for (GameLabel label : gameRepository.findLabelsByUserId(userId)) {
-            names.put(label.id(), label.name());
-        }
-        Map<Long, List<Experience>> runsByGame = new LinkedHashMap<>();
-        for (Experience run : experienceRepository.findAllByUserId(userId)) {
-            if (confirmed.contains(run.getGameId())) {
-                runsByGame.computeIfAbsent(run.getGameId(), id -> new ArrayList<>()).add(run);
-            }
-        }
-
-        return new GameRankingsDto(
-                mostReplayed(runsByGame, names, cap),
-                longestRuns(runsByGame, names, cap),
-                shortGems(facts, names, cap),
-                mostDaysPlayed(userId, confirmed, names, cap),
-                longestPending(userId, runsByGame, names, cap));
-    }
-
-    private static List<GameRankingsDto.ReplayedGame> mostReplayed(Map<Long, List<Experience>> runsByGame,
-                                                                   Map<Long, String> names, int cap) {
-        List<GameRankingsDto.ReplayedGame> replayed = new ArrayList<>();
-        runsByGame.forEach((gameId, runs) -> {
-            if (runs.size() >= 2) {
-                double hours = runs.stream().mapToDouble(StatsInsightsServiceImpl::hoursOf).sum();
-                replayed.add(new GameRankingsDto.ReplayedGame(gameId, nameOf(gameId, names), runs.size(), round1(hours)));
-            }
-        });
-        replayed.sort(Comparator.comparingLong(GameRankingsDto.ReplayedGame::runCount).reversed()
-                .thenComparing(Comparator.comparingDouble(GameRankingsDto.ReplayedGame::hours).reversed())
-                .thenComparing(GameRankingsDto.ReplayedGame::gameName, String.CASE_INSENSITIVE_ORDER));
-        return replayed.stream().limit(cap).toList();
-    }
-
-    private static List<GameRankingsDto.LongRun> longestRuns(Map<Long, List<Experience>> runsByGame,
-                                                             Map<Long, String> names, int cap) {
-        return runsByGame.values().stream()
-                .flatMap(List::stream)
-                .filter(run -> hoursOf(run) > 0)
-                .sorted(Comparator.comparingDouble(StatsInsightsServiceImpl::hoursOf).reversed()
-                        .thenComparing(Experience::getId))
-                .limit(cap)
-                .map(run -> new GameRankingsDto.LongRun(run.getId(), run.getGameId(), nameOf(run.getGameId(), names),
-                        run.getRunLabel(), round1(hoursOf(run))))
-                .toList();
-    }
-
-    private static List<GameRankingsDto.ShortGem> shortGems(List<GameFacts> facts, Map<Long, String> names, int cap) {
-        return facts.stream()
-                .filter(game -> game.rating() != null && game.rating().compareTo(SHORT_GEM_MIN_RATING) >= 0
-                        && game.hours() > 0 && game.hours() <= SHORT_GEM_MAX_HOURS)
-                .map(game -> new GameRankingsDto.ShortGem(game.gameId(), nameOf(game.gameId(), names),
-                        game.rating().setScale(2, RoundingMode.HALF_UP), round1(game.hours())))
-                .sorted(Comparator.comparing(GameRankingsDto.ShortGem::rating).reversed()
-                        .thenComparingDouble(GameRankingsDto.ShortGem::hours)
-                        .thenComparing(GameRankingsDto.ShortGem::gameName, String.CASE_INSENSITIVE_ORDER))
-                .limit(cap)
-                .toList();
-    }
-
-    private List<GameRankingsDto.DaysPlayedGame> mostDaysPlayed(Long userId, Set<Long> confirmed,
-                                                                Map<Long, String> names, int cap) {
-        return diaryEntryGameRepository.countPlayedDaysByGame(userId).stream()
-                .filter(row -> confirmed.contains(row.gameId()))
-                .map(row -> new GameRankingsDto.DaysPlayedGame(row.gameId(), nameOf(row.gameId(), names), row.days()))
-                .sorted(Comparator.comparingLong(GameRankingsDto.DaysPlayedGame::days).reversed()
-                        .thenComparing(GameRankingsDto.DaysPlayedGame::gameName, String.CASE_INSENSITIVE_ORDER))
-                .limit(cap)
-                .toList();
-    }
-
-    /**
-     * Pending games as the library's "Pendiente" tab sees them: games in the backlog (Game#backlog), or
-     * SINGLEPLAYER games with no runs yet (online and hybrid games without runs are tracked by online playtime
-     * instead); all waiting since the game was added.
-     */
-    private List<GameRankingsDto.PendingGame> longestPending(Long userId, Map<Long, List<Experience>> runsByGame,
-                                                             Map<Long, String> names, int cap) {
-        List<GameRankingsDto.PendingGame> pending = new ArrayList<>();
-        for (GameAddedRow game : gameRepository.findAddedRowsByUserIdAndReviewStatus(userId, ReviewStatus.CONFIRMED)) {
-            List<Experience> runs = runsByGame.get(game.gameId());
-            boolean unplayed = (runs == null || runs.isEmpty()) && game.category() == GameCategory.SINGLEPLAYER;
-            if (Boolean.TRUE.equals(game.backlog()) || unplayed) {
-                pending.add(new GameRankingsDto.PendingGame(game.gameId(), nameOf(game.gameId(), names),
-                        null, null, game.createdAt()));
-            }
-        }
-        pending.sort(Comparator.comparing(GameRankingsDto.PendingGame::pendingSince,
-                        Comparator.nullsFirst(Comparator.naturalOrder()))
-                .thenComparing(GameRankingsDto.PendingGame::gameId));
-        return pending.stream().limit(cap).toList();
-    }
-
-    private static String nameOf(Long gameId, Map<Long, String> names) {
-        return names.getOrDefault(gameId, "Unknown");
-    }
-
-    // ---------------------------------------------------------------- shared loaders
-
-    /** Every run of the user, or only those of {@code year} (ExperiencePeriod year rule). */
-    private List<Experience> runsInScope(Long userId, Integer year) {
-        List<Experience> runs = experienceRepository.findAllByUserId(userId);
-        if (year == null) {
-            return runs;
-        }
-        return runs.stream().filter(run -> year.equals(ExperiencePeriod.yearOf(run))).toList();
-    }
-
-    /** Genres of the CONFIRMED games, per game id (games without genres are absent). */
-    private Map<Long, List<GameGenreRow>> confirmedGenresByGame(Long userId) {
-        Map<Long, List<GameGenreRow>> byGame = new HashMap<>();
-        for (GameGenreRow row : gameRepository.findGenreRowsByUserIdAndReviewStatus(userId, ReviewStatus.CONFIRMED)) {
-            byGame.computeIfAbsent(row.gameId(), id -> new ArrayList<>()).add(row);
-        }
-        return byGame;
-    }
-
-    // ---------------------------------------------------------------- helpers
-
-    private static double round1(double value) {
-        return BigDecimal.valueOf(value).setScale(1, RoundingMode.HALF_UP).doubleValue();
-    }
-
-    private static int clampLimit(int limit) {
-        return Math.min(Math.max(limit, 1), MAX_LIMIT);
-    }
-
-    private static void requireValidYearIfPresent(Integer year) {
-        if (year != null) {
-            StatsServiceImpl.requireValidYear(year);
-        }
-    }
-
-    private static double hoursOf(Experience experience) {
-        return experience.getHours() != null ? experience.getHours() : 0.0;
-    }
-
-    private static double doubleOf(Number value) {
-        return value != null ? value.doubleValue() : 0.0;
+        return gameRankingInsights.rankings(userId, limit);
     }
 }
