@@ -134,6 +134,17 @@ class PsnSyncServiceImplTest {
     }
 
     @Test
+    void pendingGameTellsWhetherItsMetadataLookupIsStillToCome() {
+        Game lookedUp = Game.builder().id(GAME_ID + 1).userId(USER_ID).name("Looked up")
+                .igdbLookupAt(LocalDateTime.of(2026, 1, 1, 10, 0)).build();
+        when(pendingReviewQueue.findPending(USER_ID, PsnPlatforms.ALL, false)).thenReturn(List.of(game, lookedUp));
+        when(gameMapper.toResponseDto(any(Game.class))).thenReturn(mock(GameResponseDto.class));
+
+        assertThat(service.getPending(USER_ID)).extracting(PsnPendingGameDto::metadataPending)
+                .containsExactly(true, false);
+    }
+
+    @Test
     void ignoringRecordsEveryPsnTitleAndDeletesThePsnOnlyPlaceholder() {
         GamePlatformLink ps4 = link(ExternalPlatform.PSN_PS4, "CUSA13323_00", 600, null);
         GamePlatformLink ps5 = link(ExternalPlatform.PSN_PS5, "PPSA01234_00", 120, null);

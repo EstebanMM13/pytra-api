@@ -92,7 +92,8 @@ public class SteamSyncServiceImpl implements SteamSyncService {
                             gameMapper.toResponseDto(game),
                             link != null ? link.getExternalId() : null,
                             link != null ? link.getLastSyncedPlaytimeMinutes() : null,
-                            link != null ? link.getLastPlayedAt() : null);
+                            link != null ? link.getLastPlayedAt() : null,
+                            game.getIgdbLookupAt() == null);
                 })
                 .toList();
     }

@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.platformsync;
 
+import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
 import com.estebanmm13.pytra_api.games.model.Genre;
@@ -19,9 +20,12 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Database side of {@link PendingGameEnricher}: short transactions before and after the IGDB calls,
@@ -47,10 +51,20 @@ public class PendingGameEnrichmentWriter {
         }
     }
 
-    /** The user's pending games IGDB was never asked about (or whose lookup failed), oldest first. */
+    /**
+     * The user's pending games IGDB was never asked about (or whose lookup failed), most played first:
+     * the review list opens on those, so they are the ones that must be ready soonest. Ties stay oldest first.
+     */
     @Transactional(readOnly = true)
     public List<Long> findGamesWithoutLookup(Long userId) {
-        return gameRepository.findIdsWithoutIgdbLookup(userId, ReviewStatus.PENDING_REVIEW);
+        Map<Long, Long> minutesByGame = gamePlatformLinkRepository
+                .findAllByUserIdAndPlatformInWithGame(userId, EnumSet.allOf(ExternalPlatform.class)).stream()
+                .filter(link -> link.getLastSyncedPlaytimeMinutes() != null)
+                .collect(Collectors.groupingBy(link -> link.getGame().getId(),
+                        Collectors.summingLong(GamePlatformLink::getLastSyncedPlaytimeMinutes)));
+        return gameRepository.findIdsWithoutIgdbLookup(userId, ReviewStatus.PENDING_REVIEW).stream()
+                .sorted(Comparator.comparingLong((Long gameId) -> minutesByGame.getOrDefault(gameId, 0L)).reversed())
+                .toList();
     }
 
     /**

@@ -36,7 +36,8 @@ import java.util.concurrent.TimeUnit;
  * down, app restarted, import interrupted) are caught up by the next sync, while a game without a
  * confident match is asked about only once. At most one run per user waits in the queue.
  *
- * <p>One worker thread, one IGDB request per game, spaced so it stays under IGDB's 4 requests/s even with
+ * <p>Most played games go first (see {@link PendingGameEnrichmentWriter#findGamesWithoutLookup}): they open
+ * the review list. One worker thread, one IGDB request per game, spaced so it stays under IGDB's 4 requests/s even with
  * the interactive autofill running alongside; batches of {@value #BATCH_SIZE}. Only CONFIDENT matches are
  * applied (see {@link IgdbPendingMatch}), never over user data (see {@link PendingGameFill}).
  *

@@ -23,6 +23,7 @@ import java.util.List;
  *                           imported run will be created on
  * @param psnPlaytimeMinutes PSN's latest known playtime, summed over the game's PSN titles
  * @param lastPlayedAt       last time played according to PSN; null when not reported
+ * @param metadataPending    IGDB was not asked about it yet, so its cover and data may still change
  */
 public record PsnPendingGameDto(
         Long id,
@@ -49,11 +50,12 @@ public record PsnPendingGameDto(
         String titleId,
         String psnPlatform,
         Long psnPlaytimeMinutes,
-        Instant lastPlayedAt
+        Instant lastPlayedAt,
+        boolean metadataPending
 ) {
 
     public static PsnPendingGameDto of(GameResponseDto game, String titleId, String psnPlatform,
-                                       Long psnPlaytimeMinutes, Instant lastPlayedAt) {
+                                       Long psnPlaytimeMinutes, Instant lastPlayedAt, boolean metadataPending) {
         return new PsnPendingGameDto(
                 game.getId(), game.getName(), game.getDeveloper(), game.getPublisher(), game.getReleaseDate(),
                 game.getCategory(), game.getSagaId(), game.getSagaName(), game.getCoverImageUrl(),
@@ -61,6 +63,6 @@ public record PsnPendingGameDto(
                 game.getExperienceCount(), game.getTotalHours(), game.getBestRating(),
                 game.getLastExperienceStatus(), game.getLastPlayedYear(), game.getHasPlatinum(), game.getHasFullCompletion(),
                 game.getPlatforms(), game.getPlatformRefs(),
-                titleId, psnPlatform, psnPlaytimeMinutes, lastPlayedAt);
+                titleId, psnPlatform, psnPlaytimeMinutes, lastPlayedAt, metadataPending);
     }
 }

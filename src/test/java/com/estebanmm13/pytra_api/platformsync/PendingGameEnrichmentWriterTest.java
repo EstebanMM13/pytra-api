@@ -14,6 +14,7 @@ import com.estebanmm13.pytra_api.metadata.dto.IgdbGameMetadataDto;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -43,6 +44,32 @@ class PendingGameEnrichmentWriterTest {
                     List.of("Adventure", "Indie"), "https://images.igdb.com/igdb/image/upload/t_cover_big/co1r77.jpg",
                     List.of("PlayStation 4")),
             Set.of(48), Set.of(1));
+
+    @Test
+    void gamesWithMostPlaytimeAreLookedUpFirstAndTiesKeepTheirOrder() {
+        Game fewHours = pending(1L, "Few hours");
+        Game neverPlayedA = pending(2L, "Never played A");
+        Game neverPlayedB = pending(3L, "Never played B");
+        Game twoConsoles = pending(4L, "Played on two consoles");
+        Game oneConsole = pending(5L, "Played on one console");
+        when(gameRepository.findIdsWithoutIgdbLookup(USER_ID, ReviewStatus.PENDING_REVIEW))
+                .thenReturn(List.of(1L, 2L, 3L, 4L, 5L));
+        when(linkRepository.findAllByUserIdAndPlatformInWithGame(USER_ID, EnumSet.allOf(ExternalPlatform.class)))
+                .thenReturn(List.of(
+                        played(fewHours, ExternalPlatform.STEAM, 60L),
+                        played(neverPlayedA, ExternalPlatform.STEAM, null),
+                        played(twoConsoles, ExternalPlatform.PSN_PS4, 300L),
+                        played(twoConsoles, ExternalPlatform.PSN_PS5, 300L),
+                        played(oneConsole, ExternalPlatform.PSN_PS5, 500L),
+                        played(neverPlayedB, ExternalPlatform.PSN_PS5, 0L)));
+
+        assertThat(writer.findGamesWithoutLookup(USER_ID)).containsExactly(4L, 5L, 1L, 2L, 3L);
+    }
+
+    private static GamePlatformLink played(Game game, ExternalPlatform platform, Long minutes) {
+        return GamePlatformLink.builder().userId(USER_ID).game(game).platform(platform)
+                .lastSyncedPlaytimeMinutes(minutes).build();
+    }
 
     @Test
     void lookupsCarryTheIgdbPlatformsOfTheGameLinks() {

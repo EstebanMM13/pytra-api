@@ -24,6 +24,7 @@ import java.util.List;
  * @param appId                Steam appid (as stored on the platform link)
  * @param steamPlaytimeMinutes Steam's latest known total playtime for the app
  * @param lastPlayedAt         last time played according to Steam; null when never played or not reported yet
+ * @param metadataPending      IGDB was not asked about it yet, so its cover and data may still change
  */
 public record SteamPendingGameDto(
         Long id,
@@ -49,10 +50,12 @@ public record SteamPendingGameDto(
         List<PlatformRefDto> platformRefs,
         String appId,
         Long steamPlaytimeMinutes,
-        Instant lastPlayedAt
+        Instant lastPlayedAt,
+        boolean metadataPending
 ) {
 
-    public static SteamPendingGameDto of(GameResponseDto game, String appId, Long steamPlaytimeMinutes, Instant lastPlayedAt) {
+    public static SteamPendingGameDto of(GameResponseDto game, String appId, Long steamPlaytimeMinutes, Instant lastPlayedAt,
+                                         boolean metadataPending) {
         return new SteamPendingGameDto(
                 game.getId(), game.getName(), game.getDeveloper(), game.getPublisher(), game.getReleaseDate(),
                 game.getCategory(), game.getSagaId(), game.getSagaName(), game.getCoverImageUrl(),
@@ -60,6 +63,6 @@ public record SteamPendingGameDto(
                 game.getExperienceCount(), game.getTotalHours(), game.getBestRating(),
                 game.getLastExperienceStatus(), game.getLastPlayedYear(), game.getHasPlatinum(), game.getHasFullCompletion(),
                 game.getPlatforms(), game.getPlatformRefs(),
-                appId, steamPlaytimeMinutes, lastPlayedAt);
+                appId, steamPlaytimeMinutes, lastPlayedAt, metadataPending);
     }
 }

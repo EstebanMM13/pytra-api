@@ -97,8 +97,9 @@ public class PsnSyncServiceImpl implements PsnSyncService {
         GamePlatformLink primary = links.stream()
                 .min(Comparator.comparing(GamePlatformLink::getPlatform, PsnPlatforms.PS5_FIRST))
                 .orElse(null);
+        boolean metadataPending = game.getIgdbLookupAt() == null;
         if (primary == null) {
-            return PsnPendingGameDto.of(dto, null, null, null, null);
+            return PsnPendingGameDto.of(dto, null, null, null, null, metadataPending);
         }
         long minutes = links.stream().mapToLong(GamePlatformLink::getLastSyncedPlaytimeMinutes).sum();
         Instant lastPlayedAt = links.stream()
@@ -107,7 +108,7 @@ public class PsnSyncServiceImpl implements PsnSyncService {
                 .max(Comparator.naturalOrder())
                 .orElse(null);
         return PsnPendingGameDto.of(dto, primary.getExternalId(), PsnPlatforms.consoleCode(primary.getPlatform()),
-                minutes, lastPlayedAt);
+                minutes, lastPlayedAt, metadataPending);
     }
 
     /**

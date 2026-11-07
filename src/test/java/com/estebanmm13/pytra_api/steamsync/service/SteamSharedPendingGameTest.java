@@ -1,6 +1,7 @@
 package com.estebanmm13.pytra_api.steamsync.service;
 
 import com.estebanmm13.pytra_api.auth.security.TokenGenerator;
+import com.estebanmm13.pytra_api.games.dto.game.GameResponseDto;
 import com.estebanmm13.pytra_api.games.mapper.GameMapper;
 import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
 import com.estebanmm13.pytra_api.games.model.Game;
@@ -13,6 +14,7 @@ import com.estebanmm13.pytra_api.platformsync.PendingGameEnricher;
 import com.estebanmm13.pytra_api.platformsync.PendingReviewQueue;
 import com.estebanmm13.pytra_api.platformsync.PlatformLinkRemover;
 import com.estebanmm13.pytra_api.steamsync.client.SteamWebApiClient;
+import com.estebanmm13.pytra_api.steamsync.dto.SteamPendingGameDto;
 import com.estebanmm13.pytra_api.steamsync.model.SteamLink;
 import com.estebanmm13.pytra_api.steamsync.repository.SteamIgnoredAppRepository;
 import com.estebanmm13.pytra_api.steamsync.repository.SteamLinkRepository;
@@ -27,6 +29,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -49,6 +52,8 @@ class SteamSharedPendingGameTest {
     private final SteamLinkRepository steamLinkRepository = mock(SteamLinkRepository.class);
     private final PlatformLinkRemover remover = new PlatformLinkRemover(linkRepository, gameRepository);
     private final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+    private final PendingReviewQueue pendingReviewQueue = mock(PendingReviewQueue.class);
+    private final GameMapper gameMapper = mock(GameMapper.class);
 
     private Game game;
     private GamePlatformLink steamLink;
@@ -105,10 +110,22 @@ class SteamSharedPendingGameTest {
         verify(steamLinkRepository).delete(link);
     }
 
+    @Test
+    void pendingGameTellsWhetherItsMetadataLookupIsStillToCome() {
+        Game lookedUp = Game.builder().id(GAME_ID + 1).userId(USER_ID).name("Looked up")
+                .igdbLookupAt(LocalDateTime.of(2026, 1, 1, 10, 0)).build();
+        when(pendingReviewQueue.findPending(USER_ID, SteamSyncServiceImpl.STEAM_PLATFORMS, true))
+                .thenReturn(List.of(game, lookedUp));
+        when(gameMapper.toResponseDto(any(Game.class))).thenReturn(mock(GameResponseDto.class));
+
+        assertThat(syncService().getPending(USER_ID)).extracting(SteamPendingGameDto::metadataPending)
+                .containsExactly(true, false);
+    }
+
     private SteamSyncServiceImpl syncService() {
         return new SteamSyncServiceImpl(steamLinkRepository, mock(SteamWebApiClient.class), mock(SteamLibraryImporter.class),
-                new SteamSyncGuard(), mock(PendingGameConfirmer.class), mock(PendingReviewQueue.class), remover,
-                gameRepository, linkRepository, steamIgnoredAppRepository, mock(GameMapper.class), transactionManager);
+                new SteamSyncGuard(), mock(PendingGameConfirmer.class), pendingReviewQueue, remover,
+                gameRepository, linkRepository, steamIgnoredAppRepository, gameMapper, transactionManager);
     }
 
     private SteamLinkServiceImpl linkService() {
