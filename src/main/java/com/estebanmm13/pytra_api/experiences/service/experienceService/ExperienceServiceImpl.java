@@ -11,6 +11,7 @@ import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.HybridPlaytimeReconciler;
+import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.SyncedOnlineHours;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
@@ -66,7 +67,7 @@ public class ExperienceServiceImpl implements ExperienceService {
         if (game.getCategory() == GameCategory.ONLINE) {
             throw new InvalidRequestException(InvalidRequestException.ONLINE_GAME_RUN);
         }
-        Double syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
+        SyncedOnlineHours.Share syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
 
         Experience experience = Experience.builder()
                 .userId(userId)
@@ -151,7 +152,7 @@ public class ExperienceServiceImpl implements ExperienceService {
         Experience experience = experienceRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Experience not found"));
         Game game = gameRepository.findByIdAndUserId(experience.getGameId(), userId).orElse(null);
-        Double syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
+        SyncedOnlineHours.Share syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
         // The diary hours added to this run go away with it: its diary lines must never subtract them again.
         diaryEntryGameRepository.detachRun(experience.getId());
         experienceRepository.delete(experience);
@@ -172,7 +173,7 @@ public class ExperienceServiceImpl implements ExperienceService {
         Experience experience = experienceRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Experience not found"));
         Game game = gameRepository.findByIdAndUserId(experience.getGameId(), userId).orElse(null);
-        Double syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
+        SyncedOnlineHours.Share syncedShareBefore = hybridPlaytimeReconciler.shareBeforeRunChange(game);
 
         changes.accept(experience);
 

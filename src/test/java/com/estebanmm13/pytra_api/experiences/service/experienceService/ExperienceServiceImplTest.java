@@ -9,6 +9,7 @@ import com.estebanmm13.pytra_api.experiences.mapper.ExperienceMapper;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.HybridPlaytimeReconciler;
+import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.SyncedOnlineHours;
 import com.estebanmm13.pytra_api.games.model.Game;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
@@ -82,28 +83,28 @@ class ExperienceServiceImplTest {
     @Test
     void createReconcilesHybridHoursAroundTheSave() {
         Game game = ownedGame(GameCategory.HYBRID);
-        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(60.0);
+        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(share(60.0));
 
         service.create(GAME_ID, request(), USER_ID);
 
         InOrder order = inOrder(hybridPlaytimeReconciler, experienceRepository);
         order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
         order.verify(experienceRepository).save(any());
-        order.verify(hybridPlaytimeReconciler).afterRunChange(game, 60.0);
+        order.verify(hybridPlaytimeReconciler).afterRunChange(game, share(60.0));
     }
 
     @Test
     void updateReconcilesHybridHoursAroundTheSave() {
         Game game = ownedGame(GameCategory.HYBRID);
         Experience run = ownedRun();
-        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(60.0);
+        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(share(60.0));
 
         service.update(RUN_ID, request(), USER_ID);
 
         InOrder order = inOrder(hybridPlaytimeReconciler, experienceRepository);
         order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
         order.verify(experienceRepository).saveAndFlush(run);
-        order.verify(hybridPlaytimeReconciler).afterRunChange(game, 60.0);
+        order.verify(hybridPlaytimeReconciler).afterRunChange(game, share(60.0));
     }
 
     @Test
@@ -112,7 +113,7 @@ class ExperienceServiceImplTest {
         Experience run = ownedRun();
         run.setRunLabel("Run 1");
         run.setRating(new BigDecimal("7"));
-        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(40.0);
+        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(share(40.0));
         ExperiencePatchDto patch = new ExperiencePatchDto();
         patch.setHours(12.5);
 
@@ -124,7 +125,7 @@ class ExperienceServiceImplTest {
         InOrder order = inOrder(hybridPlaytimeReconciler, experienceRepository);
         order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
         order.verify(experienceRepository).saveAndFlush(run);
-        order.verify(hybridPlaytimeReconciler).afterRunChange(game, 40.0);
+        order.verify(hybridPlaytimeReconciler).afterRunChange(game, share(40.0));
     }
 
     @Test
@@ -170,14 +171,14 @@ class ExperienceServiceImplTest {
     void deleteReconcilesHybridHoursAroundTheDelete() {
         Game game = ownedGame(GameCategory.HYBRID);
         Experience run = ownedRun();
-        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(20.0);
+        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(share(20.0));
 
         service.delete(RUN_ID, USER_ID);
 
         InOrder order = inOrder(hybridPlaytimeReconciler, experienceRepository);
         order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
         order.verify(experienceRepository).delete(run);
-        order.verify(hybridPlaytimeReconciler).afterRunChange(game, 20.0);
+        order.verify(hybridPlaytimeReconciler).afterRunChange(game, share(20.0));
     }
 
     @Test
@@ -196,7 +197,7 @@ class ExperienceServiceImplTest {
     void addHoursAddsAndSubtractsThroughTheReconciledSave() {
         Game game = ownedGame(GameCategory.HYBRID);
         Experience run = ownedRun();
-        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(5.0);
+        when(hybridPlaytimeReconciler.shareBeforeRunChange(game)).thenReturn(share(5.0));
 
         service.addHours(RUN_ID, new BigDecimal("2.25"), USER_ID);
         assertThat(run.getHours()).isEqualTo(3.25);
@@ -207,7 +208,7 @@ class ExperienceServiceImplTest {
         InOrder order = inOrder(hybridPlaytimeReconciler, experienceRepository);
         order.verify(hybridPlaytimeReconciler).shareBeforeRunChange(game);
         order.verify(experienceRepository).saveAndFlush(run);
-        order.verify(hybridPlaytimeReconciler).afterRunChange(game, 5.0);
+        order.verify(hybridPlaytimeReconciler).afterRunChange(game, share(5.0));
     }
 
     @Test
@@ -300,5 +301,10 @@ class ExperienceServiceImplTest {
         request.setRunLabel("Run 1");
         request.setPlatformId(1L);
         return request;
+    }
+
+    /** Synced share of a game linked only to Steam (the service passes it through untouched). */
+    private static SyncedOnlineHours.Share share(double hours) {
+        return new SyncedOnlineHours.Share(java.util.Map.of(SyncedOnlineHours.Source.STEAM, hours));
     }
 }

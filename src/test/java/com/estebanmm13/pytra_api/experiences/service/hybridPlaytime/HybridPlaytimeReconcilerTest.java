@@ -11,6 +11,7 @@ import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
 import com.estebanmm13.pytra_api.games.model.ReviewStatus;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.platforms.model.Platform;
+import com.estebanmm13.pytra_api.platforms.service.PlatformService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -34,9 +36,13 @@ class HybridPlaytimeReconcilerTest {
     private final ExperienceRepository experienceRepository = mock(ExperienceRepository.class);
     private final OnlinePlaytimeRepository onlinePlaytimeRepository = mock(OnlinePlaytimeRepository.class);
     private final GamePlatformLinkRepository gamePlatformLinkRepository = mock(GamePlatformLinkRepository.class);
+    private final PlatformService platformService = mock(PlatformService.class);
     private final HybridPlaytimeReconciler reconciler =
             new HybridPlaytimeReconciler(experienceRepository, onlinePlaytimeRepository, gamePlatformLinkRepository,
-                    org.mockito.Mockito.mock(com.estebanmm13.pytra_api.platforms.service.PlatformService.class));
+                    platformService);
+    private final Platform pc = catalog(1L, "PC");
+    private final Platform ps4 = catalog(4L, "PS4");
+    private final Platform ps5 = catalog(5L, "PS5");
 
     @Test
     void loggingARunOnTheSyncedPlatformMovesItsHoursOutOfOnline() {
@@ -48,12 +54,84 @@ class HybridPlaytimeReconcilerTest {
                 .thenReturn(List.of())
                 .thenReturn(List.of(run("PC", 40.0)));
 
-        Double before = reconciler.shareBeforeRunChange(game);
+        SyncedOnlineHours.Share before = reconciler.shareBeforeRunChange(game);
         reconciler.afterRunChange(game, before);
 
-        assertThat(before).isEqualTo(60.0);
+        assertThat(before.total()).isEqualTo(60.0);
         assertThat(online.getTotalHours()).isEqualTo(20.0);
         verify(experienceRepository).flush();
+    }
+
+    @Test
+    void aRunTakesItsHoursOutOfItsPlatformRowTooNotOnlyTheTotal() {
+        // Confirmed with 84 h 40 min from PS5, all online; then a 4 h 30 min run on PS5.
+        Game game = game(GameCategory.HYBRID, ReviewStatus.CONFIRMED);
+        when(gamePlatformLinkRepository.findAllByUserIdAndGameId(USER_ID, GAME_ID))
+                .thenReturn(List.of(linkMinutes(game, ExternalPlatform.PSN_PS5, 84 * 60 + 40)));
+        OnlinePlaytime online = online(84 + 40 / 60.0);
+        rows(online, ps5, 84 + 40 / 60.0);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID))
+                .thenReturn(List.of())
+                .thenReturn(List.of(run("PS5", 4.5)));
+
+        reconciler.afterRunChange(game, reconciler.shareBeforeRunChange(game));
+
+        assertThat(online.getTotalHours()).isCloseTo(80 + 10 / 60.0, within(1e-9));
+        assertThat(online.getPlatformHours().get(ps5.getId())).isCloseTo(80 + 10 / 60.0, within(1e-9));
+    }
+
+    @Test
+    void aRunOnlyMovesTheRowsOfTheSourceItsPlatformBelongsTo() {
+        Game game = game(GameCategory.HYBRID, ReviewStatus.CONFIRMED);
+        when(gamePlatformLinkRepository.findAllByUserIdAndGameId(USER_ID, GAME_ID))
+                .thenReturn(List.of(link(game, ExternalPlatform.STEAM, 60), link(game, ExternalPlatform.PSN_PS5, 30)));
+        OnlinePlaytime online = online(90.0);
+        rows(online, pc, 60.0);
+        rows(online, ps5, 30.0);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID))
+                .thenReturn(List.of())
+                .thenReturn(List.of(run("PC", 40.0)));
+
+        reconciler.afterRunChange(game, reconciler.shareBeforeRunChange(game));
+
+        assertThat(online.getTotalHours()).isEqualTo(50.0);
+        assertThat(online.getPlatformHours()).containsEntry(pc.getId(), 20.0).containsEntry(ps5.getId(), 30.0);
+    }
+
+    @Test
+    void aRunOnTheOtherConsoleOfThePsnSourceTakesFromTheLargestRowsFirst() {
+        // A PS4 title played on a PS5: the run is on PS5 but the hours sit in the PS4 row.
+        Game game = game(GameCategory.HYBRID, ReviewStatus.CONFIRMED);
+        when(gamePlatformLinkRepository.findAllByUserIdAndGameId(USER_ID, GAME_ID))
+                .thenReturn(List.of(link(game, ExternalPlatform.PSN_PS4, 10), link(game, ExternalPlatform.PSN_PS5, 2)));
+        OnlinePlaytime online = online(12.0);
+        rows(online, ps4, 10.0);
+        rows(online, ps5, 2.0);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID))
+                .thenReturn(List.of())
+                .thenReturn(List.of(run("PS5", 11.0)));
+
+        reconciler.afterRunChange(game, reconciler.shareBeforeRunChange(game));
+
+        assertThat(online.getTotalHours()).isEqualTo(1.0);
+        assertThat(online.getPlatformHours()).doesNotContainKey(ps4.getId()).containsEntry(ps5.getId(), 1.0);
+    }
+
+    @Test
+    void deletingTheRunGivesTheHoursBackToThePlatformRow() {
+        Game game = game(GameCategory.HYBRID, ReviewStatus.CONFIRMED);
+        when(gamePlatformLinkRepository.findAllByUserIdAndGameId(USER_ID, GAME_ID))
+                .thenReturn(List.of(link(game, ExternalPlatform.PSN_PS5, 60)));
+        OnlinePlaytime online = online(20.0);
+        rows(online, ps5, 20.0);
+        when(experienceRepository.findAllByGameIdAndUserId(GAME_ID, USER_ID))
+                .thenReturn(List.of(run("PS5", 40.0)))
+                .thenReturn(List.of());
+
+        reconciler.afterRunChange(game, reconciler.shareBeforeRunChange(game));
+
+        assertThat(online.getTotalHours()).isEqualTo(60.0);
+        assertThat(online.getPlatformHours()).containsEntry(ps5.getId(), 60.0);
     }
 
     @Test
@@ -166,6 +244,22 @@ class HybridPlaytimeReconcilerTest {
         assertThat(updated).isTrue();
         assertThat(online.getTotalHours()).isEqualTo(35.0);
         assertThat(online.getLastSessionAt()).isEqualTo(now);
+    }
+
+    private static Platform catalog(long id, String legacyCode) {
+        return Platform.builder().id(id).name(legacyCode).legacyCode(legacyCode).build();
+    }
+
+    private void rows(OnlinePlaytime online, Platform platform, double hours) {
+        when(platformService.requireByLegacyCode(platform.getLegacyCode())).thenReturn(platform);
+        online.getPlatforms().add(platform);
+        online.getPlatformHours().put(platform.getId(), hours);
+    }
+
+    private static GamePlatformLink linkMinutes(Game game, ExternalPlatform platform, long minutes) {
+        GamePlatformLink link = link(game, platform, 0);
+        link.setLastSyncedPlaytimeMinutes(minutes);
+        return link;
     }
 
     private OnlinePlaytime online(double hours) {

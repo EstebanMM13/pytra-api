@@ -5,6 +5,7 @@ import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
 import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
 
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -23,7 +24,24 @@ import java.util.Set;
  */
 public final class SyncedOnlineHours {
 
-    private enum Source { STEAM, PSN, ANDROID }
+    /** A sync that reports one cumulative total per title. */
+    public enum Source { STEAM, PSN, ANDROID }
+
+    /** Online share of each source; a source with nothing synced is absent. */
+    public record Share(Map<Source, Double> bySource) {
+
+        public Share {
+            bySource = Map.copyOf(bySource);
+        }
+
+        public double of(Source source) {
+            return bySource.getOrDefault(source, 0.0);
+        }
+
+        public double total() {
+            return bySource.values().stream().mapToDouble(Double::doubleValue).sum();
+        }
+    }
 
     private static final Map<Source, Set<String>> COVERED_PLATFORMS = Map.of(
             Source.STEAM, Set.of("PC"),
@@ -35,7 +53,12 @@ public final class SyncedOnlineHours {
 
     /** Online share of the given links and runs, never negative. */
     public static double of(Collection<GamePlatformLink> links, Collection<Experience> runs) {
-        double share = 0.0;
+        return share(links, runs).total();
+    }
+
+    /** The same share, per source: a run change moves only the platform rows of its own source. */
+    public static Share share(Collection<GamePlatformLink> links, Collection<Experience> runs) {
+        Map<Source, Double> bySource = new EnumMap<>(Source.class);
         for (Source source : Source.values()) {
             long syncedMinutes = links.stream()
                     .filter(link -> sourceOf(link.getPlatform()) == source)
@@ -48,12 +71,12 @@ public final class SyncedOnlineHours {
                     .filter(run -> isOn(run, COVERED_PLATFORMS.get(source)))
                     .mapToDouble(run -> run.getHours() != null ? run.getHours() : 0.0)
                     .sum();
-            share += Math.max(0.0, syncedMinutes / 60.0 - runHours);
+            bySource.put(source, Math.max(0.0, syncedMinutes / 60.0 - runHours));
         }
-        return share;
+        return new Share(bySource);
     }
 
-    private static Source sourceOf(ExternalPlatform platform) {
+    static Source sourceOf(ExternalPlatform platform) {
         if (platform == null) return null;
         return switch (platform) {
             case STEAM -> Source.STEAM;
