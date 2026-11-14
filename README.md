@@ -89,7 +89,7 @@ The service runs in a small single-CPU container next to a shared Postgres, so `
 Recommended `JAVA_TOOL_OPTIONS` on the Railway service:
 
 ```
--Xmx256m -Xss512k -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -XX:TieredStopAtLevel=1
+-Xmx256m -Xss512k -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:+ExitOnOutOfMemoryError
 ```
 
 Heap sized from the container limit, a low-overhead GC for one CPU, smaller thread stacks, and exit on OOM so Railway restarts the service instead of leaving it half-alive.

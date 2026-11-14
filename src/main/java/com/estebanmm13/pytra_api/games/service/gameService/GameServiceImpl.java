@@ -36,6 +36,7 @@ public class GameServiceImpl implements GameService {
     private final GameExperienceStatsCalculator gameExperienceStatsCalculator;
 
     @Override
+    @Transactional(readOnly = true)
     public List<GameResponseDto> findAllByUser(Long userId) {
         // Saga and genres fetched in the same query, aggregates in one more: no per-game queries.
         List<Game> games = gameRepository.findAllByUserIdWithSagaAndGenres(userId);

@@ -33,6 +33,9 @@ import java.time.Year;
 import java.util.*;
 
 @Service
+// Read-only by default: the dashboard fires ~11 parallel stats requests against a 5-connection pool,
+// so each request must hold one connection instead of checking one out per repository call.
+@Transactional(readOnly = true)
 public class StatsServiceImpl implements StatsService {
 
     private static final int MAX_LIMIT = 50;
@@ -149,7 +152,6 @@ public class StatsServiceImpl implements StatsService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public YearSummaryDto getYearSummary(Long userId, int year) {
         return yearSummaryBuilder.build(userId, year);
     }
