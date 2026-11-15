@@ -86,7 +86,12 @@ public class GameExperienceStatsCalculator {
             if (experience.getRating() != null && (bestRating == null || experience.getRating().compareTo(bestRating) > 0)) {
                 bestRating = experience.getRating();
             }
+            // The postgame is play too: its end counts as the last time the run was played.
             Integer year = ExperiencePeriod.yearOf(experience);
+            if (experience.getPostgameEndDate() != null
+                    && (year == null || experience.getPostgameEndDate().getYear() > year)) {
+                year = experience.getPostgameEndDate().getYear();
+            }
             if (year != null && (lastPlayedYear == null || year > lastPlayedYear)) {
                 lastPlayedYear = year;
             }
@@ -95,7 +100,8 @@ public class GameExperienceStatsCalculator {
             if (experience.getPlatform() != null) {
                 platformsById.putIfAbsent(experience.getPlatform().getId(), experience.getPlatform());
             }
-            lastPlayedAt = latestOf(latestOf(lastPlayedAt, experience.getEndDate()), experience.getStartDate());
+            lastPlayedAt = latestOf(latestOf(latestOf(lastPlayedAt, experience.getEndDate()), experience.getStartDate()),
+                    experience.getPostgameEndDate());
             if (latest == null || ExperiencePeriod.RECENCY.compare(experience, latest) > 0) {
                 latest = experience;
             }

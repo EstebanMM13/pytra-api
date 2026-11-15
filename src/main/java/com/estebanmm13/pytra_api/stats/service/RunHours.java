@@ -124,6 +124,23 @@ final class RunHours {
         return total;
     }
 
+    /** Last month (1-12) of {@code year} with hours of the run, or null. */
+    Integer lastMonth(Experience run, int year) {
+        Integer last = null;
+        for (Slice slice : slicesOf(run)) {
+            if (slice.year() == year && slice.month() != null && slice.hours() > 0
+                    && (last == null || slice.month() > last)) {
+                last = slice.month();
+            }
+        }
+        return last;
+    }
+
+    /** Whether the run has hours in {@code year} (at least 0.01 h once rounded). */
+    boolean playedIn(Experience run, int year) {
+        return StatsMath.round2(inYear(run, year)) > 0;
+    }
+
     /** Hours of every run played in {@code year}. */
     double inYear(int year) {
         double total = 0;

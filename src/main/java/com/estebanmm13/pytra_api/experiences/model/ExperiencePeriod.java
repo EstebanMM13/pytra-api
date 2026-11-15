@@ -65,6 +65,14 @@ public final class ExperiencePeriod {
         return null;
     }
 
+    /**
+     * Year a run's platinum / 100% were earned: they have no date of their own, so the end of the postgame
+     * stands for it, else the credits ({@link #yearOf}).
+     */
+    public static Integer achievementYearOf(Experience experience) {
+        return experience.getPostgameEndDate() != null ? experience.getPostgameEndDate().getYear() : yearOf(experience);
+    }
+
     public static LocalDate recencyDateOf(Experience experience) {
         if (experience.getEndDate() != null) {
             return experience.getEndDate();

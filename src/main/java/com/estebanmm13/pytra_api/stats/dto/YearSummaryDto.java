@@ -8,11 +8,17 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * Year in review. Counts and {@link #experiences} use ExperiencePeriod (explicit year, else endDate, else
- * startDate); {@link #totalHours}, the months and {@link #hoursWithoutMonth} use the hours played in the year
- * (RunHours: diary days, the rest spread from start to credits or postgame end); the highlights use the Obsidian attributions documented in
- * YearHighlightsCalculator ("completed in year" / "played in year"). {@link #totalHours} and the months also
- * include {@link #onlineHours} (dated by the diary); every count, the rating and the highlights only use runs.
+ * Year in review.
+ * <ul>
+ *   <li>{@link #experiences} and {@link #experienceCount}: the runs played in the year (credits in it, or hours
+ *       in it), each with its role and hours in the year.</li>
+ *   <li>Completed, abandoned and the rating: the credits year (ExperiencePeriod.yearOf: explicit year, else
+ *       endDate, else startDate).</li>
+ *   <li>Platinums and 100%: the achievement year (postgame end, else credits).</li>
+ *   <li>{@link #totalHours}, the months and {@link #hoursWithoutMonth}: the hours played in the year (RunHours:
+ *       diary days, the rest spread from start to credits or postgame end), plus {@link #onlineHours}.</li>
+ *   <li>The highlights: the attributions documented in YearHighlightsCalculator.</li>
+ * </ul>
  */
 @Getter
 @AllArgsConstructor

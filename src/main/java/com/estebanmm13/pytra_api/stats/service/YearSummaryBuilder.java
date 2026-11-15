@@ -14,6 +14,7 @@ import com.estebanmm13.pytra_api.stats.dto.MonthHoursDto;
 import com.estebanmm13.pytra_api.stats.dto.YearExperienceDto;
 import com.estebanmm13.pytra_api.stats.dto.YearNoteDto;
 import com.estebanmm13.pytra_api.stats.dto.YearOnlineGameDto;
+import com.estebanmm13.pytra_api.stats.dto.YearRunRole;
 import com.estebanmm13.pytra_api.stats.dto.YearSummaryDto;
 import com.estebanmm13.pytra_api.stats.repository.YearNoteRepository;
 import com.estebanmm13.pytra_api.stats.service.StatsServiceImpl.Accumulator;
@@ -52,6 +53,7 @@ final class YearSummaryBuilder {
     YearSummaryDto build(Long userId, int year) {
         requireValidYear(year);
         List<Experience> allExperiences = experienceRepository.findAllByUserId(userId);
+        // Finished (credits or abandonment) in the year: completed, abandoned and the rating.
         List<Experience> experiences = allExperiences.stream()
                 .filter(experience -> Objects.equals(ExperiencePeriod.yearOf(experience), year))
                 .toList();
@@ -60,9 +62,13 @@ final class YearSummaryBuilder {
         for (Game game : gameRepository.findAllByUserIdWithSagaAndGenres(userId)) {
             games.put(game.getId(), game);
         }
-        // Hours follow the days played (RunHours); the run table and counts follow the credits (yearOf).
+        // Hours follow the days played (RunHours); the run table lists every run played in the year.
         RunHours runHours = RunHours.of(allExperiences, diaryEntryGameRepository.sumCountedRunHoursByDay(userId),
                 LocalDate.now(clock));
+        List<Experience> played = allExperiences.stream()
+                .filter(experience -> Objects.equals(ExperiencePeriod.yearOf(experience), year)
+                        || runHours.playedIn(experience, year))
+                .toList();
         YearHighlightsCalculator.YearHighlights highlights =
                 YearHighlightsCalculator.compute(year, allExperiences, games, run -> runHours.inYear(run, year));
 
@@ -75,12 +81,20 @@ final class YearSummaryBuilder {
         List<YearExperienceDto> rows = new ArrayList<>();
 
         for (Experience experience : experiences) {
-            double hours = hoursOf(experience);
-            Integer month = ExperiencePeriod.monthOf(experience);
             if (experience.getStatus() == ExperienceStatus.COMPLETADO) completed++;
             if (experience.getStatus() == ExperienceStatus.ABANDONADO) abandoned++;
+        }
+        for (Experience experience : allExperiences) {
+            if (!Objects.equals(ExperiencePeriod.achievementYearOf(experience), year)) continue;
             if (Boolean.TRUE.equals(experience.getPlatinum())) platinums++;
             if (Boolean.TRUE.equals(experience.getFullCompletion())) fullCompletions++;
+        }
+
+        for (Experience experience : played) {
+            double hours = hoursOf(experience);
+            boolean creditsYear = Objects.equals(ExperiencePeriod.yearOf(experience), year);
+            Integer month = creditsYear ? ExperiencePeriod.monthOf(experience) : runHours.lastMonth(experience, year);
+            boolean achievedHere = Objects.equals(ExperiencePeriod.achievementYearOf(experience), year);
 
             Game game = games.get(experience.getGameId());
             rows.add(new YearExperienceDto(
@@ -92,15 +106,17 @@ final class YearSummaryBuilder {
                     experience.getStatus(),
                     hours,
                     Ratings.normalize(experience.getRating()),
-                    Boolean.TRUE.equals(experience.getPlatinum()),
-                    Boolean.TRUE.equals(experience.getFullCompletion()),
+                    achievedHere && Boolean.TRUE.equals(experience.getPlatinum()),
+                    achievedHere && Boolean.TRUE.equals(experience.getFullCompletion()),
                     PlatformMapper.legacyCodeOf(experience.getPlatform()),
                     PlatformMapper.idOf(experience.getPlatform()),
                     PlatformMapper.nameOf(experience.getPlatform()),
                     PlatformMapper.colorOf(experience.getPlatform()),
                     month,
                     experience.getStartDate(),
-                    experience.getEndDate()
+                    experience.getEndDate(),
+                    roleIn(experience, year),
+                    StatsMath.round2(runHours.inYear(experience, year))
             ));
         }
 
@@ -123,7 +139,7 @@ final class YearSummaryBuilder {
         return new YearSummaryDto(
                 year,
                 StatsMath.round2(runHours.inYear(year) + online.hours()),
-                experiences.size(),
+                played.size(),
                 completed,
                 abandoned,
                 StatsMath.averageRating(experiences.stream().map(Experience::getRating).toList()),
@@ -145,6 +161,22 @@ final class YearSummaryBuilder {
                 online.hours(),
                 online.games()
         );
+    }
+
+    /** What a run was in {@code year}: its credits or abandonment, its postgame, or still being played. */
+    static YearRunRole roleIn(Experience run, int year) {
+        Integer creditsYear = ExperiencePeriod.yearOf(run);
+        if (Objects.equals(creditsYear, year)) {
+            return switch (run.getStatus()) {
+                case COMPLETADO -> YearRunRole.COMPLETED;
+                case ABANDONADO -> YearRunRole.ABANDONED;
+                default -> YearRunRole.PLAYING;
+            };
+        }
+        if (run.getStatus() == ExperienceStatus.COMPLETADO && creditsYear != null && year > creditsYear) {
+            return YearRunRole.POSTGAME;
+        }
+        return YearRunRole.PLAYING;
     }
 
     /** A year's online diary hours: in total, per month (January first) and per game. */

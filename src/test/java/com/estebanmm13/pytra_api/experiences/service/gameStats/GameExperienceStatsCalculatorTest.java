@@ -52,6 +52,17 @@ class GameExperienceStatsCalculatorTest {
     }
 
     @Test
+    void theEndOfThePostgameCountsAsLastPlayed() {
+        Experience silksong = run(TestPlatforms.PC, LocalDate.of(2025, 7, 1), LocalDate.of(2025, 8, 20));
+        silksong.setPostgameEndDate(LocalDate.of(2026, 2, 10));
+
+        GameExperienceStats stats = GameExperienceStatsCalculator.of(List.of(silksong));
+
+        assertThat(stats.lastPlayedAt()).isEqualTo(LocalDate.of(2026, 2, 10));
+        assertThat(stats.lastPlayedYear()).isEqualTo(2026);
+    }
+
+    @Test
     void endDateWinsOverItsOwnEarlierStartDate() {
         GameExperienceStats stats = GameExperienceStatsCalculator.of(List.of(
                 run(TestPlatforms.PC, LocalDate.of(2021, 1, 1), LocalDate.of(2021, 6, 30))));

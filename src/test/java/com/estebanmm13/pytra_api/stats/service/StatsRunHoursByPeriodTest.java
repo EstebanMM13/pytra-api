@@ -15,6 +15,7 @@ import com.estebanmm13.pytra_api.stats.dto.MostPlayedGameDto;
 import com.estebanmm13.pytra_api.stats.dto.PlatformStatsDto;
 import com.estebanmm13.pytra_api.stats.dto.PlayFactsDto;
 import com.estebanmm13.pytra_api.stats.dto.YearExperienceDto;
+import com.estebanmm13.pytra_api.stats.dto.YearRunRole;
 import com.estebanmm13.pytra_api.stats.dto.YearStatDto;
 import com.estebanmm13.pytra_api.stats.dto.YearSummaryDto;
 import com.estebanmm13.pytra_api.stats.repository.YearNoteRepository;
@@ -70,7 +71,7 @@ class StatsRunHoursByPeriodTest {
         List<YearStatDto> byYear = stats.getByYear(USER_ID);
 
         assertThat(byYear).extracting(YearStatDto::getYear, YearStatDto::getTotalHours, YearStatDto::getExperienceCount)
-                .containsExactly(tuple(2026, 15.0, 1L), tuple(2025, 15.0, 0L));
+                .containsExactly(tuple(2026, 15.0, 1L), tuple(2025, 15.0, 1L));
         assertThat(byYear.get(1).getAverageRating()).isNull();
         assertThat(stats.getYears(USER_ID)).containsExactly(2026, 2025);
     }
@@ -84,17 +85,58 @@ class StatsRunHoursByPeriodTest {
 
         assertThat(y2025.getTotalHours()).isEqualTo(15.0);
         assertThat(y2025.getMonths()).extracting(MonthHoursDto::getHours).element(11).isEqualTo(15.0);
-        assertThat(y2025.getExperiences()).isEmpty();
+        assertThat(y2025.getExperiences()).extracting(YearExperienceDto::getExperienceId, YearExperienceDto::getYearRole,
+                        YearExperienceDto::getYearHours, YearExperienceDto::getHours)
+                .containsExactly(tuple(1L, YearRunRole.PLAYING, 15.0, 30.0));
+        assertThat(y2025.getExperienceCount()).isEqualTo(1);
+        assertThat(y2025.getCompletedCount()).isZero();
         assertThat(y2025.getMostPlayed()).extracting(MostPlayedGameDto::getGameId, MostPlayedGameDto::getTotalHours)
                 .containsExactly(tuple(10L, 15.0));
         assertThat(y2025.getGoty()).isNull();
 
         assertThat(y2026.getTotalHours()).isEqualTo(15.0);
         assertThat(y2026.getMonths()).extracting(MonthHoursDto::getHours).element(0).isEqualTo(15.0);
-        assertThat(y2026.getExperiences()).extracting(YearExperienceDto::getExperienceId, YearExperienceDto::getHours)
-                .containsExactly(tuple(1L, 30.0));
+        assertThat(y2026.getExperiences()).extracting(YearExperienceDto::getExperienceId, YearExperienceDto::getYearRole,
+                        YearExperienceDto::getYearHours)
+                .containsExactly(tuple(1L, YearRunRole.COMPLETED, 15.0));
         assertThat(y2026.getCompletedCount()).isEqualTo(1);
         assertThat(y2026.getGoty().getGameId()).isEqualTo(10L);
+    }
+
+    /** Silksong: credits in 2025, the 100% at the end of the postgame in 2026. */
+    @Test
+    void aPostgameYearListsTheRunAndCountsItsAchievementsThere() {
+        Experience silksong = Experience.builder().id(2L).userId(USER_ID).gameId(10L).runLabel("Run 1")
+                .status(ExperienceStatus.COMPLETADO).rating(new BigDecimal("9.5")).hours(40.0)
+                .startDate(LocalDate.of(2025, 11, 2)).endDate(LocalDate.of(2025, 12, 31))
+                .postgameEndDate(LocalDate.of(2026, 1, 19))
+                .platform(TestPlatforms.PC).platinum(true).fullCompletion(true).replay(false).build();
+        givenRuns(silksong);
+
+        YearSummaryDto y2025 = stats.getYearSummary(USER_ID, 2025);
+        YearSummaryDto y2026 = stats.getYearSummary(USER_ID, 2026);
+
+        // 79 days: 60 in 2025 (credits), 19 in 2026 (postgame).
+        assertThat(y2025.getExperiences()).extracting(YearExperienceDto::getYearRole, YearExperienceDto::getYearHours,
+                        YearExperienceDto::getPlatinum, YearExperienceDto::getFullCompletion)
+                .containsExactly(tuple(YearRunRole.COMPLETED, 30.38, false, false));
+        assertThat(y2025.getCompletedCount()).isEqualTo(1);
+        assertThat(y2025.getPlatinumCount()).isZero();
+        assertThat(y2025.getFullCompletionCount()).isZero();
+        assertThat(y2025.getGoty().getGameId()).isEqualTo(10L);
+
+        assertThat(y2026.getExperiences()).extracting(YearExperienceDto::getYearRole, YearExperienceDto::getYearHours,
+                        YearExperienceDto::getPlatinum, YearExperienceDto::getFullCompletion, YearExperienceDto::getMonth)
+                .containsExactly(tuple(YearRunRole.POSTGAME, 9.62, true, true, 1));
+        assertThat(y2026.getExperienceCount()).isEqualTo(1);
+        assertThat(y2026.getCompletedCount()).isZero();
+        assertThat(y2026.getAverageRating()).isNull();
+        assertThat(y2026.getPlatinumCount()).isEqualTo(1);
+        assertThat(y2026.getFullCompletionCount()).isEqualTo(1);
+        assertThat(y2026.getGoty()).isNull();
+
+        assertThat(stats.getByYear(USER_ID)).extracting(YearStatDto::getYear, YearStatDto::getExperienceCount)
+                .containsExactly(tuple(2026, 1L), tuple(2025, 1L));
     }
 
     @Test

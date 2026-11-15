@@ -135,7 +135,8 @@ public class StatsServiceImpl implements StatsService {
     }
 
     /**
-     * Runs per year (by their credits, {@link ExperiencePeriod#yearOf}) plus the hours played in each year: run
+     * Runs played per year (credits in it or hours in it; the rating uses the credits,
+     * {@link ExperiencePeriod#yearOf}) plus the hours played in each year: run
      * hours spread over the days they were played ({@link RunHours}) and the online hours the diary dates. A
      * year with hours but no runs has its counts at 0 and its rating null.
      */
@@ -154,10 +155,14 @@ public class StatsServiceImpl implements StatsService {
         for (Integer year : years) {
             List<Experience> experiences = runsByYear.getOrDefault(year, List.of());
             double onlineHours = onlineByYear.getOrDefault(year, 0.0);
+            // Runs played in the year: finished in it, or with hours in it (a postgame, a run across years).
+            long played = runs.stream()
+                    .filter(run -> experiences.contains(run) || runHours.playedIn(run, year))
+                    .count();
             result.add(new YearStatDto(
                     year,
                     StatsMath.round2(runHours.inYear(year) + onlineHours),
-                    experiences.size(),
+                    played,
                     StatsMath.averageRating(experiences.stream().map(Experience::getRating).toList()),
                     onlineHours
             ));
