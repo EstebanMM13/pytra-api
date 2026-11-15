@@ -97,4 +97,14 @@ class RunHoursTest {
         assertThat(hours.withoutMonth(2019)).isCloseTo(8, within(1e-9));
         assertThat(hours.years()).containsExactlyInAnyOrder(2024, 2027, 2019);
     }
+
+    @Test
+    void yearsWithLessThanAHundredthOfAnHourAreNotListed() {
+        // A run of 0.001 h rounds to 0 in its year, so the year is not listed.
+        Experience tiny = run(1, 0.001, LocalDate.of(2019, 6, 1), LocalDate.of(2019, 6, 1));
+        RunHours hours = RunHours.of(List.of(tiny), List.of(), TODAY);
+
+        assertThat(hours.years()).isEmpty();
+        assertThat(hours.inYear(tiny, 2019)).isCloseTo(0.001, within(1e-9));
+    }
 }

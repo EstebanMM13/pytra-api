@@ -155,14 +155,18 @@ final class RunHours {
         return total;
     }
 
-    /** Every year with played hours. */
+    /** Every year with played hours (at least 0.01 h once rounded, so a long spread adds no empty years). */
     Set<Integer> years() {
-        Set<Integer> years = new HashSet<>();
+        Map<Integer, Double> byYear = new HashMap<>();
         for (List<Slice> slices : slicesByRun.values()) {
             for (Slice slice : slices) {
-                if (slice.hours() > 0) years.add(slice.year());
+                byYear.merge(slice.year(), slice.hours(), Double::sum);
             }
         }
+        Set<Integer> years = new HashSet<>();
+        byYear.forEach((year, hours) -> {
+            if (StatsMath.round2(hours) > 0) years.add(year);
+        });
         return years;
     }
 

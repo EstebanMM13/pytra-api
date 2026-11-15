@@ -80,38 +80,47 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
     }
 
     @Test
-    void byYearAndYearsUseYearFieldThenEndDateThenStartDate() throws Exception {
+    void byYearCountsRunsByYearFieldThenEndDateThenStartDateAndHoursByTheDaysPlayed() throws Exception {
         Long gameId = createGameVia(auth, "Year Game", "");
+        // Counted in 2024 (year field), but its hours were played on its only date, in 2023.
         createExperienceVia(auth, gameId, run("Explicit", "COMPLETADO", 9, 10.0, 2024, null, "2023-02-01", ""));
         createExperienceVia(auth, gameId, run("Explicit 2", "COMPLETADO", 6, 2.0, 2024, null, null, ""));
+        // Counted in 2023 (credits); 3h over 486 days: 365 in 2022, 121 in 2023.
         createExperienceVia(auth, gameId, run("From end", "COMPLETADO", 7, 3.0, null, "2022-01-01", "2023-05-01", ""));
-        createExperienceVia(auth, gameId, run("From start", "EN_CURSO", null, 1.0, null, "2021-03-01", null, ""));
+        createExperienceVia(auth, gameId, run("From start", "ABANDONADO", null, 1.0, null, "2021-03-01", null, ""));
         createExperienceVia(auth, gameId, run("Undated", "ABANDONADO", 10, 50.0, null, null, null, ""));
 
         performAs(auth, get("/api/v1/stats/years"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", contains(2024, 2023, 2021)));
+                .andExpect(jsonPath("$", contains(2024, 2023, 2022, 2021)));
 
         performAs(auth, get("/api/v1/stats/by-year"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(3)))
+                .andExpect(jsonPath("$", hasSize(4)))
                 .andExpect(jsonPath("$[0].year").value(2024))
                 .andExpect(jsonPath("$[0].experienceCount").value(2))
-                .andExpect(jsonPath("$[0].totalHours").value(12.0))
+                .andExpect(jsonPath("$[0].totalHours").value(2.0))
                 .andExpect(jsonPath("$[0].averageRating").value(7.5))
                 .andExpect(jsonPath("$[1].year").value(2023))
+                .andExpect(jsonPath("$[1].experienceCount").value(1))
+                .andExpect(jsonPath("$[1].totalHours").value(10.75))
                 .andExpect(jsonPath("$[1].averageRating").value(7.0))
-                .andExpect(jsonPath("$[2].year").value(2021))
-                .andExpect(jsonPath("$[2].averageRating").value(nullValue()));
+                .andExpect(jsonPath("$[2].year").value(2022))
+                .andExpect(jsonPath("$[2].experienceCount").value(0))
+                .andExpect(jsonPath("$[2].totalHours").value(2.25))
+                .andExpect(jsonPath("$[3].year").value(2021))
+                .andExpect(jsonPath("$[3].totalHours").value(1.0))
+                .andExpect(jsonPath("$[3].averageRating").value(nullValue()));
     }
 
     @Test
     void yearSummaryBucketsHoursByMonthAndOrdersRunsByRating() throws Exception {
         Long gameId = createGameVia(auth, "Month Game", "");
         createExperienceVia(auth, gameId, run("March", "COMPLETADO", 7, 10.0, null, null, "2024-03-15", ", \"platinum\": true"));
-        createExperienceVia(auth, gameId, run("July", "EN_CURSO", 9, 5.0, 2024, "2024-07-01", null, ""));
+        createExperienceVia(auth, gameId, run("July", "ABANDONADO", 9, 5.0, 2024, "2024-07-01", "2024-07-20", ""));
         createExperienceVia(auth, gameId, run("Also March", "ABANDONADO", null, 1.5, 2024, null, "2024-03-02", ""));
-        createExperienceVia(auth, gameId, run("No month", "COMPLETADO", 8, 2.5, 2024, "2023-12-01", "2025-01-10", ""));
+        // Only its year is known: its hours have no month.
+        createExperienceVia(auth, gameId, run("No month", "COMPLETADO", 8, 2.5, 2024, null, null, ""));
         createExperienceVia(auth, gameId, run("Other year", "COMPLETADO", 10, 99.0, 2023, null, null, ""));
 
         performAs(auth, get("/api/v1/stats/years/2024"))
@@ -120,7 +129,7 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.totalHours").value(19.0))
                 .andExpect(jsonPath("$.experienceCount").value(4))
                 .andExpect(jsonPath("$.completedCount").value(2))
-                .andExpect(jsonPath("$.abandonedCount").value(1))
+                .andExpect(jsonPath("$.abandonedCount").value(2))
                 .andExpect(jsonPath("$.platinumCount").value(1))
                 .andExpect(jsonPath("$.averageRating").value(8.0))
                 .andExpect(jsonPath("$.hoursWithoutMonth").value(2.5))
@@ -156,14 +165,14 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
     }
 
     @Test
-    void highlightsUseCompletedInYearAndMostPlayedUsesTheYearField() throws Exception {
+    void highlightsUseCompletedInYearAndMostPlayedUsesTheHoursPlayedInTheYear() throws Exception {
         Long sagaId = readId(performAs(auth, post("/api/v1/sagas"), "{\"name\": \"Highlight Saga\"}")
                 .andExpect(status().isCreated()).andReturn());
         Long finished = createGameVia(auth, "Finished", ", \"sagaId\": " + sagaId);
         Long grinding = createGameVia(auth, "Grinding", "");
         Long meh = createGameVia(auth, "Meh", "");
 
-        // Completed in 2024 (endDate), no year field: rated highlights only.
+        // Completed in 2024 (endDate), no year field: rated highlights, and its hours were played in 2024.
         createExperienceVia(auth, finished, run("Run", "COMPLETADO", 9, 30.0, null, null, "2024-04-01", ""));
         // Year field 2024 but still in progress: most played only.
         createExperienceVia(auth, grinding, run("Run", "EN_CURSO", 10, 80.0, 2024, null, null, ""));
@@ -177,7 +186,7 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.goty.totalHours").value(30.0))
                 .andExpect(jsonPath("$.goty.coverImageUrl").value(nullValue()))
                 .andExpect(jsonPath("$.topRated[*].gameName", contains("Finished", "Meh")))
-                .andExpect(jsonPath("$.mostPlayed[*].gameName", contains("Grinding", "Meh")))
+                .andExpect(jsonPath("$.mostPlayed[*].gameName", contains("Grinding", "Finished", "Meh")))
                 .andExpect(jsonPath("$.mostPlayed[0].totalHours").value(80.0))
                 .andExpect(jsonPath("$.topSagas", hasSize(1)))
                 .andExpect(jsonPath("$.topSagas[0].sagaId").value(sagaId))
@@ -286,8 +295,9 @@ class StatsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.totalHours").value(14.5))
                 .andExpect(jsonPath("$.onlineHours").value(3.0))
                 .andExpect(jsonPath("$.experienceCount").value(1))
-                .andExpect(jsonPath("$.hoursWithoutMonth").value(11.5))
-                .andExpect(jsonPath("$.months[2].hours").value(2.0))
+                // The run's diary day keeps its month (March); the rest of the undated run has none.
+                .andExpect(jsonPath("$.hoursWithoutMonth").value(10.0))
+                .andExpect(jsonPath("$.months[2].hours").value(3.5))
                 .andExpect(jsonPath("$.months[4].hours").value(1.0))
                 .andExpect(jsonPath("$.onlineGames", hasSize(1)))
                 .andExpect(jsonPath("$.onlineGames[0].gameId").value(online))
