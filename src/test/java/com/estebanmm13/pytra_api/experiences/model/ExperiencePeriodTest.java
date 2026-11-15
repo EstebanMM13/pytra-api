@@ -60,4 +60,16 @@ class ExperiencePeriodTest {
     private static Experience experience(Long id, Integer year, LocalDate start, LocalDate end) {
         return Experience.builder().id(id).year(year).startDate(start).endDate(end).build();
     }
+
+    @Test
+    void achievementYearIsThePostgameEndElseTheCreditsElseNone() {
+        Experience undated = Experience.builder().build();
+        assertThat(ExperiencePeriod.achievementYearOf(undated)).isNull();
+
+        Experience beaten = Experience.builder().endDate(JUNE_2024).build();
+        assertThat(ExperiencePeriod.achievementYearOf(beaten)).isEqualTo(2024);
+
+        beaten.setPostgameEndDate(LocalDate.of(2025, 2, 1));
+        assertThat(ExperiencePeriod.achievementYearOf(beaten)).isEqualTo(2025);
+    }
 }

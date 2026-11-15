@@ -70,7 +70,10 @@ public final class ExperiencePeriod {
      * stands for it, else the credits ({@link #yearOf}).
      */
     public static Integer achievementYearOf(Experience experience) {
-        return experience.getPostgameEndDate() != null ? experience.getPostgameEndDate().getYear() : yearOf(experience);
+        if (experience.getPostgameEndDate() != null) {
+            return experience.getPostgameEndDate().getYear();
+        }
+        return yearOf(experience);
     }
 
     public static LocalDate recencyDateOf(Experience experience) {
