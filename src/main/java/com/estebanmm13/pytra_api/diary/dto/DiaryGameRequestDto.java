@@ -12,7 +12,7 @@ import java.math.BigDecimal;
 
 /**
  * A game played on the day. {@code experienceId} picks the run the hours go to; it may be omitted when
- * the game has exactly one run in progress (or is ONLINE / platform-synced).
+ * the game has exactly one run in progress (or is ONLINE / platform-synced, or a HYBRID line sent to online).
  */
 @Getter
 @Setter
@@ -28,6 +28,12 @@ public class DiaryGameRequestDto {
      * must be one of them (INVALID_PLATFORM); ignored otherwise.
      */
     private Long platformId;
+    /**
+     * HYBRID games only: true sends the hours to online playtime (then {@code platformId} works as for an ONLINE
+     * game), false to a run. Absent keeps where the line already went (a new line goes to a run); ignored for
+     * other categories.
+     */
+    private Boolean online;
 
     /** More than 0 and at most 24, with up to 2 decimals; more decimals are rejected, never rounded. */
     @NotNull

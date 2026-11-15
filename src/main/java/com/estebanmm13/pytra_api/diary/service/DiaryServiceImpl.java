@@ -207,7 +207,7 @@ public class DiaryServiceImpl implements DiaryService {
                 resolved.add(new ResolvedGame(game, null, run));
                 continue;
             }
-            if (owned.getCategory() == GameCategory.ONLINE) {
+            if (goesOnline(owned, game, oldLine)) {
                 Long platform = pickOnlinePlatform(game, oldLine, userId, "games[" + i + "].platformId", platformErrors);
                 resolved.add(new ResolvedGame(game, Target.online(platform), null));
                 continue;
@@ -235,6 +235,23 @@ public class DiaryServiceImpl implements DiaryService {
             throw new InvalidRequestException(code, platformErrors);
         }
         return resolved;
+    }
+
+    /**
+     * The line's hours go to online playtime: always for an ONLINE game; for a HYBRID one when it is sent to
+     * online, or when nothing is sent and the line already counted there (counted without a run).
+     */
+    private static boolean goesOnline(Game owned, DiaryGameRequestDto game, DiaryEntryGame oldLine) {
+        if (owned.getCategory() == GameCategory.ONLINE) {
+            return true;
+        }
+        if (owned.getCategory() != GameCategory.HYBRID) {
+            return false;
+        }
+        if (game.getOnline() != null) {
+            return game.getOnline();
+        }
+        return oldLine != null && oldLine.isCountsHours() && oldLine.getExperienceId() == null;
     }
 
     /**

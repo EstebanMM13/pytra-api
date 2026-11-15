@@ -532,6 +532,83 @@ class DiaryServiceImplTest {
         verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("-3"), PC, USER_ID);
     }
 
+    @Test
+    void aHybridLineSentToOnlineAddsItsHoursToThePickedOnlinePlatform() {
+        ownedGame(GameCategory.HYBRID);
+        runs(run(RUN_A, ExperienceStatus.EN_CURSO));
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));
+        DiaryGameRequestDto game = game(null, "2");
+        game.setOnline(true);
+        game.setPlatformId(PS5);
+
+        DiaryDayResponseDto day = service.saveDay(DAY, day(game), USER_ID).orElseThrow();
+
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("2"), PS5, USER_ID);
+        verifyNoInteractions(experienceService);
+        assertThat(day.games()).singleElement().satisfies(line -> {
+            assertThat(line.experienceId()).isNull();
+            assertThat(line.platformId()).isEqualTo(PS5);
+            assertThat(line.countsHours()).isTrue();
+        });
+    }
+
+    @Test
+    void aHybridLineSentToOnlineWithSeveralPlatformsAndNoPlatformIsRefused() {
+        ownedGame(GameCategory.HYBRID);
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));
+        DiaryGameRequestDto game = game(null, "1");
+        game.setOnline(true);
+
+        assertThatThrownBy(() -> service.saveDay(DAY, day(game), USER_ID))
+                .isInstanceOfSatisfying(InvalidRequestException.class, e -> assertThat(e.getFieldErrors())
+                        .containsEntry("games[0].platformId", InvalidRequestException.DIARY_PLATFORM_REQUIRED));
+        verify(diaryEntryRepository, never()).save(any());
+    }
+
+    @Test
+    void aHybridLineWithoutOnlineStillGoesToTheRun() {
+        ownedGame(GameCategory.HYBRID);
+        runs(run(RUN_A, ExperienceStatus.EN_CURSO));
+
+        service.saveDay(DAY, day(game(null, "2")), USER_ID);
+
+        verify(experienceService).addHours(RUN_A, new BigDecimal("2"), USER_ID);
+        verify(onlinePlaytimeService, never()).addHours(anyLong(), any(), anyLong());
+        verify(onlinePlaytimeService, never()).addHours(anyLong(), any(), any(), anyLong());
+    }
+
+    @Test
+    void movingAHybridLineFromOnlineToTheCampaignMovesTheHours() {
+        ownedGame(GameCategory.HYBRID);
+        runs(run(RUN_A, ExperienceStatus.EN_CURSO));
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));
+        DiaryEntryGame old = line(null, "3", true);
+        old.setPlatformId(PC);
+        existingDay(old);
+        DiaryGameRequestDto game = game(RUN_A, "3");
+        game.setOnline(false);
+
+        service.saveDay(DAY, day(game), USER_ID);
+
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("-3"), PC, USER_ID);
+        verify(experienceService).addHours(RUN_A, new BigDecimal("3"), USER_ID);
+    }
+
+    @Test
+    void aHybridOnlineLineStaysOnlineWhenOnlineIsNotSent() {
+        ownedGame(GameCategory.HYBRID);
+        runs(run(RUN_A, ExperienceStatus.EN_CURSO));
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));
+        DiaryEntryGame old = line(null, "3", true);
+        old.setPlatformId(PC);
+        existingDay(old);
+
+        service.saveDay(DAY, day(game(null, "1")), USER_ID);
+
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("-2"), PC, USER_ID);
+        verifyNoInteractions(experienceService);
+    }
+
     private static DiaryEntryGame autoLine(Long experienceId, String hours) {
         DiaryEntryGame line = line(experienceId, hours, false);
         line.setAutoSynced(true);
