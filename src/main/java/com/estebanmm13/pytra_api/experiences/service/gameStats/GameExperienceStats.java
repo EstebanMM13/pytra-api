@@ -13,6 +13,8 @@ import java.util.List;
  * @param experienceCount      number of runs (online playtime is not a run)
  * @param totalHours           run hours plus the online playtime's total hours
  * @param bestRating           best of the run ratings and the online general rating
+ * @param averageRating        mean of every run rating and the online general rating, each once (2 decimals);
+ *                             the game's rating wherever the app ranks or shows games
  * @param lastExperienceStatus status of the most recent run (see ExperiencePeriod#RECENCY), null without runs
  * @param lastExperiencePostgame true when that most recent run is COMPLETADO with its postgame still going
  * @param lastPlayedYear       latest ExperiencePeriod#yearOf among the runs, null when none has a year
@@ -24,6 +26,7 @@ public record GameExperienceStats(
         long experienceCount,
         double totalHours,
         BigDecimal bestRating,
+        BigDecimal averageRating,
         ExperienceStatus lastExperienceStatus,
         boolean lastExperiencePostgame,
         Integer lastPlayedYear,
@@ -34,5 +37,5 @@ public record GameExperienceStats(
         LocalDate lastActivityAt) {
 
     public static final GameExperienceStats EMPTY =
-            new GameExperienceStats(0, 0.0, null, null, false, null, false, false, List.of(), null, null);
+            new GameExperienceStats(0, 0.0, null, null, null, false, null, false, false, List.of(), null, null);
 }

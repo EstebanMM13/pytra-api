@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -62,7 +63,7 @@ public class GameExperienceStatsCalculator {
 
     /**
      * Stats over the runs plus the game's online playtime ({@code online} may be null). Online hours add to
-     * {@code totalHours}, its rating competes for {@code bestRating}, its platforms join {@code platforms} and its
+     * {@code totalHours}, its rating competes for {@code bestRating} and joins {@code averageRating}, its platforms join {@code platforms} and its
      * platinum / 100% flags count for {@code hasPlatinum} / {@code hasFullCompletion}; run-only aggregates (count,
      * status, year, last played) ignore it. {@code lastActivityAt} adds the online playtime's last session to
      * {@code lastPlayedAt}.
@@ -73,6 +74,8 @@ public class GameExperienceStatsCalculator {
         }
         double totalHours = 0;
         BigDecimal bestRating = null;
+        BigDecimal ratingSum = BigDecimal.ZERO;
+        int ratedCount = 0;
         Integer lastPlayedYear = null;
         boolean hasPlatinum = false;
         boolean hasFullCompletion = false;
@@ -85,6 +88,10 @@ public class GameExperienceStatsCalculator {
             totalHours += experience.getHours() != null ? experience.getHours() : 0.0;
             if (experience.getRating() != null && (bestRating == null || experience.getRating().compareTo(bestRating) > 0)) {
                 bestRating = experience.getRating();
+            }
+            if (experience.getRating() != null) {
+                ratingSum = ratingSum.add(experience.getRating());
+                ratedCount++;
             }
             // The postgame is play too: its end counts as the last time the run was played.
             Integer year = ExperiencePeriod.yearOf(experience);
@@ -112,6 +119,10 @@ public class GameExperienceStatsCalculator {
             if (onlineRating != null && (bestRating == null || onlineRating.compareTo(bestRating) > 0)) {
                 bestRating = onlineRating;
             }
+            if (onlineRating != null) {
+                ratingSum = ratingSum.add(onlineRating);
+                ratedCount++;
+            }
             hasPlatinum |= Boolean.TRUE.equals(online.getPlatinum());
             hasFullCompletion |= Boolean.TRUE.equals(online.getFullCompletion());
             if (online.getLastSessionAt() != null) {
@@ -125,6 +136,8 @@ public class GameExperienceStatsCalculator {
         }
         return new GameExperienceStats(
                 experiences.size(), totalHours, Ratings.normalize(bestRating),
+                ratedCount == 0 ? null
+                        : Ratings.normalize(ratingSum.divide(BigDecimal.valueOf(ratedCount), 2, RoundingMode.HALF_UP)),
                 latest != null ? latest.getStatus() : null,
                 latest != null && latest.getStatus() == ExperienceStatus.COMPLETADO && latest.isBeingPlayed(),
                 lastPlayedYear, hasPlatinum, hasFullCompletion,

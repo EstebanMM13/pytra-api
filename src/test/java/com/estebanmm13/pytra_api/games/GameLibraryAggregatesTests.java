@@ -40,6 +40,8 @@ class GameLibraryAggregatesTests extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[0].experienceCount").value(2))
                 .andExpect(jsonPath("$[0].totalHours").value(13.5))
                 .andExpect(jsonPath("$[0].bestRating").value(7))
+                // Only "First" is rated: the mean equals it.
+                .andExpect(jsonPath("$[0].averageRating").value(7))
                 .andExpect(jsonPath("$[0].lastExperienceStatus").value("EN_CURSO"))
                 .andExpect(jsonPath("$[0].lastPlayedYear").value(2024))
                 .andExpect(jsonPath("$[0].hasPlatinum").value(true))

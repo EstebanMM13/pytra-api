@@ -36,6 +36,8 @@ public class GameResponseDto {
     private Long experienceCount;
     private Double totalHours;
     private BigDecimal bestRating;
+    /** Mean of every run rating and the online rating, each once: the game's rating in the library. */
+    private BigDecimal averageRating;
     private ExperienceStatus lastExperienceStatus;
     /** True when the most recent run is COMPLETADO and its postgame is still being played. */
     private Boolean lastExperiencePostgame;

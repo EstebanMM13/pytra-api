@@ -123,6 +123,25 @@ class GameExperienceStatsCalculatorTest {
     }
 
     @Test
+    void averageRatingIsTheMeanOfEveryRatedRunAndTheOnlineRating() {
+        Experience nine = run(TestPlatforms.PC, null, null);
+        nine.setRating(new BigDecimal("9"));
+        Experience seven = run(TestPlatforms.PC, null, null);
+        seven.setRating(new BigDecimal("7"));
+        Experience unrated = run(TestPlatforms.PC, null, null);
+
+        GameExperienceStats runsOnly = GameExperienceStatsCalculator.of(List.of(nine, seven, unrated));
+        assertThat(runsOnly.averageRating()).isEqualByComparingTo("8");
+        assertThat(runsOnly.bestRating()).isEqualByComparingTo("9");
+
+        // 9, 7 and the online 8.5: 8.17 (2 decimals).
+        assertThat(GameExperienceStatsCalculator.of(List.of(nine, seven), online(1.0, "8.5", Set.of())).averageRating())
+                .isEqualByComparingTo("8.17");
+        assertThat(GameExperienceStatsCalculator.of(List.of(unrated), online(1.0, null, Set.of())).averageRating())
+                .isNull();
+    }
+
+    @Test
     void onlineRatingCompetesForTheBestRating() {
         Experience rated = run(TestPlatforms.PC, null, null);
         rated.setRating(new BigDecimal("7.50"));

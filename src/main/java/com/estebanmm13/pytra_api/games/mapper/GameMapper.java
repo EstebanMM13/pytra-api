@@ -40,6 +40,7 @@ public class GameMapper {
                 stats != null ? stats.experienceCount() : null,
                 stats != null ? stats.totalHours() : null,
                 stats != null ? stats.bestRating() : null,
+                stats != null ? stats.averageRating() : null,
                 stats != null ? stats.lastExperienceStatus() : null,
                 stats != null ? stats.lastExperiencePostgame() : null,
                 stats != null ? stats.lastPlayedYear() : null,
