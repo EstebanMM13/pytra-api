@@ -15,11 +15,12 @@ Branches: pytra-api `feat/run-hours-by-period`, pytra-web `feat/run-timeline`. D
 
 ## Tasks
 
-- T1 [S1,S2] API: allocator + diary-per-run query + stats consumers + play facts `hoursByYear` + tests — inline — pending
-- T2 [S1] Web: genres of the year use `hoursByYear` — inline — pending
-- T3 [S3] Web: run detail timeline card — inline — pending
+- T1 [S1,S2] API: allocator + diary-per-run query + stats consumers + play facts `hoursByYear` + tests — inline — done cc110ad (RED compile; GREEN RunHoursTest 6, StatsRunHoursByPeriodTest 5; unit suite 0 failures; Testcontainers ITs not run: no Docker locally)
+- T2 [S1] Web: genres of the year use `hoursByYear` — inline — done pytra-web 1c99770 (RED TS2353; GREEN)
+- T3 [S3] Web: run detail timeline card — inline — done pytra-web (see log; 131 files green, prod build ok, initial budget warning pre-existing)
 
 ## Log
 
 - L1 (2026-11-15) User: "vale ya que estamos, me gustaria reorganizar todo el tema de las fechas, porque me parece un poco lio, además las estadisticas donde te terminas un juego ahora que deberia coger? Porque esto es un poco abstracto no? Que opinas?" → proposal (timeline, year derived, credits year for "terminados", hours spread / diary) → "si hazlo a ver que tal".
 - L2 Mapping: all per-year run hours come from `ExperiencePeriod.yearOf/monthOf` in Java (StatsServiceImpl.getByYear/getYears, YearSummaryBuilder, PlatformInsights, YearHighlightsCalculator.mostPlayed via explicit `year`, play facts RunFact). Diary lines with a run are already inside `run.hours`.
+- L3 (2026-11-15) T1-T3 implemented. Pending: JPQL `sumCountedRunHoursByDay` only checked by CI (no Docker); visual check of the timeline on a phone; push/deploy is the user's call. The previous web fix (cdd449c, tag v1.0.58) was pushed but its Railway deploy and APK build were not verified.
