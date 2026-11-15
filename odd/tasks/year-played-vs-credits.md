@@ -16,9 +16,10 @@ Branches: pytra-api and pytra-web `feat/year-played-vs-credits`. Delivery: ask-o
 
 ## Tasks
 
-- T1 [S1-S4,S7] API: year summary rows/counts, by-year count, achievement year, lastPlayedAt + tests — inline — pending
-- T2 [S1,S4,S5,S6] Web: year table role + year hours, 100% card, empty state, library filter + tests — inline — pending
+- T1 [S1-S4,S7] API: year summary rows/counts, by-year count, achievement year, lastPlayedAt + tests — inline — done d5b9599 (RED compile + assertions; GREEN unit suite 0 failures; ITs updated, need CI: no Docker)
+- T2 [S1,S4,S5,S6] Web: year table role + year hours, 100% card, empty state, library filter + tests — inline — done pytra-web (RED 3+1 tests; GREEN 131 files; build ok)
 
 ## Log
 
 - L1 (2026-11-15) User: "vale ahora quiero que revises todas las fichas de estadisticas que utilizan fechas, la de años, etc etc. Porque ahora que se ha añadido la fecha del postgame queda todo un poco cojo. O por lo menos hacer la distincion, por ejemplo me pasé Silksong en 2025 los creditos pero el 100% lo hice en 2026, y solo sale en la pantalla de años de 2025 entiendes? Hay que echarle un ojo a todas esas tarjetas para ver que se puede hacer" → audit + proposal table → "usa el fin dle postgame y ya".
+- L2 (2026-11-15) T1-T2 done. Pending: CI for the updated StatsIntegrationTests; push/deploy is the user's call.
