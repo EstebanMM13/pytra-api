@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.diary.controller;
 
+import com.estebanmm13.pytra_api.diary.dto.DiaryLinkedGameDto;
 import com.estebanmm13.pytra_api.auth.security.CurrentUserResolver;
 import com.estebanmm13.pytra_api.diary.dto.DiaryDayRequestDto;
 import com.estebanmm13.pytra_api.diary.dto.DiaryDayResponseDto;
@@ -34,6 +35,12 @@ public class DiaryController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return ResponseEntity.ok(diaryService.findRange(from, to, currentUserResolver.getCurrentUserId()));
+    }
+
+    /** Games linked to Steam/PSN/Android, so the day editor knows which lines only get recorded. */
+    @GetMapping("/linked-games")
+    public ResponseEntity<List<DiaryLinkedGameDto>> findLinkedGames() {
+        return ResponseEntity.ok(diaryService.findLinkedGames(currentUserResolver.getCurrentUserId()));
     }
 
     @GetMapping("/{date}")

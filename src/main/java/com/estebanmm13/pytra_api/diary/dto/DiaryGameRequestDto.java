@@ -34,6 +34,12 @@ public class DiaryGameRequestDto {
      * other categories.
      */
     private Boolean online;
+    /**
+     * Synced games: the hours were played outside the linked store on a platform it covers (Epic on PC for a
+     * Steam-linked game), so they are added anyway. Ignored for a HYBRID game's run, whose covered-platform
+     * hours the sync already splits between runs and online playtime.
+     */
+    private Boolean outsideSync;
 
     /** More than 0 and at most 24, with up to 2 decimals; more decimals are rejected, never rounded. */
     @NotNull

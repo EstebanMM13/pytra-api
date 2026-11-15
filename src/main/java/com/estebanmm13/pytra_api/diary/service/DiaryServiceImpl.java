@@ -1,5 +1,11 @@
 package com.estebanmm13.pytra_api.diary.service;
 
+import com.estebanmm13.pytra_api.diary.dto.DiaryLinkedGameDto;
+import com.estebanmm13.pytra_api.experiences.service.hybridPlaytime.SyncedOnlineHours;
+import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
+import com.estebanmm13.pytra_api.platforms.model.Platform;
+import com.estebanmm13.pytra_api.platforms.repository.PlatformRepository;
+import java.util.TreeMap;
 import com.estebanmm13.pytra_api.diary.dto.DiaryDayRequestDto;
 import com.estebanmm13.pytra_api.diary.dto.DiaryDayResponseDto;
 import com.estebanmm13.pytra_api.diary.dto.DiaryGameRequestDto;
@@ -47,8 +53,10 @@ import java.util.stream.Collectors;
  * The play diary. Hours of a diary game are ADDED to the game's data, inside the same transaction:
  * <ul>
  *   <li>ONLINE games: to the online playtime (row created when missing).</li>
- *   <li>Steam/PSN-synced games: not added at all (the sync counts the real playtime); kept in the diary only.
- *   A line already counted before the game was linked keeps counting.</li>
+ *   <li>Games linked to a sync (Steam, PSN, Android): a line on a platform the sync covers (Steam: PC, PSN:
+ *   PS4/PS5, Android: mobile) is kept in the diary only, as the sync counts that playtime; on any other
+ *   platform (or with {@code outsideSync}) its hours are added like any game's. A line whose platform is
+ *   unknown is only recorded. A line already counted before the game was linked keeps counting.</li>
  *   <li>Other games: to one run: the one sent, else the one the line already used, else the only run in
  *   progress; otherwise 400 {@value InvalidRequestException#DIARY_RUN_REQUIRED}.</li>
  * </ul>
@@ -72,6 +80,7 @@ public class DiaryServiceImpl implements DiaryService {
     private final GamePlatformLinkRepository gamePlatformLinkRepository;
     private final ExperienceService experienceService;
     private final OnlinePlaytimeService onlinePlaytimeService;
+    private final PlatformRepository platformRepository;
 
     /**
      * Where a line's hours were added: a run, or the online playtime ({@code experienceId == null}), on
@@ -173,7 +182,7 @@ public class DiaryServiceImpl implements DiaryService {
 
     private List<ResolvedGame> resolveGames(List<DiaryGameRequestDto> requested, Map<Long, DiaryEntryGame> oldLines,
                                             Long userId) {
-        Set<Long> syncedGameIds = syncedGameIds(userId);
+        Map<Long, Set<String>> coverage = syncCoverage(userId);
         List<ResolvedGame> resolved = new ArrayList<>();
         Map<String, String> runErrors = new LinkedHashMap<>();
         Map<String, String> platformErrors = new LinkedHashMap<>();
@@ -199,12 +208,9 @@ public class DiaryServiceImpl implements DiaryService {
 
             // A line counted before the game was linked keeps counting: the link absorbed those hours
             // (max on confirm, then only later deltas), so giving them back would lose them.
-            if (syncedGameIds.contains(game.getGameId()) && (oldLine == null || !oldLine.isCountsHours())) {
-                Long run = game.getExperienceId();
-                if (run != null && !isRunOf(run, game.getGameId(), userId)) {
-                    runErrors.put(field, InvalidRequestException.INVALID_DIARY_RUN);
-                }
-                resolved.add(new ResolvedGame(game, null, run));
+            Set<String> covered = coverage.get(game.getGameId());
+            if (covered != null && (oldLine == null || !oldLine.isCountsHours())) {
+                resolved.add(resolveLinked(owned, game, oldLine, covered, i, userId, runErrors, platformErrors));
                 continue;
             }
             if (goesOnline(owned, game, oldLine)) {
@@ -235,6 +241,92 @@ public class DiaryServiceImpl implements DiaryService {
             throw new InvalidRequestException(code, platformErrors);
         }
         return resolved;
+    }
+
+    /**
+     * A line of a synced game: placed like any line, but its hours only count when its platform (the online one,
+     * or the run's) is not one the sync covers, or was played outside it. Missing run or platform: recorded only.
+     */
+    private ResolvedGame resolveLinked(Game owned, DiaryGameRequestDto game, DiaryEntryGame oldLine,
+                                       Set<String> covered, int i, Long userId, Map<String, String> runErrors,
+                                       Map<String, String> platformErrors) {
+        boolean outside = Boolean.TRUE.equals(game.getOutsideSync());
+        if (goesOnline(owned, game, oldLine)) {
+            Map<String, String> errors = new LinkedHashMap<>();
+            Long platformId = pickOnlinePlatform(game, oldLine, userId, "games[" + i + "].platformId", errors);
+            if (errors.containsValue(InvalidRequestException.INVALID_PLATFORM)) {
+                platformErrors.putAll(errors);
+            }
+            Platform platform = platformId == null || !errors.isEmpty()
+                    ? null : platformRepository.findById(platformId).orElse(null);
+            boolean counts = platform != null && (outside || !isCovered(platform, covered));
+            return new ResolvedGame(game, counts ? Target.online(platformId) : null, null);
+        }
+        String field = "games[" + i + "].experienceId";
+        List<Experience> runs = experienceRepository.findAllByGameIdAndUserId(game.getGameId(), userId);
+        Long runId = pickRun(game, oldLine, runs);
+        if (game.getExperienceId() != null && runId == null) {
+            runErrors.put(field, InvalidRequestException.INVALID_DIARY_RUN);
+            return new ResolvedGame(game, null, game.getExperienceId());
+        }
+        Platform platform = runs.stream().filter(run -> run.getId().equals(runId)).findFirst()
+                .map(Experience::getPlatform).orElse(null);
+        // A HYBRID run on a covered platform is already split from the synced total: never count it again.
+        boolean outsideApplies = outside && owned.getCategory() != GameCategory.HYBRID;
+        boolean counts = platform != null && (outsideApplies || !isCovered(platform, covered));
+        return new ResolvedGame(game, counts ? Target.run(runId) : null, runId);
+    }
+
+    private static boolean isCovered(Platform platform, Set<String> covered) {
+        return platform.getLegacyCode() != null && covered.contains(platform.getLegacyCode().toUpperCase());
+    }
+
+    /** Synced games of the user with the seeded platform codes their links cover (possibly none). */
+    private Map<Long, Set<String>> syncCoverage(Long userId) {
+        List<GamePlatformLink> links =
+                gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(userId, SYNCED_PLATFORMS);
+        Map<Long, Set<String>> coverage = new HashMap<>();
+        if (links == null) {
+            return coverage;
+        }
+        for (GamePlatformLink link : links) {
+            coverage.computeIfAbsent(link.getGame().getId(), id -> new HashSet<>())
+                    .addAll(SyncedOnlineHours.coveredLegacyCodes(link.getPlatform()));
+        }
+        return coverage;
+    }
+
+    @Override
+    public List<DiaryLinkedGameDto> findLinkedGames(Long userId) {
+        List<GamePlatformLink> links =
+                gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(userId, SYNCED_PLATFORMS);
+        if (links == null || links.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Set<SyncedOnlineHours.Source>> sources = new TreeMap<>();
+        for (GamePlatformLink link : links) {
+            Long gameId = link.getGame().getId();
+            Set<SyncedOnlineHours.Source> gameSources =
+                    sources.computeIfAbsent(gameId, id -> EnumSet.noneOf(SyncedOnlineHours.Source.class));
+            SyncedOnlineHours.Source source = SyncedOnlineHours.sourceOf(link.getPlatform());
+            if (source != null) {
+                gameSources.add(source);
+            }
+        }
+        List<Platform> catalog = platformRepository.findAll();
+        List<DiaryLinkedGameDto> result = new ArrayList<>();
+        sources.forEach((gameId, gameSources) -> {
+            List<DiaryLinkedGameDto.CoveredPlatform> covered = new ArrayList<>();
+            for (Platform platform : catalog) {
+                gameSources.stream()
+                        .filter(source -> isCovered(platform, SyncedOnlineHours.coveredLegacyCodes(source)))
+                        .findFirst()
+                        .ifPresent(source -> covered.add(
+                                new DiaryLinkedGameDto.CoveredPlatform(platform.getId(), source.name())));
+            }
+            result.add(new DiaryLinkedGameDto(gameId, gameSources.stream().map(Enum::name).toList(), covered));
+        });
+        return result;
     }
 
     /**

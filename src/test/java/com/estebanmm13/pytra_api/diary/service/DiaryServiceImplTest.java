@@ -14,10 +14,15 @@ import com.estebanmm13.pytra_api.experiences.model.ExperienceStatus;
 import com.estebanmm13.pytra_api.experiences.repository.ExperienceRepository;
 import com.estebanmm13.pytra_api.experiences.service.experienceService.ExperienceService;
 import com.estebanmm13.pytra_api.experiences.service.onlinePlaytimeService.OnlinePlaytimeService;
+import com.estebanmm13.pytra_api.diary.dto.DiaryLinkedGameDto;
+import com.estebanmm13.pytra_api.games.model.ExternalPlatform;
 import com.estebanmm13.pytra_api.games.model.Game;
+import com.estebanmm13.pytra_api.games.model.GamePlatformLink;
 import com.estebanmm13.pytra_api.games.model.GameCategory;
 import com.estebanmm13.pytra_api.games.repository.GamePlatformLinkRepository;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
+import com.estebanmm13.pytra_api.platforms.model.Platform;
+import com.estebanmm13.pytra_api.platforms.repository.PlatformRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -54,14 +59,20 @@ class DiaryServiceImplTest {
     private final GamePlatformLinkRepository gamePlatformLinkRepository = mock(GamePlatformLinkRepository.class);
     private final ExperienceService experienceService = mock(ExperienceService.class);
     private final OnlinePlaytimeService onlinePlaytimeService = mock(OnlinePlaytimeService.class);
+    private final PlatformRepository platformRepository = mock(PlatformRepository.class);
     private final DiaryServiceImpl service = new DiaryServiceImpl(diaryEntryRepository, diaryEntryGameRepository,
-            gameRepository, experienceRepository, gamePlatformLinkRepository, experienceService, onlinePlaytimeService);
+            gameRepository, experienceRepository, gamePlatformLinkRepository, experienceService, onlinePlaytimeService,
+            platformRepository);
 
     @BeforeEach
     void setUp() {
         when(diaryEntryRepository.findByUserIdAndEntryDate(USER_ID, DAY)).thenReturn(Optional.empty());
         when(diaryEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(gamePlatformLinkRepository.findGameIdsByUserIdAndPlatformIn(eq(USER_ID), any())).thenReturn(Set.of());
+        when(gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(eq(USER_ID), any())).thenReturn(List.of());
+        List<Platform> catalog = List.of(catalogPlatform(PC, "PC"), catalogPlatform(PS5, "PS5"), catalogPlatform(PS4, "PS4"));
+        when(platformRepository.findAll()).thenReturn(catalog);
+        catalog.forEach(p -> when(platformRepository.findById(p.getId())).thenReturn(Optional.of(p)));
     }
 
     @Test
@@ -205,7 +216,7 @@ class DiaryServiceImplTest {
     @Test
     void syncedGamesAreRecordedWithoutAddingHours() {
         ownedGame(GameCategory.SINGLEPLAYER);
-        when(gamePlatformLinkRepository.findGameIdsByUserIdAndPlatformIn(eq(USER_ID), any())).thenReturn(Set.of(GAME_ID));
+        linked(ExternalPlatform.STEAM);
 
         DiaryDayResponseDto day = service.saveDay(DAY, day(game(null, "2")), USER_ID).orElseThrow();
 
@@ -219,7 +230,7 @@ class DiaryServiceImplTest {
         ownedGame(GameCategory.SINGLEPLAYER);
         runs(run(RUN_A, ExperienceStatus.EN_CURSO));
         DiaryEntry entry = existingDay(line(RUN_A, "2", true));
-        when(gamePlatformLinkRepository.findGameIdsByUserIdAndPlatformIn(eq(USER_ID), any())).thenReturn(Set.of(GAME_ID));
+        linked(ExternalPlatform.STEAM);
 
         service.saveDay(DAY, day(game(null, "2")), USER_ID);
 
@@ -232,7 +243,7 @@ class DiaryServiceImplTest {
         ownedGame(GameCategory.SINGLEPLAYER);
         runs(run(RUN_A, ExperienceStatus.EN_CURSO));
         existingDay(line(RUN_A, "2", true));
-        when(gamePlatformLinkRepository.findGameIdsByUserIdAndPlatformIn(eq(USER_ID), any())).thenReturn(Set.of(GAME_ID));
+        linked(ExternalPlatform.STEAM);
 
         service.saveDay(DAY, day(game(null, "3")), USER_ID);
 
@@ -243,8 +254,9 @@ class DiaryServiceImplTest {
     void aLineNotCountedForASyncedGameStaysUncounted() {
         ownedGame(GameCategory.SINGLEPLAYER);
         DiaryEntry entry = existingDay(line(RUN_A, "2", false));
-        when(gamePlatformLinkRepository.findGameIdsByUserIdAndPlatformIn(eq(USER_ID), any())).thenReturn(Set.of(GAME_ID));
+        linked(ExternalPlatform.STEAM);
         when(experienceRepository.findByIdAndUserId(RUN_A, USER_ID)).thenReturn(Optional.of(run(RUN_A, ExperienceStatus.EN_CURSO)));
+        runs(run(RUN_A, ExperienceStatus.EN_CURSO));
 
         service.saveDay(DAY, day(game(RUN_A, "4")), USER_ID);
 
@@ -419,6 +431,7 @@ class DiaryServiceImplTest {
 
     private static final Long PC = 1L;
     private static final Long PS5 = 2L;
+    private static final Long PS4 = 3L;
 
     @Test
     void anOnlineLineWithSeveralPlatformsAddsItsHoursToThePickedPlatform() {
@@ -609,6 +622,79 @@ class DiaryServiceImplTest {
         verifyNoInteractions(experienceService);
     }
 
+    @Test
+    void aPsnLinkedGamePlayedOnlineOnPcAddsTheHours() {
+        ownedGame(GameCategory.HYBRID);
+        linked(ExternalPlatform.PSN_PS5);
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));
+        DiaryGameRequestDto game = game(null, "2");
+        game.setOnline(true);
+        game.setPlatformId(PC);
+
+        DiaryDayResponseDto day = service.saveDay(DAY, day(game), USER_ID).orElseThrow();
+
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("2"), PC, USER_ID);
+        assertThat(day.games().get(0).countsHours()).isTrue();
+        assertThat(day.games().get(0).platformId()).isEqualTo(PC);
+        assertThat(day.games().get(0).synced()).isTrue();
+    }
+
+    @Test
+    void aPsnLinkedGamePlayedOnlineOnPs5IsOnlyRecorded() {
+        ownedGame(GameCategory.HYBRID);
+        linked(ExternalPlatform.PSN_PS4);
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC, PS5));
+        DiaryGameRequestDto game = game(null, "2");
+        game.setOnline(true);
+        game.setPlatformId(PS5);
+
+        DiaryDayResponseDto day = service.saveDay(DAY, day(game), USER_ID).orElseThrow();
+
+        verifyNoInteractions(experienceService);
+        verify(onlinePlaytimeService, never()).addHours(anyLong(), any(), any(), anyLong());
+        assertThat(day.games().get(0).countsHours()).isFalse();
+    }
+
+    @Test
+    void aSteamLinkedGameOnPcIsOnlyRecordedUnlessPlayedOutsideSteam() {
+        ownedGame(GameCategory.ONLINE);
+        linked(ExternalPlatform.STEAM);
+        when(onlinePlaytimeService.platformIdsOf(GAME_ID, USER_ID)).thenReturn(Set.of(PC));
+
+        service.saveDay(DAY, day(game(null, "2")), USER_ID);
+        verify(onlinePlaytimeService, never()).addHours(anyLong(), any(), any(), anyLong());
+
+        DiaryGameRequestDto outside = game(null, "2");
+        outside.setOutsideSync(true);
+        DiaryDayResponseDto day = service.saveDay(DAY, day(outside), USER_ID).orElseThrow();
+        verify(onlinePlaytimeService).addHours(GAME_ID, new BigDecimal("2"), PC, USER_ID);
+        assertThat(day.games().get(0).countsHours()).isTrue();
+    }
+
+    @Test
+    void aPsnLinkedGameWithARunOnPcAddsTheHoursToTheRun() {
+        ownedGame(GameCategory.SINGLEPLAYER);
+        linked(ExternalPlatform.PSN_PS5);
+        Experience pcRun = run(RUN_A, ExperienceStatus.EN_CURSO);
+        pcRun.setPlatform(catalogPlatform(PC, "PC"));
+        runs(pcRun);
+
+        DiaryDayResponseDto day = service.saveDay(DAY, day(game(null, "2")), USER_ID).orElseThrow();
+
+        verify(experienceService).addHours(RUN_A, new BigDecimal("2"), USER_ID);
+        assertThat(day.games().get(0).countsHours()).isTrue();
+    }
+
+    @Test
+    void linkedGamesTellTheSourcesAndTheCatalogPlatformsTheyCover() {
+        linked(ExternalPlatform.PSN_PS5);
+
+        assertThat(service.findLinkedGames(USER_ID)).containsExactly(
+                new DiaryLinkedGameDto(GAME_ID, List.of("PSN"), List.of(
+                        new DiaryLinkedGameDto.CoveredPlatform(PS5, "PSN"),
+                        new DiaryLinkedGameDto.CoveredPlatform(PS4, "PSN"))));
+    }
+
     private static DiaryEntryGame autoLine(Long experienceId, String hours) {
         DiaryEntryGame line = line(experienceId, hours, false);
         line.setAutoSynced(true);
@@ -624,6 +710,21 @@ class DiaryServiceImplTest {
         when(gameRepository.findByIdAndUserId(GAME_ID, USER_ID)).thenReturn(Optional.of(game));
         when(gameRepository.findAllById(any())).thenReturn(List.of(game));
         return game;
+    }
+
+    private void linked(ExternalPlatform... platforms) {
+        Game game = new Game();
+        game.setId(GAME_ID);
+        List<GamePlatformLink> links = java.util.Arrays.stream(platforms)
+                .map(platform -> GamePlatformLink.builder().userId(USER_ID).game(game).platform(platform)
+                        .externalId("x").lastSyncedPlaytimeMinutes(0L).build())
+                .toList();
+        when(gamePlatformLinkRepository.findGameIdsByUserIdAndPlatformIn(eq(USER_ID), any())).thenReturn(Set.of(GAME_ID));
+        when(gamePlatformLinkRepository.findAllByUserIdAndPlatformInWithGame(eq(USER_ID), any())).thenReturn(links);
+    }
+
+    private static Platform catalogPlatform(Long id, String legacyCode) {
+        return Platform.builder().id(id).name(legacyCode).legacyCode(legacyCode).build();
     }
 
     private void runs(Experience... runs) {

@@ -76,7 +76,21 @@ public final class SyncedOnlineHours {
         return new Share(bySource);
     }
 
-    static Source sourceOf(ExternalPlatform platform) {
+    /**
+     * Seeded catalog platforms ({@code platforms.legacy_code}) whose playtime a link on {@code platform}
+     * reports; empty for a platform no sync writes.
+     */
+    public static Set<String> coveredLegacyCodes(ExternalPlatform platform) {
+        Source source = sourceOf(platform);
+        return source == null ? Set.of() : COVERED_PLATFORMS.get(source);
+    }
+
+    /** Seeded catalog platforms ({@code platforms.legacy_code}) whose playtime {@code source} reports. */
+    public static Set<String> coveredLegacyCodes(Source source) {
+        return COVERED_PLATFORMS.get(source);
+    }
+
+    public static Source sourceOf(ExternalPlatform platform) {
         if (platform == null) return null;
         return switch (platform) {
             case STEAM -> Source.STEAM;

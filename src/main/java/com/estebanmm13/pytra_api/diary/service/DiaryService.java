@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.diary.service;
 
+import com.estebanmm13.pytra_api.diary.dto.DiaryLinkedGameDto;
 import com.estebanmm13.pytra_api.diary.dto.DiaryDayRequestDto;
 import com.estebanmm13.pytra_api.diary.dto.DiaryDayResponseDto;
 import com.estebanmm13.pytra_api.diary.dto.GameDiaryDayResponseDto;
@@ -20,4 +21,7 @@ public interface DiaryService {
     void deleteDay(LocalDate date, Long userId);
     /** The days one game was played, latest first. */
     List<GameDiaryDayResponseDto> findByGame(Long gameId, Long userId);
+
+    /** The user's games linked to a playtime sync, with the catalog platforms each one's sync covers. */
+    List<DiaryLinkedGameDto> findLinkedGames(Long userId);
 }
