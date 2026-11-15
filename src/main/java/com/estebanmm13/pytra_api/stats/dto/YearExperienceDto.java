@@ -35,4 +35,6 @@ public class YearExperienceDto {
     private YearRunRole yearRole;
     /** The run's hours played in this year (2 decimals); {@link #hours} is the run's total. */
     private Double yearHours;
+    /** The run replays a game already played (the run's own flag). */
+    private Boolean replay;
 }

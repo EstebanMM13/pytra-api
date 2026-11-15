@@ -116,7 +116,8 @@ final class YearSummaryBuilder {
                     experience.getStartDate(),
                     experience.getEndDate(),
                     roleIn(experience, year),
-                    StatsMath.round2(runHours.inYear(experience, year))
+                    StatsMath.round2(runHours.inYear(experience, year)),
+                    Boolean.TRUE.equals(experience.getReplay())
             ));
         }
 

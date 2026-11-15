@@ -128,6 +128,7 @@ class StatsRunHoursByPeriodTest {
         assertThat(y2026.getExperiences()).extracting(YearExperienceDto::getYearRole, YearExperienceDto::getYearHours,
                         YearExperienceDto::getPlatinum, YearExperienceDto::getFullCompletion, YearExperienceDto::getMonth)
                 .containsExactly(tuple(YearRunRole.POSTGAME, 9.62, true, true, 1));
+        assertThat(y2026.getExperiences()).extracting(YearExperienceDto::getReplay).containsExactly(false);
         assertThat(y2026.getExperienceCount()).isEqualTo(1);
         assertThat(y2026.getCompletedCount()).isZero();
         assertThat(y2026.getAverageRating()).isNull();
