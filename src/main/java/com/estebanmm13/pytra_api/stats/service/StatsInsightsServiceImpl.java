@@ -72,7 +72,7 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
         this.onlinePlaytimeRepository = onlinePlaytimeRepository;
         this.clock = clock;
         InsightSources sources = new InsightSources(experienceRepository, onlinePlaytimeRepository, gameRepository);
-        this.platformInsights = new PlatformInsights(diaryEntryGameRepository, experienceRepository, onlinePlaytimeRepository);
+        this.platformInsights = new PlatformInsights(diaryEntryGameRepository, experienceRepository, onlinePlaytimeRepository, clock);
         this.studioInsights = new StudioInsights(sources);
         this.completionInsights = new CompletionInsights(sources, gameRepository);
         this.ratingInsights = new RatingInsights(sources);
@@ -156,10 +156,16 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
     @Transactional(readOnly = true)
     public PlayFactsDto getPlayFacts(Long userId) {
         List<PlayFactsDto.RunFact> runs = new ArrayList<>();
-        for (Experience run : experienceRepository.findAllByUserId(userId)) {
+        List<Experience> allRuns = experienceRepository.findAllByUserId(userId);
+        RunHours runHours = RunHours.of(allRuns, diaryEntryGameRepository.sumCountedRunHoursByDay(userId),
+                LocalDate.now(clock));
+        for (Experience run : allRuns) {
+            List<PlayFactsDto.YearHours> hoursByYear = new ArrayList<>();
+            runHours.byYear(run).forEach((year, hours) -> hoursByYear.add(new PlayFactsDto.YearHours(year, StatsMath.round2(hours))));
             runs.add(new PlayFactsDto.RunFact(run.getId(), run.getGameId(),
                     run.getPlatform() != null ? run.getPlatform().getId() : null,
-                    ExperiencePeriod.yearOf(run), run.getStatus(), StatsMath.round2(hoursOf(run)), CompletionInsights.daysToFinish(run)));
+                    ExperiencePeriod.yearOf(run), run.getStatus(), StatsMath.round2(hoursOf(run)), CompletionInsights.daysToFinish(run),
+                    hoursByYear));
         }
         runs.sort(Comparator.comparing(PlayFactsDto.RunFact::experienceId, Comparator.nullsLast(Comparator.naturalOrder())));
 

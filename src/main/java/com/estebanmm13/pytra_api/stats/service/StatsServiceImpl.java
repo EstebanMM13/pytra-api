@@ -1,5 +1,6 @@
 package com.estebanmm13.pytra_api.stats.service;
 
+import com.estebanmm13.pytra_api.config.AppTimeZone;
 import com.estebanmm13.pytra_api.diary.repository.DiaryEntryGameRepository;
 import com.estebanmm13.pytra_api.diary.repository.OnlineDiaryYearHours;
 import com.estebanmm13.pytra_api.experiences.model.Experience;
@@ -24,11 +25,14 @@ import com.estebanmm13.pytra_api.stats.dto.*;
 import com.estebanmm13.pytra_api.stats.model.YearNote;
 import com.estebanmm13.pytra_api.stats.repository.YearNoteRepository;
 import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
 import java.time.Year;
 import java.util.*;
 
@@ -49,13 +53,39 @@ public class StatsServiceImpl implements StatsService {
     private final YearNoteRepository yearNoteRepository;
     private final DiaryEntryGameRepository diaryEntryGameRepository;
     private final YearSummaryBuilder yearSummaryBuilder;
+    private final Clock clock;
 
+    // "Today" ends the hours of the runs still being played: the users' day, not the server's (UTC).
+    @Autowired
     public StatsServiceImpl(GameRepository gameRepository,
                             SagaRepository sagaRepository,
                             ExperienceRepository experienceRepository,
                             OnlinePlaytimeRepository onlinePlaytimeRepository,
                             YearNoteRepository yearNoteRepository,
-                            DiaryEntryGameRepository diaryEntryGameRepository) {
+                            DiaryEntryGameRepository diaryEntryGameRepository,
+                            AppTimeZone appTimeZone) {
+        this(gameRepository, sagaRepository, experienceRepository, onlinePlaytimeRepository, yearNoteRepository,
+                diaryEntryGameRepository, appTimeZone.clock());
+    }
+
+    StatsServiceImpl(GameRepository gameRepository,
+                     SagaRepository sagaRepository,
+                     ExperienceRepository experienceRepository,
+                     OnlinePlaytimeRepository onlinePlaytimeRepository,
+                     YearNoteRepository yearNoteRepository,
+                     DiaryEntryGameRepository diaryEntryGameRepository) {
+        this(gameRepository, sagaRepository, experienceRepository, onlinePlaytimeRepository, yearNoteRepository,
+                diaryEntryGameRepository, Clock.systemDefaultZone());
+    }
+
+    StatsServiceImpl(GameRepository gameRepository,
+                     SagaRepository sagaRepository,
+                     ExperienceRepository experienceRepository,
+                     OnlinePlaytimeRepository onlinePlaytimeRepository,
+                     YearNoteRepository yearNoteRepository,
+                     DiaryEntryGameRepository diaryEntryGameRepository,
+                     Clock clock) {
+        this.clock = clock;
         this.gameRepository = gameRepository;
         this.sagaRepository = sagaRepository;
         this.experienceRepository = experienceRepository;
@@ -63,7 +93,7 @@ public class StatsServiceImpl implements StatsService {
         this.yearNoteRepository = yearNoteRepository;
         this.diaryEntryGameRepository = diaryEntryGameRepository;
         this.yearSummaryBuilder = new YearSummaryBuilder(
-                gameRepository, experienceRepository, yearNoteRepository, diaryEntryGameRepository);
+                gameRepository, experienceRepository, yearNoteRepository, diaryEntryGameRepository, clock);
     }
 
     @Override
@@ -105,15 +135,19 @@ public class StatsServiceImpl implements StatsService {
     }
 
     /**
-     * Runs per year plus the online hours the diary dates in each year: a year with only online diary
-     * hours has no runs, so its counts are 0 and its rating null.
+     * Runs per year (by their credits, {@link ExperiencePeriod#yearOf}) plus the hours played in each year: run
+     * hours spread over the days they were played ({@link RunHours}) and the online hours the diary dates. A
+     * year with hours but no runs has its counts at 0 and its rating null.
      */
     @Override
     public List<YearStatDto> getByYear(Long userId) {
-        SortedMap<Integer, List<Experience>> runsByYear = experiencesByYear(userId);
+        List<Experience> runs = experienceRepository.findAllByUserId(userId);
+        SortedMap<Integer, List<Experience>> runsByYear = experiencesByYear(runs);
+        RunHours runHours = runHours(userId, runs);
         Map<Integer, Double> onlineByYear = onlineDiaryHoursByYear(userId);
         SortedSet<Integer> years = new TreeSet<>(Comparator.reverseOrder());
         years.addAll(runsByYear.keySet());
+        years.addAll(runHours.years());
         years.addAll(onlineByYear.keySet());
 
         List<YearStatDto> result = new ArrayList<>();
@@ -122,7 +156,7 @@ public class StatsServiceImpl implements StatsService {
             double onlineHours = onlineByYear.getOrDefault(year, 0.0);
             result.add(new YearStatDto(
                     year,
-                    sumHours(experiences) + onlineHours,
+                    StatsMath.round2(runHours.inYear(year) + onlineHours),
                     experiences.size(),
                     StatsMath.averageRating(experiences.stream().map(Experience::getRating).toList()),
                     onlineHours
@@ -134,7 +168,9 @@ public class StatsServiceImpl implements StatsService {
     @Override
     public List<Integer> getYears(Long userId) {
         SortedSet<Integer> years = new TreeSet<>(Comparator.reverseOrder());
-        years.addAll(experiencesByYear(userId).keySet());
+        List<Experience> runs = experienceRepository.findAllByUserId(userId);
+        years.addAll(experiencesByYear(runs).keySet());
+        years.addAll(runHours(userId, runs).years());
         years.addAll(onlineDiaryHoursByYear(userId).keySet());
         return new ArrayList<>(years);
     }
@@ -361,15 +397,19 @@ public class StatsServiceImpl implements StatsService {
     }
 
     /** Experiences grouped by {@link ExperiencePeriod#yearOf}, newest year first; undated ones are dropped. */
-    private SortedMap<Integer, List<Experience>> experiencesByYear(Long userId) {
+    private static SortedMap<Integer, List<Experience>> experiencesByYear(List<Experience> runs) {
         SortedMap<Integer, List<Experience>> byYear = new TreeMap<>(Comparator.reverseOrder());
-        for (Experience experience : experienceRepository.findAllByUserId(userId)) {
+        for (Experience experience : runs) {
             Integer year = ExperiencePeriod.yearOf(experience);
             if (year != null) {
                 byYear.computeIfAbsent(year, y -> new ArrayList<>()).add(experience);
             }
         }
         return byYear;
+    }
+
+    private RunHours runHours(Long userId, List<Experience> runs) {
+        return RunHours.of(runs, diaryEntryGameRepository.sumCountedRunHoursByDay(userId), LocalDate.now(clock));
     }
 
     static double sumHours(List<Experience> experiences) {

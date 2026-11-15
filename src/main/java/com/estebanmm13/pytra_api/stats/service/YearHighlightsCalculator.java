@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,13 +26,14 @@ import java.util.function.Function;
  * Automatic yearly highlights, replicating the user's Obsidian rules. Pure: works on already loaded
  * experiences and games (saga and genres initialized), so it is unit-testable without a database.
  *
- * <p>Two year attributions, deliberately different from {@code ExperiencePeriod} (which drives hours,
- * months and counts of the year summary):
+ * <p>Two year attributions, deliberately different from {@code ExperiencePeriod} (which drives the counts
+ * of the year summary):
  * <ul>
  *   <li><b>Completed in year</b>: status COMPLETADO and {@code endDate} in the year. Feeds goty,
  *       topRated, topSagas, topGenres, surprises and disappointments.</li>
- *   <li><b>Played in year</b>: the {@code year} field equals the year (any status) and hours are
- *       not null. Feeds mostPlayed only.</li>
+ *   <li><b>Played in year</b>: the run's hours played in the year ({@code RunHours}: diary days, the rest
+ *       spread from start to credits or postgame end), any status. Feeds mostPlayed only. The 3-argument
+ *       {@code compute} keeps the old rule (the {@code year} field equals the year, all the run's hours).</li>
  * </ul>
  * Averages are rounded to 2 decimals before ranking and before the inclusive thresholds
  * (surprise >= 8.5, disappointment <= 6). Ties: more hours first, then game name.
@@ -89,14 +91,24 @@ public final class YearHighlightsCalculator {
      * @param gamesById   the user's games with saga and genres loaded
      */
     public static YearHighlights compute(int year, Collection<Experience> experiences, Map<Long, Game> gamesById) {
+        return compute(year, experiences, gamesById,
+                experience -> isPlayedIn(experience, year) ? experience.getHours() : 0);
+    }
+
+    /**
+     * @param hoursInYear hours of a run played in the year (feeds mostPlayed: games with hours above 0)
+     */
+    public static YearHighlights compute(int year, Collection<Experience> experiences, Map<Long, Game> gamesById,
+                                         java.util.function.ToDoubleFunction<Experience> hoursInYear) {
         List<Experience> completed = new ArrayList<>();
-        List<Experience> played = new ArrayList<>();
+        Map<Long, Double> playedHours = new HashMap<>();
         for (Experience experience : experiences) {
             if (!gamesById.containsKey(experience.getGameId())) {
                 continue;
             }
             if (isCompletedIn(experience, year)) completed.add(experience);
-            if (isPlayedIn(experience, year)) played.add(experience);
+            double hours = hoursInYear.applyAsDouble(experience);
+            if (hours > 0) playedHours.merge(experience.getGameId(), hours, Double::sum);
         }
 
         List<RatedGameDto> ranked = rankByRating(completed, gamesById);
@@ -119,7 +131,7 @@ public final class YearHighlightsCalculator {
         return new YearHighlights(
                 goty,
                 ranked.stream().limit(TOP_LIMIT).toList(),
-                mostPlayed(played, gamesById),
+                mostPlayed(playedHours, gamesById),
                 topSagas(completed, gamesById),
                 topGenres(completed, gamesById),
                 surprises,
@@ -142,10 +154,10 @@ public final class YearHighlightsCalculator {
         return ranked;
     }
 
-    private static List<MostPlayedGameDto> mostPlayed(List<Experience> played, Map<Long, Game> gamesById) {
+    private static List<MostPlayedGameDto> mostPlayed(Map<Long, Double> playedHours, Map<Long, Game> gamesById) {
         List<MostPlayedGameDto> result = new ArrayList<>();
-        groupBy(played, Experience::getGameId).forEach((gameId, runs) ->
-                result.add(new MostPlayedGameDto(gameId, gamesById.get(gameId).getName(), sumHours(runs))));
+        playedHours.forEach((gameId, hours) ->
+                result.add(new MostPlayedGameDto(gameId, gamesById.get(gameId).getName(), StatsMath.round2(hours))));
         result.sort(Comparator
                 .comparing(MostPlayedGameDto::getTotalHours, Comparator.reverseOrder())
                 .thenComparing(MostPlayedGameDto::getGameName, BY_NAME)

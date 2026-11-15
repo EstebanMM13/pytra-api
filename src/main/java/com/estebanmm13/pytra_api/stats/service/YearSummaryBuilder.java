@@ -18,6 +18,7 @@ import com.estebanmm13.pytra_api.stats.dto.YearSummaryDto;
 import com.estebanmm13.pytra_api.stats.repository.YearNoteRepository;
 import com.estebanmm13.pytra_api.stats.service.StatsServiceImpl.Accumulator;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -34,11 +35,14 @@ final class YearSummaryBuilder {
     private final ExperienceRepository experienceRepository;
     private final YearNoteRepository yearNoteRepository;
     private final DiaryEntryGameRepository diaryEntryGameRepository;
+    private final Clock clock;
 
     YearSummaryBuilder(GameRepository gameRepository,
                        ExperienceRepository experienceRepository,
                        YearNoteRepository yearNoteRepository,
-                       DiaryEntryGameRepository diaryEntryGameRepository) {
+                       DiaryEntryGameRepository diaryEntryGameRepository,
+                       Clock clock) {
+        this.clock = clock;
         this.gameRepository = gameRepository;
         this.experienceRepository = experienceRepository;
         this.yearNoteRepository = yearNoteRepository;
@@ -56,11 +60,14 @@ final class YearSummaryBuilder {
         for (Game game : gameRepository.findAllByUserIdWithSagaAndGenres(userId)) {
             games.put(game.getId(), game);
         }
+        // Hours follow the days played (RunHours); the run table and counts follow the credits (yearOf).
+        RunHours runHours = RunHours.of(allExperiences, diaryEntryGameRepository.sumCountedRunHoursByDay(userId),
+                LocalDate.now(clock));
         YearHighlightsCalculator.YearHighlights highlights =
-                YearHighlightsCalculator.compute(year, allExperiences, games);
+                YearHighlightsCalculator.compute(year, allExperiences, games, run -> runHours.inYear(run, year));
 
-        double[] hoursByMonth = new double[12];
-        double hoursWithoutMonth = 0;
+        double[] hoursByMonth = runHours.byMonth(year);
+        double hoursWithoutMonth = runHours.withoutMonth(year);
         long completed = 0;
         long abandoned = 0;
         long platinums = 0;
@@ -70,11 +77,6 @@ final class YearSummaryBuilder {
         for (Experience experience : experiences) {
             double hours = hoursOf(experience);
             Integer month = ExperiencePeriod.monthOf(experience);
-            if (month != null) {
-                hoursByMonth[month - 1] += hours;
-            } else {
-                hoursWithoutMonth += hours;
-            }
             if (experience.getStatus() == ExperienceStatus.COMPLETADO) completed++;
             if (experience.getStatus() == ExperienceStatus.ABANDONADO) abandoned++;
             if (Boolean.TRUE.equals(experience.getPlatinum())) platinums++;
@@ -115,19 +117,19 @@ final class YearSummaryBuilder {
 
         List<MonthHoursDto> months = new ArrayList<>(12);
         for (int month = 1; month <= 12; month++) {
-            months.add(new MonthHoursDto(month, hoursByMonth[month - 1]));
+            months.add(new MonthHoursDto(month, StatsMath.round2(hoursByMonth[month - 1])));
         }
 
         return new YearSummaryDto(
                 year,
-                sumHours(experiences) + online.hours(),
+                StatsMath.round2(runHours.inYear(year) + online.hours()),
                 experiences.size(),
                 completed,
                 abandoned,
                 StatsMath.averageRating(experiences.stream().map(Experience::getRating).toList()),
                 platinums,
                 fullCompletions,
-                hoursWithoutMonth,
+                StatsMath.round2(hoursWithoutMonth),
                 months,
                 rows,
                 highlights.goty(),

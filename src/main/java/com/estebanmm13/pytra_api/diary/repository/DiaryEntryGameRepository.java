@@ -35,6 +35,19 @@ public interface DiaryEntryGameRepository extends JpaRepository<DiaryEntryGame, 
             """)
     List<OnlineDiaryYearHours> sumCountedOnlineHoursByYear(@Param("userId") Long userId);
 
+    /**
+     * Diary hours added to each run, per day: the lines that count hours and point at a run (they are already
+     * inside that run's hours), so the stats can date those hours instead of spreading them.
+     */
+    @Query("""
+            SELECT new com.estebanmm13.pytra_api.diary.repository.RunDiaryDayHours(
+                       g.experienceId, e.entryDate, SUM(g.hours))
+            FROM DiaryEntryGame g JOIN g.entry e
+            WHERE e.userId = :userId AND g.countsHours = true AND g.experienceId IS NOT NULL
+            GROUP BY g.experienceId, e.entryDate
+            """)
+    List<RunDiaryDayHours> sumCountedRunHoursByDay(@Param("userId") Long userId);
+
     /** Same lines as {@link #sumCountedOnlineHoursByYear}, per year and game. */
     @Query("""
             SELECT new com.estebanmm13.pytra_api.diary.repository.OnlineDiaryYearGameHours(

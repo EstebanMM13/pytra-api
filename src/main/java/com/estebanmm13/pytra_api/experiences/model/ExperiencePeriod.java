@@ -4,16 +4,17 @@ import java.time.LocalDate;
 import java.util.Comparator;
 
 /**
- * Single source of truth for "when" an experience happened, shared by the yearly stats, the
- * year summary and the library aggregates so they always agree.
+ * Single source of truth for which year a run belongs to (its credits), shared by the yearly counts, the
+ * year summary's run table and the library aggregates so they always agree. The hours played per year and
+ * month do not use it: they follow the days played ({@code stats.service.RunHours}).
  *
  * <ul>
  *   <li><b>Year</b>: the explicit {@code year} field wins (it is what the user typed); otherwise the
  *       year of {@code endDate}; otherwise the year of {@code startDate}; otherwise no year (the
  *       experience is left out of every per-year stat).</li>
  *   <li><b>Month</b>: the month of {@code endDate} when it falls in that year; otherwise the month of
- *       {@code startDate} when it falls in that year; otherwise no month. All the hours of a run are
- *       attributed to that single month.</li>
+ *       {@code startDate} when it falls in that year; otherwise no month. It is the month shown
+ *       on the run in the year table.</li>
  *   <li><b>Recency</b> (to pick a game's latest run): {@code endDate}, else {@code startDate}, else
  *       January 1st of {@code year}; runs without any of them are the oldest, ties broken by id.</li>
  * </ul>

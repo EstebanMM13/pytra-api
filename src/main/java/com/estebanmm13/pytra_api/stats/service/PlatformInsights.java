@@ -13,6 +13,8 @@ import com.estebanmm13.pytra_api.platforms.model.Platform;
 import com.estebanmm13.pytra_api.stats.dto.PlatformStatsDto;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.*;
 
 import static com.estebanmm13.pytra_api.stats.service.InsightMath.doubleOf;
@@ -25,10 +27,13 @@ final class PlatformInsights {
     private final DiaryEntryGameRepository diaryEntryGameRepository;
     private final ExperienceRepository experienceRepository;
     private final OnlinePlaytimeRepository onlinePlaytimeRepository;
+    private final Clock clock;
 
     PlatformInsights(DiaryEntryGameRepository diaryEntryGameRepository,
                      ExperienceRepository experienceRepository,
-                     OnlinePlaytimeRepository onlinePlaytimeRepository) {
+                     OnlinePlaytimeRepository onlinePlaytimeRepository,
+                     Clock clock) {
+        this.clock = clock;
         this.diaryEntryGameRepository = diaryEntryGameRepository;
         this.experienceRepository = experienceRepository;
         this.onlinePlaytimeRepository = onlinePlaytimeRepository;
@@ -39,6 +44,7 @@ final class PlatformInsights {
         List<Experience> runs = experienceRepository.findAllByUserId(userId);
         List<OnlinePlaytime> onlinePlaytimes = onlinePlaytimeRepository.findAllByUserId(userId);
         List<OnlineDiaryYearGameHours> onlineDiary = diaryEntryGameRepository.sumCountedOnlineHoursByYearAndGame(userId);
+        RunHours runHours = RunHours.of(runs, diaryEntryGameRepository.sumCountedRunHoursByDay(userId), LocalDate.now(clock));
 
         Map<Long, Platform> catalog = new HashMap<>();
         Map<Long, OnlineSplit> onlineSplitByGame = new HashMap<>();
@@ -55,15 +61,20 @@ final class PlatformInsights {
             // Catalog every run's platform before the year filter: the per-year breakdown covers all years.
             Platform platform = run.getPlatform();
             catalog.put(platform.getId(), platform);
-            if (year != null && !year.equals(ExperiencePeriod.yearOf(run))) {
+            // A year's hours are the hours played in it (RunHours); its runs, by their credits (yearOf).
+            boolean counted = year == null || year.equals(ExperiencePeriod.yearOf(run));
+            double hours = year == null ? hoursOf(run) : runHours.inYear(run, year);
+            if (!counted && hours <= 0) {
                 continue;
             }
             PlatformAccumulator acc = byPlatform.computeIfAbsent(platform.getId(), id -> new PlatformAccumulator());
-            acc.runHours += hoursOf(run);
+            acc.runHours += hours;
             acc.gameIds.add(run.getGameId());
-            acc.runCount++;
-            if (run.getStatus() == ExperienceStatus.COMPLETADO) acc.completedRunCount++;
-            acc.ratings.add(run.getRating());
+            if (counted) {
+                acc.runCount++;
+                if (run.getStatus() == ExperienceStatus.COMPLETADO) acc.completedRunCount++;
+                acc.ratings.add(run.getRating());
+            }
         }
         if (year == null) {
             for (OnlinePlaytime playtime : onlinePlaytimes) {
@@ -101,24 +112,21 @@ final class PlatformInsights {
                 .thenComparing(stat -> catalog.get(stat.platformId()), PlatformMapper.CATALOG_ORDER));
 
         return new PlatformStatsDto(year, platforms, StatsMath.round2(unassigned),
-                platformHoursByYear(runs, onlineDiary, onlineSplitByGame, catalog));
+                platformHoursByYear(runs, runHours, onlineDiary, onlineSplitByGame, catalog));
     }
 
-    /** Every year's hours per platform: runs by their year, online by the diary year (same split rule). */
+    /** Every year's hours per platform: runs by the days played ({@link RunHours}), online by the diary year. */
     private static List<PlatformStatsDto.YearPlatforms> platformHoursByYear(
-            List<Experience> runs, List<OnlineDiaryYearGameHours> onlineDiary,
+            List<Experience> runs, RunHours runHours, List<OnlineDiaryYearGameHours> onlineDiary,
             Map<Long, OnlineSplit> onlineSplitByGame, Map<Long, Platform> catalog) {
         SortedMap<Integer, Map<Long, PlatformAccumulator>> byYear = new TreeMap<>();
         Map<Integer, Double> unassignedByYear = new HashMap<>();
         for (Experience run : runs) {
-            Integer year = ExperiencePeriod.yearOf(run);
-            double hours = hoursOf(run);
-            if (year == null || hours <= 0) {
-                continue;
+            for (Map.Entry<Integer, Double> played : runHours.byYear(run).entrySet()) {
+                byYear.computeIfAbsent(played.getKey(), y -> new HashMap<>())
+                        .computeIfAbsent(run.getPlatform().getId(), id -> new PlatformAccumulator())
+                        .runHours += played.getValue();
             }
-            byYear.computeIfAbsent(year, y -> new HashMap<>())
-                    .computeIfAbsent(run.getPlatform().getId(), id -> new PlatformAccumulator())
-                    .runHours += hours;
         }
         for (OnlineDiaryYearGameHours row : onlineDiary) {
             if (row.year() == null) {

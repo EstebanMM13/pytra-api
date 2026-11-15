@@ -8,8 +8,9 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * Year in review. Totals, months and {@link #experiences} use ExperiencePeriod (explicit year, else
- * endDate, else startDate); the highlights use the Obsidian attributions documented in
+ * Year in review. Counts and {@link #experiences} use ExperiencePeriod (explicit year, else endDate, else
+ * startDate); {@link #totalHours}, the months and {@link #hoursWithoutMonth} use the hours played in the year
+ * (RunHours: diary days, the rest spread from start to credits or postgame end); the highlights use the Obsidian attributions documented in
  * YearHighlightsCalculator ("completed in year" / "played in year"). {@link #totalHours} and the months also
  * include {@link #onlineHours} (dated by the diary); every count, the rating and the highlights only use runs.
  */

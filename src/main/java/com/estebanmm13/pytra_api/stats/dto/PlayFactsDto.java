@@ -19,9 +19,15 @@ public record PlayFactsDto(List<RunFact> runs, List<OnlineYear> onlineYears) {
      * @param hours      run hours (0 when unset), 2 decimals
      * @param daysToFinish calendar days from start to end of a COMPLETADO run with both dates (end not before
      *                   start), as the completion stats count them; null otherwise
+     * @param hoursByYear the run's hours per year played (diary days, the rest spread from start to credits or
+     *                   postgame end), oldest year first; empty when the run has no hours or no year
      */
     public record RunFact(Long experienceId, Long gameId, Long platformId, Integer year, ExperienceStatus status,
-                          double hours, Long daysToFinish) {
+                          double hours, Long daysToFinish, List<YearHours> hoursByYear) {
+    }
+
+    /** Hours of a run played in one year, 2 decimals. */
+    public record YearHours(int year, double hours) {
     }
 
     /** {@code platformIds}: the platforms of the game's online playtime (empty when none), in catalog order. */
