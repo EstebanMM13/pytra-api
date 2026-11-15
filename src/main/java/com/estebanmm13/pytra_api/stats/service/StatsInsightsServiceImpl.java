@@ -198,4 +198,10 @@ public class StatsInsightsServiceImpl implements StatsInsightsService {
     public GameRankingsDto getGameRankings(Long userId, int limit) {
         return gameRankingInsights.rankings(userId, limit);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TopRatedGameDto> getTopRatedGames(Long userId, int limit) {
+        return gameRankingInsights.topRatedGames(userId, limit);
+    }
 }

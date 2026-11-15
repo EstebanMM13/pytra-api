@@ -2,6 +2,8 @@ package com.estebanmm13.pytra_api.stats.service;
 
 import com.estebanmm13.pytra_api.stats.dto.*;
 
+import java.util.List;
+
 /**
  * Deeper stats breakdowns (activity, platforms, developers, release eras, completion habits, rating
  * profile). Every method is scoped to one user. An optional {@code year} uses the same year rule as the
@@ -39,4 +41,7 @@ public interface StatsInsightsService {
 
     /** All-time game rankings of the CONFIRMED games, each list capped at {@code limit} (1-50). */
     GameRankingsDto getGameRankings(Long userId, int limit);
+
+    /** Best rated games, one row per game (every rated run and the online rating averaged). */
+    List<TopRatedGameDto> getTopRatedGames(Long userId, int limit);
 }

@@ -15,6 +15,7 @@ import com.estebanmm13.pytra_api.games.repository.GameLabel;
 import com.estebanmm13.pytra_api.games.repository.GameReleaseRow;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.stats.dto.GameRankingsDto;
+import com.estebanmm13.pytra_api.stats.dto.TopRatedGameDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -150,6 +151,30 @@ class StatsGameRankingsTest {
                 .extracting(GameRankingsDto.ShortGem::gameName, GameRankingsDto.ShortGem::rating,
                         GameRankingsDto.ShortGem::hours)
                 .containsExactly(tuple("Alpha", new BigDecimal("9.50"), 12.0), tuple("Bravo", new BigDecimal("8.00"), 15.0));
+    }
+
+    // ---------------------------------------------------------------- top rated games
+
+    @Test
+    void topRatedGamesAverageEveryRatedRunAndTheOnlineRatingOncePerGame() {
+        // Alpha: two runs, 9 and 7 -> 8 over 30 h. Bravo: run 9.5 and online 8.5 -> 9 over 15 h.
+        runTotals.add(new GameRunTotals(1L, 30.0, new BigDecimal("16"), 2L));
+        runTotals.add(new GameRunTotals(2L, 10.0, new BigDecimal("9.5"), 1L));
+        onlineRows.add(new OnlinePlaytimeRow(2L, 5.0, new BigDecimal("8.5")));
+        // Charlie: only an online rating. Delta: nothing rated. Imported games never rank.
+        onlineRows.add(new OnlinePlaytimeRow(3L, 20.0, new BigDecimal("10")));
+        runTotals.add(new GameRunTotals(4L, 5.0, null, 0L));
+        runTotals.add(new GameRunTotals(UNCONFIRMED, 1.0, new BigDecimal("10"), 1L));
+
+        assertThat(service.getTopRatedGames(USER_ID, 50))
+                .extracting(TopRatedGameDto::gameName, TopRatedGameDto::rating, TopRatedGameDto::ratedCount,
+                        TopRatedGameDto::hours)
+                .containsExactly(
+                        tuple("Charlie", new BigDecimal("10.00"), 1L, 20.0),
+                        tuple("Bravo", new BigDecimal("9.00"), 2L, 15.0),
+                        tuple("Alpha", new BigDecimal("8.00"), 2L, 30.0));
+        assertThat(service.getTopRatedGames(USER_ID, 2)).extracting(TopRatedGameDto::gameName)
+                .containsExactly("Charlie", "Bravo");
     }
 
     @Test

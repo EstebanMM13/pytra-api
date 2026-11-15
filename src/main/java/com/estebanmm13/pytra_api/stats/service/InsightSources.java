@@ -66,7 +66,8 @@ final class InsightSources {
             }
             BigDecimal rating = ratedCount == 0 || ratingSum == null ? null
                     : ratingSum.divide(BigDecimal.valueOf(ratedCount), GAME_RATING_SCALE, RoundingMode.HALF_UP);
-            facts.add(new GameFacts(game.gameId(), game.developer(), game.publisher(), game.releaseDate(), hours, rating));
+            facts.add(new GameFacts(game.gameId(), game.developer(), game.publisher(), game.releaseDate(), hours, rating,
+                    ratedCount));
         }
         return facts;
     }

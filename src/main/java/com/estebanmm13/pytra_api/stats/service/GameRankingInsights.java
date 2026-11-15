@@ -9,6 +9,7 @@ import com.estebanmm13.pytra_api.games.repository.GameAddedRow;
 import com.estebanmm13.pytra_api.games.repository.GameLabel;
 import com.estebanmm13.pytra_api.games.repository.GameRepository;
 import com.estebanmm13.pytra_api.stats.dto.GameRankingsDto;
+import com.estebanmm13.pytra_api.stats.dto.TopRatedGameDto;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -90,6 +91,26 @@ final class GameRankingInsights {
                 .limit(cap)
                 .map(run -> new GameRankingsDto.LongRun(run.getId(), run.getGameId(), nameOf(run.getGameId(), names),
                         run.getRunLabel(), round1(hoursOf(run))))
+                .toList();
+    }
+
+    /**
+     * Best rated games, one row each: the mean of every rated run and the online rating (see
+     * {@link InsightSources#confirmedGameFacts}). Ties: more hours first, then the name.
+     */
+    List<TopRatedGameDto> topRatedGames(Long userId, int limit) {
+        Map<Long, String> names = new HashMap<>();
+        for (GameLabel label : gameRepository.findLabelsByUserId(userId)) {
+            names.put(label.id(), label.name());
+        }
+        return sources.confirmedGameFacts(userId).stream()
+                .filter(game -> game.rating() != null)
+                .map(game -> new TopRatedGameDto(game.gameId(), nameOf(game.gameId(), names),
+                        game.rating().setScale(2, RoundingMode.HALF_UP), game.ratedCount(), round1(game.hours())))
+                .sorted(Comparator.comparing(TopRatedGameDto::rating).reversed()
+                        .thenComparing(Comparator.comparingDouble(TopRatedGameDto::hours).reversed())
+                        .thenComparing(TopRatedGameDto::gameName, String.CASE_INSENSITIVE_ORDER))
+                .limit(clampLimit(limit))
                 .toList();
     }
 

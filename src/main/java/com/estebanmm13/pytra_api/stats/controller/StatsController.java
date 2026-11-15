@@ -144,6 +144,12 @@ public class StatsController {
     }
 
     /** All-time rankings of the CONFIRMED games (replays, longest runs, short gems, diary days, pending), up to limit (1-50) each. */
+    /** Best rated games, one per game: every rated run and the online rating averaged. */
+    @GetMapping("/top-rated-games")
+    public ResponseEntity<List<TopRatedGameDto>> getTopRatedGames(@RequestParam(defaultValue = "10") int limit) {
+        return ResponseEntity.ok(statsInsightsService.getTopRatedGames(currentUserResolver.getCurrentUserId(), limit));
+    }
+
     @GetMapping("/game-rankings")
     public ResponseEntity<GameRankingsDto> getGameRankings(@RequestParam(defaultValue = "50") int limit) {
         return ResponseEntity.ok(statsInsightsService.getGameRankings(currentUserResolver.getCurrentUserId(), limit));

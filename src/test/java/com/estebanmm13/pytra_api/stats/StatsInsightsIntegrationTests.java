@@ -522,4 +522,27 @@ class StatsInsightsIntegrationTests extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.longestRuns.length()").value(1));
     }
+
+    @Test
+    void topRatedGamesListEachGameOnceWithItsRunsAveraged() throws Exception {
+        Long twice = createGameVia(auth, "Top Twice", "");
+        createExperienceVia(auth, twice, run("A", "COMPLETADO", 9, 20.0, 2023, null, null, ""));
+        createExperienceVia(auth, twice, run("B", "COMPLETADO", 7, 10.0, 2024, null, null, ""));
+        Long once = createGameVia(auth, "Top Once", "");
+        createExperienceVia(auth, once, run("A", "COMPLETADO", 8.5, 12.0, 2024, null, null, ""));
+
+        performAs(auth, get("/api/v1/stats/top-rated-games"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].gameName").value("Top Once"))
+                .andExpect(jsonPath("$[0].rating").value(8.5))
+                .andExpect(jsonPath("$[1].gameName").value("Top Twice"))
+                .andExpect(jsonPath("$[1].rating").value(8.0))
+                .andExpect(jsonPath("$[1].ratedCount").value(2))
+                .andExpect(jsonPath("$[1].hours").value(30.0));
+
+        performAs(auth, get("/api/v1/stats/top-rated-games").param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+    }
 }
